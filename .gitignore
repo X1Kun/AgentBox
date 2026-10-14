@@ -1,0 +1,8 @@
+/bin/
+/.local/
+/.state/
+/artifacts/
+/coverage.out
+*.test
+*.prof
+.env
