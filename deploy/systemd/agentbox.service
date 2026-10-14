@@ -1,0 +1,20 @@
+[Unit]
+Description=AgentBox one-shot sandbox daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/agentbox
+ExecStart=/opt/agentbox/bin/agentboxd -runsc /opt/agentbox/.local/gvisor/runsc -rootfs /opt/agentbox/.local/rootfs -state-dir /var/lib/agentbox -cgroup-root auto -platform kvm
+EnvironmentFile=/etc/agentbox.env
+Delegate=cpu memory pids
+StateDirectory=agentbox
+StateDirectoryMode=0700
+UMask=0077
+KillMode=control-group
+TimeoutStopSec=15
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

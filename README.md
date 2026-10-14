@@ -1,0 +1,111 @@
+# AgentBox
+
+面向 AI Agent 的轻量代码执行沙箱。使用 gVisor 隔离不可信 Python 代码，并用 cgroups v2 限制资源。完整设计见 [DESIGN.md](DESIGN.md)。
+
+## 当前范围
+
+第一阶段实现单次冷启动执行：HTTP 请求、runsc 生命周期、输出上限、执行超时、取消、静态资源限制，以及任务结束后的完整销毁。预热池、动态 PSI QoS、独立 Gateway、MCP 和多节点尚未实现；没有低于 50 ms 的性能承诺。
+
+KVM 与 systrap 的真实集成验收均已通过，具体环境、用例和限制见 [第一阶段验收记录](docs/phase1-validation.md)。
+
+本阶段由 daemon 直接提供本机 HTTP 接口，后续 Gateway 接入时复用执行协议。
+
+## 本地开发与检查
+
+需要 Linux、Go 1.25+。Go 代码只使用标准库。依赖准备和容器验收另需 Docker、curl、tar、bzip2、Python 3；KVM 验收还需可访问的 `/dev/kvm`。
+
+```bash
+make build
+make check
+```
+
+准备项目本地依赖（下载 runsc，拉取并导出可信 Python 镜像）：
+
+```bash
+bash scripts/install-runsc.sh
+bash scripts/prepare-rootfs.sh
+./bin/agentboxd -doctor -runsc .local/gvisor/runsc -platform kvm
+```
+
+下载脚本默认固定 runsc `20261005.0`，校验官方 SHA-512，保留 runsc 与 sidecar 布局，不修改系统二进制或 Docker runtime 配置。`.local/gvisor/VERSION.txt`、`SOURCE.txt`、`ARCHIVE.sha512` 和 `.local/rootfs-image.json` 记录实际依赖。复现时给安装脚本传入日期版本，给 rootfs 脚本传入记录的镜像 digest。测试容器使用该记录中的镜像 digest。
+
+rootfs 解压显式保留镜像文件权限，并将根目录和 AgentBox 挂载点设为 `0755`，确保准备者使用 `umask 0077` 时沙箱 UID 1000 仍能访问。权限回归测试随 `make check` 运行，无需 Docker 或 root。
+
+`doctor` 只做读取和 KVM API 探测，不创建沙箱或改 cgroup。当前普通用户没有 CPU 控制器委派时，报告失败是预期行为。实际执行要求 root、独立委派的 cgroup v2 子树、cpu/memory/pids 控制器和可信 rootfs。不会静默降级到 runc、宿主 Python 或没有资源限制的 rootless 模式。
+
+官方参考：[安装](https://gvisor.dev/docs/user_guide/install/)、[OCI](https://gvisor.dev/docs/user_guide/quick_start/oci/)、[平台](https://gvisor.dev/docs/architecture_guide/platforms/)。
+
+## 独立容器内验收
+
+已准备依赖且当前用户可以访问 Docker 时，可在一次性测试容器内运行真实 runsc：
+
+```bash
+bash scripts/integration-container.sh kvm
+bash scripts/integration-container.sh systrap
+```
+
+测试容器明确使用 privileged 模式，以支持 runsc 所需的命名空间和 cgroup 操作。它使用私有 cgroup、PID、网络命名空间；不挂载宿主 cgroup 树、Docker socket 或可写源代码。外层同时限制 CPU、内存和进程数。该环境用于验证功能，不能代替裸机性能基准或生产部署安全评审。
+
+测试使用与 systemd 相同的 `umask 0077`，覆盖真实 HTTP 执行、标准输入输出、UID 1000 的输入文件访问、`__main__` 模块与 pickle、环境隔离、用户异常、退出码 125、死循环、输出洪水、只读根文件系统、禁止网络出口、工作目录隔离、后台子进程、受控 fork、内存 OOM、请求取消、容量拒绝、重启回收，以及清理失败停止接单与重启修复。常规执行后检查 bundle 与 cgroup 残留；故障注入时验证 intent 保留并在重启后清理。
+
+fork 用例验证配置的 rlimit 为 64，并在沙箱内降低到 8 来验证拦截机制，避免先撞到 KVM 内存水位；不宣称已经观测到 64 个进程的精确边界。OOM 用例单独将该次任务的 `memory.high` 提高到硬上限，以区分软水位回收与硬限制 OOM；常规执行保留 384 MiB 的软水位。
+
+也可以在已经配置好的独立运行环境中设置 `AGENTBOX_INTEGRATION=1`、`AGENTBOX_RUNSC`、`AGENTBOX_ROOTFS`、`AGENTBOX_CGROUP_ROOT`、`AGENTBOX_PLATFORM` 后执行 `make integration`。未显式开启时测试跳过，跳过不代表隔离验证通过。
+
+## 裸机启动
+
+生产形态尚未完成；当前只支持受信任本机客户端。服务仅绑定显式 loopback IP，执行接口必须携带至少 32 字符的 Bearer token。
+
+在本项目目录，可以用独立 systemd transient service 获得 cgroup 委派。先设置随机 token，然后由管理员启动（该命令需要 sudo）：
+
+```bash
+export AGENTBOX_API_TOKEN=$(openssl rand -hex 32)
+sudo systemd-run --unit=agentbox-dev --collect \
+  --property=Delegate=yes --property=KillMode=control-group \
+  --property=TimeoutStopSec=15 \
+  --working-directory="$PWD" \
+  --setenv="AGENTBOX_API_TOKEN=$AGENTBOX_API_TOKEN" \
+  "$PWD/bin/agentboxd" \
+  -runsc "$PWD/.local/gvisor/runsc" \
+  -rootfs "$PWD/.local/rootfs" \
+  -state-dir "$PWD/.state" \
+  -cgroup-root auto -platform kvm
+```
+
+也提供了 [systemd service 模板](deploy/systemd/agentbox.service)，部署路径与 EnvironmentFile 需要管理员按本机实际配置。API token 不进入 runsc 或用户代码的环境。由于 transient unit 的 cgroup 路径应保持稳定，重启时使用同一个 unit 名；不要将旧状态目录交给不同 cgroup、rootfs 或平台配置。
+
+发送一次请求：
+
+```bash
+curl --fail-with-body http://127.0.0.1:8080/v1/execute \
+  -H "Authorization: Bearer $AGENTBOX_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"runtime":"python","code":"print(\"hello from AgentBox\")","timeout_ms":5000}'
+```
+
+停止服务：
+
+```bash
+sudo systemctl stop agentbox-dev
+```
+
+## 接口与资源语义
+
+- `GET /healthz`：进程存活。
+- `GET /readyz`：是否可接单；不表示当前有空闲并发。
+- `POST /v1/execute`：鉴权、校验后同步执行。
+- 第一版没有队列：并发默认 1，可配置为 1～4，满载立即返回 503。
+- 每次请求创建新沙箱，用后销毁；不复用进程和工作目录。
+- Python 使用 isolated 模式、UID/GID 1000、空 capabilities 和 `no_new_privs`。
+- 根文件系统只读；`/workspace` 和 `/tmp` 各 64 MiB，禁止外网。
+- 每个沙箱限制为 1 CPU 等效带宽、512 MiB 内存硬上限、384 MiB high、无 swap；宿主任务数限制 256，沙箱内 `RLIMIT_NPROC` 64，二者口径不同。
+- 沙箱父级上限为 4 CPU 等效带宽和 4 GiB 内存。
+- 代码与标准输入分别最多 256 KiB，输出合计最多 1 MiB。
+- `env` 最多 16 项，仅允许 `AGENT_` 前缀和大写字母、数字、下划线构成的键，值不超过 4096 字节且不含 NUL。
+- `timeout_ms` 默认 5000、上限 30000，覆盖 start/wait；冷启动 setup 单独最多 10 秒，cleanup 最多约 6 秒。响应分别报告这些阶段与总耗时。
+- 成功、代码异常、超时、OOM、取消、输出超限以结构化执行结果表示；基础设施故障返回 500，满载或降级返回 503。
+- 收到客户端取消或服务关闭时，使用独立清理上下文回收资源。
+- 清理失败保留 intent 记录、停止接单；重启时仅对本状态目录记录的实例执行回收。
+- 请求 ID 当前仅用于关联日志和响应，尚无去重或重试保证；客户端不得自动重放不确定结果。
+
+CPU 和内存统计覆盖单个沙箱 cgroup 的运行时及应用开销；不是仅 Python 进程的用量。宿主 CLI 开销不包含在该统计内。
