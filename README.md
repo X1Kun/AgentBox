@@ -6,7 +6,7 @@
 
 第一阶段实现单次冷启动执行：HTTP 请求、runsc 生命周期、输出上限、执行超时、取消、静态资源限制，以及任务结束后的完整销毁。预热池、动态 PSI QoS、独立 Gateway、MCP 和多节点尚未实现；没有低于 50 ms 的性能承诺。
 
-KVM 与 systrap 的真实集成验收均已通过，具体环境、用例和限制见 [第一阶段验收记录](docs/phase1-validation.md)。
+KVM 与 systrap 的执行及 systemd 容器生命周期验收均已通过；本机 systemd 249 的固定服务安装和 KVM 生命周期验收也已完成。具体环境、用例和限制见 [第一阶段验收记录](docs/phase1-validation.md) 和 [systemd 部署与验收](docs/systemd-deployment.md)。
 
 本阶段由 daemon 直接提供本机 HTTP 接口，后续 Gateway 接入时复用执行协议。
 
@@ -56,37 +56,28 @@ fork 用例验证配置的 rlimit 为 64，并在沙箱内降低到 8 来验证�
 
 生产形态尚未完成；当前只支持受信任本机客户端。服务仅绑定显式 loopback IP，执行接口必须携带至少 32 字符的 Bearer token。
 
-在本项目目录，可以用独立 systemd transient service 获得 cgroup 委派。先设置随机 token，然后由管理员启动（该命令需要 sudo）：
+先由普通用户完成构建和项目本地依赖准备，再安装固定服务（需要 sudo）：
 
 ```bash
-export AGENTBOX_API_TOKEN=$(openssl rand -hex 32)
-sudo systemd-run --unit=agentbox-dev --collect \
-  --property=Delegate=yes --property=KillMode=control-group \
-  --property=TimeoutStopSec=15 \
-  --working-directory="$PWD" \
-  --setenv="AGENTBOX_API_TOKEN=$AGENTBOX_API_TOKEN" \
-  "$PWD/bin/agentboxd" \
-  -runsc "$PWD/.local/gvisor/runsc" \
-  -rootfs "$PWD/.local/rootfs" \
-  -state-dir "$PWD/.state" \
-  -cgroup-root auto -platform kvm
+make build
+sudo bash scripts/install-systemd.sh
+sudo systemctl start agentbox.service
+sudo bash scripts/smoke-host.sh
 ```
 
-也提供了 [systemd service 模板](deploy/systemd/agentbox.service)，部署路径与 EnvironmentFile 需要管理员按本机实际配置。API token 不进入 runsc 或用户代码的环境。由于 transient unit 的 cgroup 路径应保持稳定，重启时使用同一个 unit 名；不要将旧状态目录交给不同 cgroup、rootfs 或平台配置。
+安装不会自动启动或设置开机自启；首次生成 `/etc/agentbox.env`（0600），后续保留 token。服务使用 `Type=notify`，在状态回收、cgroup 初始化和 HTTP 监听完成后才报告就绪。默认 KVM；首次安装可显式选择 `--platform systrap`。完整配置、更新、回退、卸载及状态保留规则见 [部署说明](docs/systemd-deployment.md)。API token 不进入 runsc 或用户代码的环境。
 
-发送一次请求：
+需要验证执行中停止和崩溃恢复时，显式运行生命周期检查（会启停服务，并 SIGKILL daemon 主进程）：
 
 ```bash
-curl --fail-with-body http://127.0.0.1:8080/v1/execute \
-  -H "Authorization: Bearer $AGENTBOX_API_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"runtime":"python","code":"print(\"hello from AgentBox\")","timeout_ms":5000}'
+mkdir -p artifacts
+sudo bash scripts/smoke-host.sh --lifecycle --output "$PWD/artifacts/host-systemd.json"
 ```
 
 停止服务：
 
 ```bash
-sudo systemctl stop agentbox-dev
+sudo systemctl stop agentbox.service
 ```
 
 ## 接口与资源语义
@@ -96,6 +87,7 @@ sudo systemctl stop agentbox-dev
 - `POST /v1/execute`：鉴权、校验后同步执行。
 - 第一版没有队列：并发默认 1，可配置为 1～4，满载立即返回 503。
 - 每次请求创建新沙箱，用后销毁；不复用进程和工作目录。
+- 实例内保留待命 init，用户任务通过附着式 `runsc exec` 执行并收集退出码，避免短任务在独立 wait 连接前退出；任务完成后销毁整个实例。
 - Python 使用 isolated 模式、UID/GID 1000、空 capabilities 和 `no_new_privs`。
 - 根文件系统只读；`/workspace` 和 `/tmp` 各 64 MiB，禁止外网。
 - 每个沙箱限制为 1 CPU 等效带宽、512 MiB 内存硬上限、384 MiB high、无 swap；宿主任务数限制 256，沙箱内 `RLIMIT_NPROC` 64，二者口径不同。

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,10 +53,12 @@ type session struct {
 	writers         []*os.File
 	stdin           *os.File
 	outputReadersWG sync.WaitGroup
+	bundlePath      string
+	taskCommand     *exec.Cmd
 }
 
 func newSession(runtime runscCLI, id, bundle string, outputLimit int) (*session, error) {
-	s := &session{runtime: runtime, id: id, outputCollector: newOutputCollector(outputLimit)}
+	s := &session{runtime: runtime, id: id, bundlePath: bundle, outputCollector: newOutputCollector(outputLimit)}
 	for i := 0; i < 2; i++ {
 		readPipe, writePipe, err := os.Pipe()
 		if err != nil {
@@ -89,39 +92,66 @@ func (s *session) create(ctx context.Context, bundle string) error {
 	cmd := s.runtime.command(ctx, "create", "--bundle="+bundle, s.id)
 	// Files are passed directly, so create.Wait does not wait for sandbox-held
 	// stdout/stderr to close. Stream draining belongs to this session.
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = s.stdin, s.writers[0], s.writers[1]
-	err := cmd.Run()
-	for _, f := range s.writers {
-		_ = f.Close()
+	cmd.Stdout, cmd.Stderr = s.writers[0], s.writers[1]
+	if err := cmd.Run(); err != nil {
+		return err
 	}
-	_ = s.stdin.Close()
-	return err
-}
-
-func (s *session) start(ctx context.Context) error {
 	_, err := s.runtime.control(ctx, "start", s.id)
 	return err
 }
 
+func (s *session) start(ctx context.Context) error {
+	s.taskCommand = s.runtime.command(ctx, "exec", "--process="+filepath.Join(s.bundlePath, "process.json"), "--internal-pid-file="+filepath.Join(s.bundlePath, "task.pid"), s.id)
+	s.taskCommand.Stdin, s.taskCommand.Stdout, s.taskCommand.Stderr = s.stdin, s.writers[0], s.writers[1]
+	if err := s.taskCommand.Start(); err != nil {
+		return err
+	}
+	for _, file := range s.writers {
+		_ = file.Close()
+	}
+	_ = s.stdin.Close()
+	return nil
+}
+
 func (s *session) wait(ctx context.Context) (int, error) {
-	b, err := s.runtime.control(ctx, "wait", s.id)
-	if err != nil {
-		return 0, err
+	err := s.taskCommand.Wait()
+	pidData, pidErr := os.ReadFile(filepath.Join(s.bundlePath, "task.pid"))
+	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidData)))
+	if parseErr == nil && pid <= 0 {
+		parseErr = errors.New("task PID must be positive")
 	}
-	var result struct {
-		ID         string `json:"id"`
-		ExitStatus *int   `json:"exitStatus"`
+	if pidErr != nil || parseErr != nil || pid <= 0 {
+		return 0, fmt.Errorf("runsc exec did not confirm task creation: %w", errors.Join(err, pidErr, parseErr))
 	}
-	if err := json.Unmarshal(b, &result); err != nil {
-		return 0, fmt.Errorf("decode runsc wait: %w", err)
+	if err == nil {
+		return 0, nil
 	}
-	if result.ID != s.id || result.ExitStatus == nil || *result.ExitStatus < 0 || *result.ExitStatus > 255 {
-		return 0, errors.New("invalid runsc wait result")
+	var exitError *exec.ExitError
+	if !errors.As(err, &exitError) || !exitError.ProcessState.Exited() {
+		return 0, fmt.Errorf("runsc exec: %w", err)
 	}
-	return *result.ExitStatus, nil
+	exitCode := exitError.ExitCode()
+	// runsc also uses 128 for control failures. A created task returning 128
+	// with its sandbox still running is a user exit, not a runtime failure.
+	if exitCode == 128 {
+		data, stateErr := s.runtime.control(ctx, "state", s.id)
+		var state struct {
+			Status string `json:"status"`
+		}
+		if stateErr != nil || json.Unmarshal(data, &state) != nil || state.Status != "running" {
+			return 0, fmt.Errorf("runsc exec lost its sandbox: %w", err)
+		}
+	}
+	return exitCode, nil
 }
 
 func (s *session) finishStreams() {
+	for _, file := range s.writers {
+		_ = file.Close()
+	}
+	if s.stdin != nil {
+		_ = s.stdin.Close()
+	}
 	readersFinished := make(chan struct{})
 	go func() {
 		s.outputReadersWG.Wait()
