@@ -140,6 +140,12 @@ print('main-module-ok')
 			t.Fatalf("unexpected: %+v", r)
 		}
 	})
+	t.Run("user_exit_128_is_not_runtime_error", func(t *testing.T) {
+		r := execute(t, "import os; os._exit(128)", 5000)
+		if r.Status != "failed" || r.ExitCode == nil || *r.ExitCode != 128 {
+			t.Fatalf("unexpected: %+v", r)
+		}
+	})
 	t.Run("timeout", func(t *testing.T) {
 		r := execute(t, "while True: pass", 200)
 		if r.Status != "timeout" {
@@ -227,13 +233,17 @@ finally:
 		go func() {
 			deadline := time.Now().Add(3 * time.Second)
 			for time.Now().Before(deadline) {
-				matches, err := filepath.Glob(filepath.Join(c.CgroupRoot, "sandboxes", "ab-*", "memory.high"))
+				// Wait until task creation is confirmed: runtime initialization
+				// may still write cgroup settings before the exec task exists.
+				matches, err := filepath.Glob(filepath.Join(state, "bundles", "ab-*", "task.pid"))
 				if err != nil {
 					adjusted <- err
 					return
 				}
 				for _, path := range matches {
-					if err := os.WriteFile(path, []byte("536870912"), 0644); err != nil {
+					id := filepath.Base(filepath.Dir(path))
+					high := filepath.Join(c.CgroupRoot, "sandboxes", id, "memory.high")
+					if err := os.WriteFile(high, []byte("536870912"), 0644); err != nil {
 						adjusted <- err
 						return
 					}

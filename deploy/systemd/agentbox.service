@@ -3,16 +3,19 @@ Description=AgentBox one-shot sandbox daemon
 After=network.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 User=root
 WorkingDirectory=/opt/agentbox
-ExecStart=/opt/agentbox/bin/agentboxd -runsc /opt/agentbox/.local/gvisor/runsc -rootfs /opt/agentbox/.local/rootfs -state-dir /var/lib/agentbox -cgroup-root auto -platform kvm
+ExecStart=/opt/agentbox/bin/agentboxd -runsc /opt/agentbox/.local/gvisor/runsc -rootfs /opt/agentbox/.local/rootfs -state-dir /var/lib/agentbox -cgroup-root auto -platform ${AGENTBOX_PLATFORM} -listen ${AGENTBOX_LISTEN} -concurrency ${AGENTBOX_CONCURRENCY}
+Environment=AGENTBOX_PLATFORM=kvm AGENTBOX_LISTEN=127.0.0.1:8080 AGENTBOX_CONCURRENCY=1
 EnvironmentFile=/etc/agentbox.env
 Delegate=cpu memory pids
 StateDirectory=agentbox
 StateDirectoryMode=0700
 UMask=0077
 KillMode=control-group
+TimeoutStartSec=30
 TimeoutStopSec=15
 Restart=no
 

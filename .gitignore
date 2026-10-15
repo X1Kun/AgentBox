@@ -6,3 +6,5 @@
 *.test
 *.prof
 .env
+__pycache__/
+*.pyc

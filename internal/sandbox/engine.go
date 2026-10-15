@@ -331,6 +331,9 @@ func (e *Engine) prepareTaskFiles(bundlePath, hostCgroupPath string, request api
 	if err := writeJSON(filepath.Join(bundlePath, "config.json"), config, 0600); err != nil {
 		return fmt.Errorf("write OCI config: %w", err)
 	}
+	if err := writeJSON(filepath.Join(bundlePath, "process.json"), makeTaskProcess(), 0600); err != nil {
+		return fmt.Errorf("write OCI task process: %w", err)
+	}
 	return nil
 }
 

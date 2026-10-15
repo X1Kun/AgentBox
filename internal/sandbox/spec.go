@@ -66,17 +66,30 @@ sys.argv = [main.__file__]
 exec(compile(code, main.__file__, 'exec'), main.__dict__)
 `
 
+const idleBootstrap = `import signal
+while True:
+    signal.pause()
+`
+
+func makeTaskProcess() process {
+	return process{
+		User: user{1000, 1000}, Args: []string{"/usr/local/bin/python3", "-I", "-B", "-u", "-c", bootstrap},
+		Env: []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/workspace", "LANG=C.UTF-8", "TMPDIR=/tmp"},
+		Cwd: "/workspace", NoNewPrivileges: true,
+		Capabilities: map[string][]string{"bounding": {}, "effective": {}, "inheritable": {}, "permitted": {}, "ambient": {}},
+		Rlimits:      []rlimit{{"RLIMIT_NOFILE", 128, 128}, {"RLIMIT_NPROC", 64, 64}, {"RLIMIT_FSIZE", 16 << 20, 16 << 20}, {"RLIMIT_CORE", 0, 0}},
+	}
+}
+
 func makeSpec(rootfs, bundle, cgroupPath string) spec {
+	initProcess := makeTaskProcess()
+	// Keep Sentry alive while the attached exec command collects the task's
+	// exit status. This container is still destroyed after exactly one task.
+	initProcess.Args = []string{"/usr/local/bin/python3", "-I", "-B", "-u", "-c", idleBootstrap}
 	return spec{
 		Version: "1.0.2", Hostname: "agentbox",
-		Root: root{Path: rootfs, Readonly: true},
-		Process: process{
-			User: user{1000, 1000}, Args: []string{"/usr/local/bin/python3", "-I", "-B", "-u", "-c", bootstrap},
-			Env: []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/workspace", "LANG=C.UTF-8", "TMPDIR=/tmp"},
-			Cwd: "/workspace", NoNewPrivileges: true,
-			Capabilities: map[string][]string{"bounding": {}, "effective": {}, "inheritable": {}, "permitted": {}, "ambient": {}},
-			Rlimits:      []rlimit{{"RLIMIT_NOFILE", 128, 128}, {"RLIMIT_NPROC", 64, 64}, {"RLIMIT_FSIZE", 16 << 20, 16 << 20}, {"RLIMIT_CORE", 0, 0}},
-		},
+		Root:    root{Path: rootfs, Readonly: true},
+		Process: initProcess,
 		Mounts: []mount{
 			{"/proc", "proc", "proc", []string{"nosuid", "noexec", "nodev"}},
 			{"/dev", "tmpfs", "tmpfs", []string{"nosuid", "noexec", "mode=755", "size=1048576"}},

@@ -16,6 +16,7 @@ import (
 	"github.com/X1Kun/AgentBox/internal/doctor"
 	"github.com/X1Kun/AgentBox/internal/httpapi"
 	"github.com/X1Kun/AgentBox/internal/sandbox"
+	"github.com/X1Kun/AgentBox/internal/systemd"
 )
 
 func main() {
@@ -77,7 +78,12 @@ func run() error {
 	}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
-	logger.Info("agentbox daemon listening", "address", listener.Addr().String(), "platform", c.Platform, "mode", "cold-one-shot")
+	if err := systemd.Ready(); err != nil {
+		cancel()
+		_ = server.Close()
+		return err
+	}
+	logger.Info("agentbox daemon listening", "address", listener.Addr().String(), "platform", c.Platform, "mode", "cold-one-shot", "state_dir", c.StateDir, "rootfs", c.Rootfs)
 	select {
 	case err := <-done:
 		cancel()
@@ -86,6 +92,9 @@ func run() error {
 		}
 		return err
 	case <-ctx.Done():
+		if err := systemd.Stopping(); err != nil {
+			logger.Warn("systemd stopping notification failed", "error", err)
+		}
 		shutdownCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
 		if err := server.Shutdown(shutdownCtx); err != nil {

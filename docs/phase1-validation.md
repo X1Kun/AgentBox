@@ -69,7 +69,7 @@ runsc 从官方发布存储下载并完成 SHA-512 校验，保留 sidecar 目�
 - 这些是功能验收，不是正式延迟、吞吐或隔离安全证明。
 - 日志中的 setup、execute、cleanup 耗时来自少量功能用例，不能计算有意义的 P50/P99，也不能证明 KVM 固定优于 systrap。
 - 集成测试位于 Docker 容器内，不能替代裸机性能实验。
-- 尚未启动或安装宿主 systemd 服务；裸机启动方式与模板见 README。
+- 第一阶段首次验收时尚未安装宿主 systemd 服务；后续已于 2026-10-15 完成本机固定部署及 KVM 生命周期验收，见 [systemd 部署与验收](systemd-deployment.md)。
 - 尚无预热池、排队、去重、动态 PSI QoS、独立 Gateway、MCP、多节点或 GPU 接入。
 - 没有执行 Git 写命令；新增实现与文档等待用户审阅、提交。
 
@@ -80,3 +80,7 @@ runsc 从官方发布存储下载并完成 SHA-512 校验，保留 sidecar 目�
 - `make check` 与 `make build` 通过。
 - 使用已有真实 Python rootfs 快照，在禁网、资源受限的普通容器中，以 root 和 `umask 0077` 调用实际准备脚本，随后 chroot 并切换为 UID/GID 1000，成功执行 Python 并导入标准库。该检查验证不同所有者下的访问权限，没有使用 privileged 或 Docker socket，也没有覆盖项目现有 rootfs。
 - 本次改动未重跑 gVisor 集成套件；上述 UID 1000 检查属于文件权限与解释器可用性验证。
+
+## 后续 systemd 阶段的执行路径更新
+
+实际服务管理器回收进程时，原独立 `runsc wait` 存在短任务退出码丢失竞态。现已改为每个一次性实例保留待命 init，通过附着式 `runsc exec` 执行用户任务，再读取统计并显式销毁实例。新增退出码 128 回归后，两平台的执行套件均为 17 项并通过；上文 16 项为首次验收记录。固定部署和服务生命周期验证见 [systemd 部署与验收](systemd-deployment.md)。
