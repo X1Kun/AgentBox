@@ -1,4 +1,4 @@
-.PHONY: build test check integration doctor systemd-integration
+.PHONY: build test check integration doctor systemd-integration benchmark
 
 build:
 	mkdir -p bin
@@ -8,6 +8,7 @@ test:
 	go test -race -count=1 ./...
 
 check: test
+	go test -tags=integration -run '^TestBenchmarkSummary' -count=1 ./tests/benchmarks
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal tests)"
 	git diff --check
@@ -22,3 +23,6 @@ integration:
 
 systemd-integration: build
 	bash scripts/integration-systemd-container.sh
+
+benchmark:
+	bash scripts/benchmark-container.sh kvm

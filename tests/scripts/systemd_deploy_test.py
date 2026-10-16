@@ -1,4 +1,5 @@
 import fcntl
+from concurrent.futures import Future
 import json
 import os
 from pathlib import Path
@@ -132,6 +133,28 @@ class DeploymentTests(unittest.TestCase):
 
 
 class ToolTests(unittest.TestCase):
+    def test_normal_stop_requires_success_and_no_retained_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            bundles = state / "bundles"
+            bundles.mkdir()
+            smoke = Smoke.__new__(Smoke)
+            with patch("smoke_host.STATE", state), patch("smoke_host.property_value", return_value="success"):
+                smoke.assert_normal_stop()
+                (bundles / "ab-retained").mkdir()
+                with self.assertRaises(ValueError):
+                    smoke.assert_normal_stop()
+            with patch("smoke_host.property_value", return_value="signal"), self.assertRaises(ValueError):
+                smoke.assert_normal_stop()
+
+    def test_lifecycle_rejection_is_reported_without_waiting_for_nonexistent_task(self):
+        smoke = Smoke.__new__(Smoke)
+        smoke.running_group = lambda root: None
+        pending = Future()
+        pending.set_result((503, {"error": "executor unavailable"}))
+        with self.assertRaisesRegex(ValueError, "HTTP 503"):
+            smoke.wait_for_running_task(Path("/unused"), pending)
+
     def test_configuration_accepts_explicit_loopback_addresses(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "config"
@@ -142,7 +165,7 @@ class ToolTests(unittest.TestCase):
     def test_configuration_rejects_unsafe_or_ambiguous_values(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "config"
-            for extra in ("AGENTBOX_LISTEN=0.0.0.0:8080", "AGENTBOX_LISTEN=127.0.0.1:8080/path", "AGENTBOX_LISTEN=127.0.0.1", "AGENTBOX_CONCURRENCY=5", "AGENTBOX_PLATFORM=ptrace", "UNKNOWN=value", "AGENTBOX_LISTEN='127.0.0.1:8080'", "AGENTBOX_API_TOKEN="+"y"*32):
+            for extra in ("AGENTBOX_LISTEN=0.0.0.0:8080", "AGENTBOX_LISTEN=127.0.0.1:8080/path", "AGENTBOX_LISTEN=127.0.0.1", "AGENTBOX_CONCURRENCY=5", "AGENTBOX_PLATFORM=ptrace", "AGENTBOX_MODE=auto", "AGENTBOX_MAX_SANDBOXES=9", "AGENTBOX_QUEUE_TIMEOUT=6s", "AGENTBOX_WARM_SIZE=7", "AGENTBOX_QUEUE_BYTES=0", "UNKNOWN=value", "AGENTBOX_LISTEN='127.0.0.1:8080'", "AGENTBOX_API_TOKEN="+"y"*32):
                 config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\n"+extra+"\n")
                 with self.subTest(extra=extra), self.assertRaises(ValueError):
                     load_config(config)

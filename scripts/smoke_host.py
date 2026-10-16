@@ -125,7 +125,16 @@ class Smoke:
             raise ValueError("service has no dedicated cgroup")
         return Path("/sys/fs/cgroup") / relative.lstrip("/")
 
-    def assert_clean(self):
+    def assert_clean(self, execution_id=None):
+        if self.config["AGENTBOX_MODE"] == "warm":
+            status, pool = self.http("/v1/status")
+            if status != 200 or pool.get("mode") != "warm" or pool["total"] > pool["max_sandboxes"]:
+                raise ValueError("invalid warm pool accounting")
+            if execution_id:
+                for path in (STATE / "bundles" / execution_id, self.cgroup_root() / "sandboxes" / execution_id):
+                    if path.exists():
+                        raise ValueError("completed execution still owns resources")
+            return
         bundles = STATE / "bundles"
         if bundles.exists() and any(bundles.iterdir()):
             raise ValueError("execution records remain after normal cleanup")
@@ -133,11 +142,38 @@ class Smoke:
         if any((root / "sandboxes").glob("ab-*")):
             raise ValueError("sandbox cgroups remain after cleanup")
 
+    def wait_for_idle(self, description):
+        if self.config["AGENTBOX_MODE"] != "warm":
+            return
+        def idle_available():
+            status, pool = self.http("/v1/status")
+            if status != 200 or not pool.get("ready"):
+                raise ValueError("warm pool became unavailable before "+description)
+            return pool["idle"] > 0
+        wait_until(idle_available, "idle sandbox for "+description, 15)
+
+    def wait_for_running_task(self, root, pending):
+        selected = None
+        def task_started():
+            nonlocal selected
+            selected = self.running_group(root)
+            if selected is not None:
+                return True
+            if pending.done():
+                status, result = pending.result()
+                raise ValueError(f"lifecycle task ended before observation: HTTP {status}, status={result.get('status')}")
+            return False
+        wait_until(task_started, "running sandbox")
+        return selected
+
     def execute(self, name, code, expected, timeout=5000):
+        # Functional checks need inventory. Saturation probes call http directly
+        # and still require a bounded 503, without replaying any execution.
+        self.wait_for_idle(name)
         status, result = self.http("/v1/execute", {"runtime": "python", "code": code, "timeout_ms": timeout})
         if status != 200 or result.get("status") != expected or not result.get("cleanup_complete"):
             raise ValueError(f"{name} failed: HTTP {status}, status={result.get('status')}, stderr={result.get('stderr', '')[-2000:]}")
-        self.assert_clean()
+        self.assert_clean(result["execution_id"])
         self.results.append({"name": name, "execution_id": result["execution_id"], "status": result["status"], "cleanup_complete": True})
         return result
 
@@ -147,6 +183,8 @@ class Smoke:
         wait_until(self.ready, "HTTP readiness", 5)
         if property_value("Delegate") != "yes":
             raise ValueError("service is not delegated")
+        if property_value("KillMode") != "mixed":
+            raise ValueError("service must use mixed termination so daemon cleanup is not interrupted")
         pid = property_value("MainPID")
         membership = Path(f"/proc/{pid}/cgroup").read_text()
         if not membership.strip().endswith("/agentbox.service/manager"):
@@ -174,6 +212,8 @@ class Smoke:
 
     def running_group(self, root):
         for group in (root / "sandboxes").glob("ab-*"):
+            if self.config["AGENTBOX_MODE"] == "warm" and not (STATE / "bundles" / group.name / "task.pid").exists():
+                continue
             if populated(group):
                 return group
         return None
@@ -185,15 +225,16 @@ class Smoke:
             identities = process_snapshot(root)
             systemctl("stop", UNIT)
             self.assert_stopped(root, identities)
+            self.assert_normal_stop()
             self.start()
             self.execute(f"restart-{index+1}", "print('restarted')", "succeeded")
 
         for crash in (False, True):
             root = self.cgroup_root()
+            self.wait_for_idle("lifecycle task")
             with ThreadPoolExecutor(max_workers=1) as workers:
                 pending = workers.submit(self.http, "/v1/execute", {"runtime": "python", "code": "import time; time.sleep(20)", "timeout_ms": 30000})
-                wait_until(lambda: self.running_group(root) is not None, "running sandbox")
-                group = self.running_group(root)
+                group = self.wait_for_running_task(root, pending)
                 for name, expected in {"cpu.max": "20000 20000", "memory.max": "536870912", "memory.swap.max": "0", "pids.max": "256"}.items():
                     if (group / name).read_text().strip() != expected:
                         raise ValueError("unexpected task cgroup setting: "+name)
@@ -227,6 +268,8 @@ class Smoke:
                 except (OSError, URLError):
                     pass # A stopped or killed HTTP server may close the connection.
                 self.assert_stopped(root, identities)
+            if not crash:
+                self.assert_normal_stop()
             self.start()
             self.execute("crash-recovery" if crash else "busy-stop-recovery", "print('recovered')", "succeeded")
             if (STATE / "owner.json").read_bytes() != original_owner:
@@ -237,13 +280,20 @@ class Smoke:
         wait_until(lambda: not populated(root), "empty service cgroup")
         wait_until(lambda: all(process_identity(pid) != identity for pid, identity in identities.items()), "service process reaping")
 
+    def assert_normal_stop(self):
+        if property_value("Result") != "success":
+            raise ValueError("normal service stop did not complete successfully")
+        bundles = STATE / "bundles"
+        if bundles.exists() and any(bundles.iterdir()):
+            raise ValueError("normal service stop left unreconciled execution records")
+
     def report(self):
         root = self.cgroup_root()
         version = subprocess.run(["/opt/agentbox/.local/gvisor/runsc", "--version"], check=True, text=True, capture_output=True).stdout.strip()
         return {"recorded_at": datetime.now(timezone.utc).isoformat(), "kernel": os.uname().release,
                 "systemd_version": systemctl("--version").splitlines()[0], "runsc_version": version,
                 "deployment": {key: self.manifest[key] for key in ("format", "platform", "binary_sha256", "runsc_sha256", "rootfs_images")},
-                "platform": self.config["AGENTBOX_PLATFORM"], "service": UNIT,
+                "platform": self.config["AGENTBOX_PLATFORM"], "execution_mode": self.config.get("AGENTBOX_MODE", "cold"), "service": UNIT,
                 "cgroup": str(root), "checks": self.results, "ready": self.ready(),
                 "parent_limits": {name: (root / "sandboxes" / name).read_text().strip() for name in ("cpu.max", "memory.high", "memory.max", "memory.swap.max", "pids.max")},
                 "sandbox_limits": self.sandbox_limits, "runtime_components": self.runtime_components,

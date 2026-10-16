@@ -18,6 +18,7 @@ import (
 type Executor interface {
 	Execute(context.Context, api.Request) (api.Result, error)
 	Ready() bool
+	Status() api.StatusReport
 }
 
 func Handler(executor Executor, token string, logger *slog.Logger) http.Handler {
@@ -32,12 +33,24 @@ func Handler(executor Executor, token string, logger *slog.Logger) http.Handler 
 		send(w, code, map[string]bool{"ready": ready})
 	})
 	wanted := sha256.Sum256([]byte(token))
-	mux.HandleFunc("POST /v1/execute", func(w http.ResponseWriter, r *http.Request) {
+	authorized := func(w http.ResponseWriter, r *http.Request) bool {
 		provided, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		got := sha256.Sum256([]byte(provided))
 		if !ok || token == "" || subtle.ConstantTimeCompare(wanted[:], got[:]) != 1 {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			send(w, 401, map[string]string{"error": "unauthorized"})
+			return false
+		}
+		return true
+	}
+	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
+		if !authorized(w, r) {
+			return
+		}
+		send(w, 200, executor.Status())
+	})
+	mux.HandleFunc("POST /v1/execute", func(w http.ResponseWriter, r *http.Request) {
+		if !authorized(w, r) {
 			return
 		}
 		if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
@@ -78,7 +91,7 @@ func Handler(executor Executor, token string, logger *slog.Logger) http.Handler 
 			}
 			return
 		}
-		logger.Info("execution completed", "execution_id", result.ExecutionID, "status", result.Status, "total_ms", result.Timings.TotalMS, "cleanup_complete", result.CleanupComplete)
+		logger.Info("execution completed", "execution_id", result.ExecutionID, "status", result.Status, "queue_ms", result.Timings.QueueMS, "setup_ms", result.Timings.SetupMS, "execution_ms", result.Timings.ExecutionMS, "cleanup_ms", result.Timings.CleanupMS, "total_ms", result.Timings.TotalMS, "cleanup_complete", result.CleanupComplete)
 		send(w, 200, result)
 	})
 	return mux

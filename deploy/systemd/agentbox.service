@@ -7,16 +7,21 @@ Type=notify
 NotifyAccess=main
 User=root
 WorkingDirectory=/opt/agentbox
-ExecStart=/opt/agentbox/bin/agentboxd -runsc /opt/agentbox/.local/gvisor/runsc -rootfs /opt/agentbox/.local/rootfs -state-dir /var/lib/agentbox -cgroup-root auto -platform ${AGENTBOX_PLATFORM} -listen ${AGENTBOX_LISTEN} -concurrency ${AGENTBOX_CONCURRENCY}
+ExecStart=/opt/agentbox/bin/agentboxd -runsc /opt/agentbox/.local/gvisor/runsc -rootfs /opt/agentbox/.local/rootfs -state-dir /var/lib/agentbox -cgroup-root auto -platform ${AGENTBOX_PLATFORM} -listen ${AGENTBOX_LISTEN} -concurrency ${AGENTBOX_CONCURRENCY} -mode ${AGENTBOX_MODE} -warm-size ${AGENTBOX_WARM_SIZE} -max-sandboxes ${AGENTBOX_MAX_SANDBOXES} -create-concurrency ${AGENTBOX_CREATE_CONCURRENCY} -queue-size ${AGENTBOX_QUEUE_SIZE} -queue-bytes ${AGENTBOX_QUEUE_BYTES} -queue-timeout ${AGENTBOX_QUEUE_TIMEOUT}
 Environment=AGENTBOX_PLATFORM=kvm AGENTBOX_LISTEN=127.0.0.1:8080 AGENTBOX_CONCURRENCY=1
+Environment=AGENTBOX_MODE=cold AGENTBOX_WARM_SIZE=3 AGENTBOX_MAX_SANDBOXES=6 AGENTBOX_CREATE_CONCURRENCY=1 AGENTBOX_QUEUE_SIZE=16 AGENTBOX_QUEUE_BYTES=8388608 AGENTBOX_QUEUE_TIMEOUT=100ms
 EnvironmentFile=/etc/agentbox.env
 Delegate=cpu memory pids
 StateDirectory=agentbox
 StateDirectoryMode=0700
 UMask=0077
-KillMode=control-group
+# Let the daemon finish independent runsc cleanup; retain whole-cgroup SIGKILL
+# when the main process exits or the stop deadline expires.
+KillMode=mixed
 TimeoutStartSec=30
-TimeoutStopSec=15
+# HTTP drain (20s) runs alongside engine shutdown: in-flight setup/cleanup
+# (~18s), then at most two four-way inventory batches (~14s), plus margin.
+TimeoutStopSec=45
 Restart=no
 
 [Install]

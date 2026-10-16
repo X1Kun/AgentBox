@@ -4,9 +4,9 @@
 
 ## 当前范围
 
-第一阶段实现单次冷启动执行：HTTP 请求、runsc 生命周期、输出上限、执行超时、取消、静态资源限制，以及任务结束后的完整销毁。预热池、动态 PSI QoS、独立 Gateway、MCP 和多节点尚未实现；没有低于 50 ms 的性能承诺。
+支持冷启动和一次性预热池两种执行模式：HTTP 请求、runsc 生命周期、输出上限、执行超时、取消、静态资源限制，以及任务结束后的完整销毁。预热模式提供有界 FIFO 队列、后台补池、总实例容量约束和关闭恢复。动态 PSI QoS、独立 Gateway、MCP 和多节点尚未实现；没有固定时延承诺。详见 [预热池设计与实验](docs/warm-pool.md)。
 
-KVM 与 systrap 的执行及 systemd 容器生命周期验收均已通过；本机 systemd 249 的固定服务安装和 KVM 生命周期验收也已完成。具体环境、用例和限制见 [第一阶段验收记录](docs/phase1-validation.md) 和 [systemd 部署与验收](docs/systemd-deployment.md)。
+单次执行与固定 systemd 部署的历史验证见 [第一阶段验收记录](docs/phase1-validation.md) 和 [systemd 部署与验收](docs/systemd-deployment.md)。预热池及关闭修复的最新结果见 [预热池验收记录](docs/warm-pool-validation.md)，与本机原有 cold 服务的验收分别记录。
 
 本阶段由 daemon 直接提供本机 HTTP 接口，后续 Gateway 接入时复用执行协议。
 
@@ -85,8 +85,9 @@ sudo systemctl stop agentbox.service
 - `GET /healthz`：进程存活。
 - `GET /readyz`：是否可接单；不表示当前有空闲并发。
 - `POST /v1/execute`：鉴权、校验后同步执行。
-- 第一版没有队列：并发默认 1，可配置为 1～4，满载立即返回 503。
-- 每次请求创建新沙箱，用后销毁；不复用进程和工作目录。
+- `GET /v1/status`：鉴权后查看模式和预热池/队列状态。
+- 并发默认 1，可配置为 1～4；cold 满载立即返回 503，warm 使用有数量、字节和等待时间上限的 FIFO 队列。
+- 每个任务独占全新沙箱，用后销毁；cold 在请求到达后创建，warm 提前创建。任务执行后不归还池、不复用工作目录。
 - 实例内保留待命 init，用户任务通过附着式 `runsc exec` 执行并收集退出码，避免短任务在独立 wait 连接前退出；任务完成后销毁整个实例。
 - Python 使用 isolated 模式、UID/GID 1000、空 capabilities 和 `no_new_privs`。
 - 根文件系统只读；`/workspace` 和 `/tmp` 各 64 MiB，禁止外网。
@@ -94,10 +95,21 @@ sudo systemctl stop agentbox.service
 - 沙箱父级上限为 4 CPU 等效带宽和 4 GiB 内存。
 - 代码与标准输入分别最多 256 KiB，输出合计最多 1 MiB。
 - `env` 最多 16 项，仅允许 `AGENT_` 前缀和大写字母、数字、下划线构成的键，值不超过 4096 字节且不含 NUL。
-- `timeout_ms` 默认 5000、上限 30000，覆盖 start/wait；冷启动 setup 单独最多 10 秒，cleanup 最多约 6 秒。响应分别报告这些阶段与总耗时。
+- `timeout_ms` 默认 5000、上限 30000，覆盖任务启动和等待；创建运行环境单独最多 10 秒，warm 排队默认最多 100ms，领取后状态检查最多 1 秒，清理命令预算 5 秒，另预留命令退出和输出回收时间。响应分别报告排队、准备、执行、清理与总耗时。
 - 成功、代码异常、超时、OOM、取消、输出超限以结构化执行结果表示；基础设施故障返回 500，满载或降级返回 503。
-- 收到客户端取消或服务关闭时，使用独立清理上下文回收资源。
+- 收到客户端取消或服务关闭时，使用独立清理上下文回收资源；已开始的 create/start 在其独立 10 秒预算内完成当前操作，再销毁，避免半写的 runsc 元数据。空闲库存最多四路并行清理。
 - 清理失败保留 intent 记录、停止接单；重启时仅对本状态目录记录的实例执行回收。
 - 请求 ID 当前仅用于关联日志和响应，尚无去重或重试保证；客户端不得自动重放不确定结果。
 
-CPU 和内存统计覆盖单个沙箱 cgroup 的运行时及应用开销；不是仅 Python 进程的用量。宿主 CLI 开销不包含在该统计内。
+CPU 和内存统计覆盖单个沙箱 cgroup 的完整生命周期，包括运行时创建和预热空闲期；不是仅 Python 进程的用量。宿主 CLI 开销不包含在该统计内。
+
+## 预热模式与冷暖对比
+
+默认 cold；固定服务在更新 unit 后可在 `/etc/agentbox.env` 中设置 `AGENTBOX_MODE=warm`。warm 预先启动等待实例，任务仍通过新 Python 进程执行，当前不预加载任务解释器。
+
+```bash
+bash scripts/integration-systemd-container.sh kvm warm
+bash scripts/benchmark-container.sh kvm 60 10
+```
+
+基准在独立容器内顺序比较 cold/warm 的库存充足、突发和持续负载，输出逐请求 CSV 与环境/汇总 JSON。已执行的环境与结果见 [预热池验收记录](docs/warm-pool-validation.md)。容器数据不能代替裸机性能结果。配置、时延口径和宿主验收步骤见 [预热池文档](docs/warm-pool.md)。

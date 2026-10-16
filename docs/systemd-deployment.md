@@ -1,6 +1,6 @@
 # 固定 systemd 部署与验收
 
-本阶段将一次性执行服务部署为固定 `agentbox.service`。预热池、队列、动态 QoS 与多节点仍未实现。
+固定 `agentbox.service` 支持 cold 和一次性 warm 模式，默认 cold。预热池配置与调度语义见 [预热池文档](warm-pool.md)；动态 QoS 与多节点尚未实现。
 
 ## 部署前提
 
@@ -43,12 +43,13 @@ sudo bash scripts/smoke-host.sh
 - `AGENTBOX_PLATFORM`：`kvm` 或 `systrap`。
 - `AGENTBOX_LISTEN`：显式 loopback IP 与端口，默认 `127.0.0.1:8080`。
 - `AGENTBOX_CONCURRENCY`：1～4，默认 1。
+- `AGENTBOX_MODE`：cold 或 warm，默认 cold；其余池容量与队列参数见 [配置表](warm-pool.md#配置)。
 
 平台已经写入状态所有权，不能直接修改平台后复用旧状态。配置解析不执行 shell，不输出 token；smoke 脚本读取私有配置后在进程内构造 HTTP 请求，不通过命令行参数传递 token。
 
 ## 服务生命周期
 
-unit 使用 `Type=notify` 与 `NotifyAccess=main`。daemon 完成配置检查、状态加锁、cgroup 初始化、残留回收和 HTTP listener 创建后发送 `READY=1`。初始化错误会使 `systemctl start` 失败。手动运行时没有 `NOTIFY_SOCKET`，通知自动跳过。
+unit 使用 `Type=notify` 与 `NotifyAccess=main`。daemon 完成配置检查、状态加锁、cgroup 初始化、残留回收、warm 模式最低库存初始化和 HTTP listener 创建后发送 `READY=1`。初始化错误会使 `systemctl start` 失败。手动运行时没有 `NOTIFY_SOCKET`，通知自动跳过。
 
 当前保留 `Restart=no`，运行期可用性以 `/readyz` 为准；清理故障会停止接单，service 的 active 状态不代表仍然可用。
 
@@ -61,13 +62,13 @@ agentbox.service
         └── Sentry / Gofer / 沙箱任务
 ```
 
-`Delegate=cpu memory pids` 明确委派范围。daemon 移到 manager 叶节点后才启用子树控制器。停止时先传播请求取消、等待清理；unit 的 control-group 终止策略负责整个服务范围的兜底。`TimeoutStartSec=30`、`TimeoutStopSec=15`。
+`Delegate=cpu memory pids` 明确委派范围。daemon 移到 manager 叶节点后才启用子树控制器。停止时先传播请求取消、等待清理；unit 使用 `KillMode=mixed`，先向主进程发送 SIGTERM，让 daemon 完成 runsc 清理；主进程退出或停止超时后对剩余服务进程执行 SIGKILL，保留整个服务范围的兜底。`TimeoutStartSec=30`、`TimeoutStopSec=45`。HTTP drain 和引擎关闭并行开始；空闲库存最多四路清理，停止预算覆盖正在创建的实例完成当前操作、运行任务退出和库存回收。
 
 ## 任务退出码与回收
 
 systemd 会回收退出的孤儿进程，真实服务验收暴露了原 `start → 独立 wait` 对短任务的竞态：Sentry 可能先退出，wait 无法取得退出码。
 
-现在每次请求仍创建全新实例，但其 init 只负责待命；任务使用附着式 `runsc exec --process=...` 执行。宿主等待该 CLI，结合 task PID 创建确认和运行时状态区分任务退出与控制故障。用户退出码 125 和 128 都有回归用例。
+每个任务独占全新实例，cold 在请求到达后创建，warm 提前创建；其 init 只负责待命；任务使用附着式 `runsc exec --process=...` 执行。宿主等待该 CLI，结合 task PID 创建确认和运行时状态区分任务退出与控制故障。用户退出码 125 和 128 都有回归用例。
 
 任务结束后先读资源统计和 OOM 事件，再显式销毁实例及 cgroup，最后删除执行记录和释放并发名额。没有实例复用。控制命令的 CPU/内存仍位于 manager，不包含在单沙箱 Usage 中。
 
@@ -141,7 +142,7 @@ staging 是文件验证，不代表 systemd、KVM 或宿主验收通过。再次
 - 已在一次性、禁网、私有 PID/cgroup 的 systemd 252 容器中完成 KVM 与 systrap 的真实服务验收：非法配置启动失败、执行、重启、执行中停止、主进程崩溃恢复、更新、回退、保留数据卸载、重装和显式 purge。
 - 该容器使用已缓存的 `kindest/node:v1.29.2` 镜像，没有操作现有 kind 节点，没有挂载宿主 cgroup 树或 Docker socket。复现命令为 `bash scripts/integration-systemd-container.sh kvm` 或 `systrap`。
 - 2026-10-15 已在本机 systemd 249 上完成固定服务安装和 KVM 生命周期验收，记录见下文。systemd 252 容器与 systemd 249 宿主结果分别记录。
-- 本阶段没有正式性能基准，预热池与动态 QoS 尚未实现。
+- 以上为 systemd 接入阶段的验证记录。后续预热池实现、验收和基准口径见 [预热池文档](warm-pool.md)，动态 QoS 尚未实现。
 
 ## 2026-10-15 宿主 KVM 验收
 
