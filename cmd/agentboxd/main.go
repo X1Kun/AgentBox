@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -26,7 +27,7 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (retErr error) {
 	var c sandbox.Config
 	var address string
 	var inspect bool
@@ -35,7 +36,14 @@ func run() error {
 	flag.StringVar(&c.StateDir, "state-dir", ".state", "private runtime state directory")
 	flag.StringVar(&c.CgroupRoot, "cgroup-root", "auto", "delegated cgroup v2 subtree; auto uses current unit and moves daemon to manager leaf")
 	flag.StringVar(&c.Platform, "platform", "kvm", "explicit gVisor platform: kvm or systrap; no automatic fallback")
-	flag.IntVar(&c.Concurrency, "concurrency", 1, "concurrent cold executions, 1 to 4")
+	flag.IntVar(&c.Concurrency, "concurrency", 1, "concurrent executions, 1 to 4")
+	flag.StringVar(&c.Mode, "mode", "cold", "execution mode: cold or once-only warm pool")
+	flag.IntVar(&c.WarmPoolSize, "warm-size", 3, "target READY sandbox inventory")
+	flag.IntVar(&c.MaxSandboxes, "max-sandboxes", 6, "total sandbox cap, including creation and destruction")
+	flag.IntVar(&c.CreateConcurrency, "create-concurrency", 1, "background sandbox creation concurrency, 1 or 2")
+	flag.IntVar(&c.QueueSize, "queue-size", 16, "maximum waiting warm requests")
+	flag.IntVar(&c.QueueBytes, "queue-bytes", 8<<20, "maximum queued request payload bytes")
+	flag.DurationVar(&c.QueueTimeout, "queue-timeout", 100*time.Millisecond, "maximum warm queue wait, 1ms to 5s")
 	flag.StringVar(&address, "listen", "127.0.0.1:8080", "loopback HTTP address")
 	flag.BoolVar(&inspect, "doctor", false, "print read-only environment report and exit")
 	flag.Parse()
@@ -66,7 +74,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer engine.Close()
+	defer func() { retErr = errors.Join(retErr, engine.Close()) }()
+	startupCtx, startupCancel := context.WithTimeout(ctx, 20*time.Second)
+	err = engine.Start(startupCtx)
+	startupCancel()
+	if err != nil {
+		return err
+	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
@@ -83,7 +97,7 @@ func run() error {
 		_ = server.Close()
 		return err
 	}
-	logger.Info("agentbox daemon listening", "address", listener.Addr().String(), "platform", c.Platform, "mode", "cold-one-shot", "state_dir", c.StateDir, "rootfs", c.Rootfs)
+	logger.Info("agentbox daemon listening", "address", listener.Addr().String(), "platform", c.Platform, "mode", c.Mode, "state_dir", c.StateDir, "rootfs", c.Rootfs)
 	select {
 	case err := <-done:
 		cancel()
@@ -95,7 +109,12 @@ func run() error {
 		if err := systemd.Stopping(); err != nil {
 			logger.Warn("systemd stopping notification failed", "error", err)
 		}
-		shutdownCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		// Stop admission and refill immediately, alongside HTTP draining. The
+		// deferred Close joins this call and reports its cleanup error.
+		go func() { _ = engine.Close() }()
+		// Active setup may need its independent 10s transaction deadline plus
+		// resource cleanup before its handler can return.
+		shutdownCtx, stop := context.WithTimeout(context.Background(), 20*time.Second)
 		defer stop()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			_ = server.Close()

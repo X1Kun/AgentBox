@@ -20,10 +20,32 @@ type stub struct {
 }
 
 func (s *stub) Ready() bool { return true }
+func (s *stub) Status() api.StatusReport {
+	return api.StatusReport{Mode: "warm", Idle: 3, Total: 3, Ready: true}
+}
 func (s *stub) Execute(_ context.Context, r api.Request) (api.Result, error) {
 	s.called++
 	s.request = r
 	return api.Result{Status: "succeeded", CleanupComplete: true}, s.err
+}
+
+func TestStatusRequiresAuthentication(t *testing.T) {
+	for _, authenticated := range []bool{false, true} {
+		h := Handler(&stub{}, "status-token", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		r := httptest.NewRequest("GET", "/v1/status", nil)
+		if authenticated {
+			r.Header.Set("Authorization", "Bearer status-token")
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if authenticated {
+			if w.Code != 200 || !strings.Contains(w.Body.String(), `"idle":3`) {
+				t.Fatalf("status: %d %s", w.Code, w.Body.String())
+			}
+		} else if w.Code != 401 {
+			t.Fatalf("unauthenticated status: %d", w.Code)
+		}
+	}
 }
 
 func TestHTTPBoundary(t *testing.T) {

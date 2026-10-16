@@ -57,6 +57,7 @@ func (r Request) Validate() (Request, error) {
 }
 
 type Timings struct {
+	QueueMS     float64 `json:"queue_ms"`
 	SetupMS     float64 `json:"setup_ms"`
 	ExecutionMS float64 `json:"execution_ms"`
 	CleanupMS   float64 `json:"cleanup_ms"`

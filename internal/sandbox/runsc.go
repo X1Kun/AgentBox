@@ -73,13 +73,6 @@ func newSession(runtime runscCLI, id, bundle string, outputLimit int) (*session,
 		s.outputReadersWG.Add(1)
 		go s.readOutput(readPipe, destination)
 	}
-	var err error
-	s.stdin, err = os.Open(filepath.Join(bundle, "input", "stdin"))
-	if err != nil {
-		s.close()
-		s.outputReadersWG.Wait()
-		return nil, err
-	}
 	return s, nil
 }
 
@@ -88,19 +81,64 @@ func (s *session) readOutput(reader *os.File, destination io.Writer) {
 	_, _ = io.Copy(destination, reader)
 }
 
+// outputResult returns the final output after finishStreams has completed.
+func (s *session) outputResult() (stdout, stderr string, truncated bool) {
+	return s.outputCollector.result()
+}
+
+func (s *session) outputLimitExceeded() <-chan struct{} {
+	return s.outputCollector.limitExceeded
+}
+
+func (s *session) checkRunning(ctx context.Context) error {
+	data, err := s.runtime.control(ctx, "state", s.id)
+	if err != nil {
+		return err
+	}
+	var state struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return err
+	}
+	if state.Status != "running" {
+		return fmt.Errorf("sandbox state is %q", state.Status)
+	}
+	return nil
+}
+
 func (s *session) create(ctx context.Context, bundle string) error {
-	cmd := s.runtime.command(ctx, "create", "--bundle="+bundle, s.id)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// runsc updates metadata with truncate/write, not atomic replacement. Let
+	// each started create/start operation finish when admission is cancelled;
+	// killing the CLI mid-write can make even `delete --force` fail to load it.
+	// The independent deadline still bounds a stalled runtime operation.
+	setupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	cmd := s.runtime.command(setupCtx, "create", "--bundle="+bundle, s.id)
 	// Files are passed directly, so create.Wait does not wait for sandbox-held
 	// stdout/stderr to close. Stream draining belongs to this session.
 	cmd.Stdout, cmd.Stderr = s.writers[0], s.writers[1]
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-	_, err := s.runtime.control(ctx, "start", s.id)
-	return err
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if _, err := s.runtime.control(setupCtx, "start", s.id); err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 func (s *session) start(ctx context.Context) error {
+	var err error
+	s.stdin, err = os.Open(filepath.Join(s.bundlePath, "input", "stdin"))
+	if err != nil {
+		return fmt.Errorf("open task stdin: %w", err)
+	}
 	s.taskCommand = s.runtime.command(ctx, "exec", "--process="+filepath.Join(s.bundlePath, "process.json"), "--internal-pid-file="+filepath.Join(s.bundlePath, "task.pid"), s.id)
 	s.taskCommand.Stdin, s.taskCommand.Stdout, s.taskCommand.Stderr = s.stdin, s.writers[0], s.writers[1]
 	if err := s.taskCommand.Start(); err != nil {

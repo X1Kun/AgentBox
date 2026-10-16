@@ -22,18 +22,25 @@ import (
 
 var (
 	ErrBusy      = errors.New("execution capacity exhausted")
-	ErrUnhealthy = errors.New("executor unavailable; restart after resolving cleanup failure")
+	ErrUnhealthy = errors.New("executor unavailable; inspect status and restart after resolving failure")
 )
 
 type Config struct {
-	Runsc       string
-	Rootfs      string
-	StateDir    string
-	CgroupRoot  string
-	MoveSelf    bool
-	Platform    string
-	Concurrency int
-	OutputLimit int
+	Runsc             string
+	Rootfs            string
+	StateDir          string
+	CgroupRoot        string
+	MoveSelf          bool
+	Platform          string
+	Concurrency       int
+	OutputLimit       int
+	Mode              string
+	WarmPoolSize      int
+	MaxSandboxes      int
+	CreateConcurrency int
+	QueueSize         int
+	QueueBytes        int
+	QueueTimeout      time.Duration
 }
 
 type Engine struct {
@@ -48,6 +55,9 @@ type Engine struct {
 	active    sync.WaitGroup
 	closeOnce sync.Once
 	closeErr  error
+	pool      *warmPool
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 type ownership struct {
@@ -65,6 +75,9 @@ type executionState struct {
 }
 
 func New(c Config) (_ *Engine, retErr error) {
+	if err := normalizePoolConfig(&c); err != nil {
+		return nil, err
+	}
 	if c.Platform != "kvm" && c.Platform != "systrap" {
 		return nil, errors.New("platform must explicitly be kvm or systrap")
 	}
@@ -199,6 +212,10 @@ func New(c Config) (_ *Engine, retErr error) {
 	if err = e.reconcile(); err != nil {
 		return nil, fmt.Errorf("reconcile: %w", err)
 	}
+	e.ctx, e.cancel = context.WithCancel(context.Background())
+	if c.Mode == "warm" {
+		e.pool = newWarmPool(c, e.createSandbox, e.destroyInstanceResources)
+	}
 	return e, nil
 }
 
@@ -210,17 +227,51 @@ func writeJSON(path string, v any, mode os.FileMode) error {
 	return os.WriteFile(path, append(b, '\n'), mode)
 }
 
-func (e *Engine) Ready() bool { return !e.broken.Load() && !e.closed.Load() }
+// Start waits for the first READY instance in warm mode. Remaining inventory
+// fills in the background; cold mode needs no background initialization.
+func (e *Engine) Start(ctx context.Context) error {
+	if e.pool == nil {
+		return nil
+	}
+	return e.pool.start(ctx)
+}
 
-// Close is called after request contexts have been cancelled. It waits for all
-// cleanup before releasing ownership of the runtime state.
+func (e *Engine) Ready() bool {
+	return !e.broken.Load() && !e.closed.Load() && (e.pool == nil || e.pool.healthy())
+}
+
+func (e *Engine) Status() api.StatusReport {
+	if e.pool == nil {
+		return api.StatusReport{Mode: "cold", Ready: e.Ready()}
+	}
+	snapshot := e.pool.status()
+	return api.StatusReport{
+		Mode: "warm", Ready: snapshot.Ready && !e.broken.Load() && !e.closed.Load(),
+		Target: snapshot.Target, MaxSandboxes: snapshot.MaxSandboxes,
+		Creating: snapshot.Creating, Idle: snapshot.Idle, Leased: snapshot.Leased,
+		Running: snapshot.Running, Destroying: snapshot.Destroying, Total: snapshot.Total,
+		Queued: snapshot.Queued, QueuedBytes: snapshot.QueuedBytes,
+		CreationCount: snapshot.CreationCount, CreationFailures: snapshot.CreationFailures,
+		CleanupFailures: snapshot.CleanupFailures, CreationTotalMS: snapshot.CreationTotalMS,
+	}
+}
+
+// Close stops admission, cancels all admitted work and background creation,
+// then waits for cleanup before releasing ownership of the runtime state.
 func (e *Engine) Close() error {
 	e.closeOnce.Do(func() {
 		e.mu.Lock()
 		e.closed.Store(true)
+		e.cancel()
 		e.mu.Unlock()
+		if e.pool != nil {
+			e.pool.stop()
+		}
 		e.active.Wait()
-		e.closeErr = e.lock.Close()
+		if e.pool != nil {
+			e.closeErr = e.pool.drain()
+		}
+		e.closeErr = errors.Join(e.closeErr, e.lock.Close())
 	})
 	return e.closeErr
 }
@@ -246,82 +297,158 @@ func (e *Engine) releaseExecutionSlot() {
 	e.active.Done()
 }
 
-func (e *Engine) Execute(parent context.Context, request api.Request) (result api.Result, retErr error) {
+func (e *Engine) Execute(parent context.Context, request api.Request) (api.Result, error) {
 	r, err := request.Validate()
 	if err != nil {
-		return result, err
+		return api.Result{}, err
 	}
+	ctx, cancel := context.WithCancel(parent)
+	stop := context.AfterFunc(e.ctx, cancel)
+	defer stop()
+	defer cancel()
+	if e.pool != nil {
+		return e.executeWarm(ctx, r)
+	}
+	return e.executeCold(ctx, r)
+}
+
+func (e *Engine) executeCold(ctx context.Context, request api.Request) (result api.Result, retErr error) {
 	if err := e.acquireExecutionSlot(); err != nil {
 		return result, err
 	}
 	defer e.releaseExecutionSlot()
-	if err := parent.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return result, err
 	}
 	begin := time.Now()
-	var bytes [16]byte
-	if _, err = rand.Read(bytes[:]); err != nil {
+	execution, err := e.createSandbox(ctx)
+	if execution == nil {
 		return result, err
 	}
-	id := "ab-" + hex.EncodeToString(bytes[:])
-	result = api.Result{ExecutionID: id, RequestID: r.RequestID, Status: "infrastructure_error"}
-	bundle := filepath.Join(e.config.StateDir, "bundles", id)
-	if err = os.Mkdir(bundle, 0700); err != nil {
-		return result, err
+	execution.startedAt = begin
+	result = api.Result{ExecutionID: execution.id, RequestID: request.RequestID, Status: "infrastructure_error"}
+	defer func() { retErr = errors.Join(retErr, e.finalizeExecution(execution, &result)) }()
+	if err == nil {
+		err = prepareInput(execution.bundlePath, request)
 	}
-	// The owned bundle directory is the durable intent record, created before
-	// runtime/cgroup side effects. Restart reconciliation uses only these IDs.
-	group, groupErr := e.groups.NewGroup(id)
-	if group == nil {
-		if removeErr := os.Remove(bundle); removeErr != nil {
-			e.broken.Store(true)
-			return result, errors.Join(groupErr, removeErr)
-		}
-		return result, groupErr
-	}
-	execution := &executionState{
-		id:         id,
-		bundlePath: bundle,
-		group:      group,
-		startedAt:  begin,
-	}
-	defer func() {
-		if cleanupErr := e.finalizeExecution(execution, &result); cleanupErr != nil {
-			retErr = errors.Join(retErr, cleanupErr)
-		}
-	}()
-	if groupErr != nil {
-		return result, groupErr
-	}
-	if err = e.prepareTaskFiles(bundle, group.CgroupPath, r); err != nil {
-		return result, err
-	}
-	s, err := newSession(e.runtime, id, bundle, e.config.OutputLimit)
-	execution.session = s
-	if err != nil {
-		return result, err
-	}
-	setupCtx, setupCancel := context.WithTimeout(parent, 10*time.Second)
-	err = s.create(setupCtx, bundle)
-	setupCancel()
 	result.Timings.SetupMS = ms(time.Since(begin))
 	if err != nil {
-		if parent.Err() != nil {
+		if ctx.Err() != nil {
 			result.Status = "cancelled"
 			return result, nil
 		}
-		return result, fmt.Errorf("create sandbox: %w", err)
-	}
-	if err = group.VerifyPopulated(); err != nil {
 		return result, err
 	}
-	retErr = e.runAndCollectResult(parent, r.TimeoutMS, execution, &result)
+	retErr = e.runAndCollectResult(ctx, request.TimeoutMS, execution, &result)
 	return result, retErr
 }
 
-func (e *Engine) prepareTaskFiles(bundlePath, hostCgroupPath string, request api.Request) error {
-	if err := prepareInput(bundlePath, request); err != nil {
-		return fmt.Errorf("prepare sandbox input: %w", err)
+func requestBytes(request api.Request) int {
+	bytes := len(request.Code) + len(request.Stdin) + len(request.RequestID) + len(request.Runtime)
+	for key, value := range request.Env {
+		bytes += len(key) + len(value)
+	}
+	return bytes
+}
+
+func (e *Engine) executeWarm(ctx context.Context, request api.Request) (result api.Result, retErr error) {
+	// Queue admission must participate in the same shutdown gate as cold tasks.
+	e.mu.Lock()
+	if !e.Ready() {
+		e.mu.Unlock()
+		return result, ErrUnhealthy
+	}
+	e.active.Add(1)
+	e.mu.Unlock()
+	defer e.active.Done()
+	begin := time.Now()
+	execution, err := e.pool.acquire(ctx, requestBytes(request))
+	queueMS := ms(time.Since(begin))
+	if err != nil {
+		if ctx.Err() != nil {
+			return api.Result{RequestID: request.RequestID, Status: "cancelled", Timings: api.Timings{QueueMS: queueMS, TotalMS: queueMS}}, nil
+		}
+		return result, err
+	}
+	execution.startedAt = begin
+	result = api.Result{ExecutionID: execution.id, RequestID: request.RequestID, Status: "infrastructure_error", Timings: api.Timings{QueueMS: queueMS}}
+	defer func() { e.pool.release(execution, result.CleanupComplete) }()
+	defer func() {
+		e.pool.mark(execution, poolDestroying)
+		retErr = errors.Join(retErr, e.finalizeExecution(execution, &result))
+	}()
+	setupStart := time.Now()
+	// A READY instance may have died while idle. Never inject or execute a task
+	// until both runtime state and cgroup membership have been checked.
+	checkCtx, cancel := context.WithTimeout(ctx, time.Second)
+	err = execution.session.checkRunning(checkCtx)
+	cancel()
+	if err == nil {
+		err = execution.group.VerifyPopulated()
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		err = prepareInput(execution.bundlePath, request)
+	}
+	result.Timings.SetupMS = ms(time.Since(setupStart))
+	if err != nil {
+		if ctx.Err() != nil {
+			result.Status = "cancelled"
+			return result, nil
+		}
+		return result, fmt.Errorf("prepare leased sandbox: %w", err)
+	}
+	e.pool.mark(execution, poolRunning)
+	retErr = e.runAndCollectResult(ctx, request.TimeoutMS, execution, &result)
+	return result, retErr
+}
+
+// createSandbox records intent before external side effects and returns partial
+// ownership on failure so the caller can always use the same cleanup rules.
+func (e *Engine) createSandbox(parent context.Context) (*executionState, error) {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return nil, err
+	}
+	id := "ab-" + hex.EncodeToString(bytes[:])
+	bundle := filepath.Join(e.config.StateDir, "bundles", id)
+	if err := os.Mkdir(bundle, 0700); err != nil {
+		return nil, err
+	}
+	group, groupErr := e.groups.NewGroup(id)
+	if group == nil {
+		if err := os.Remove(bundle); err != nil {
+			e.broken.Store(true)
+			return nil, errors.Join(groupErr, err)
+		}
+		return nil, groupErr
+	}
+	instance := &executionState{id: id, bundlePath: bundle, group: group, startedAt: time.Now()}
+	if groupErr != nil {
+		return instance, groupErr
+	}
+	if err := e.prepareSandboxFiles(bundle, group.CgroupPath); err != nil {
+		return instance, err
+	}
+	session, err := newSession(e.runtime, id, bundle, e.config.OutputLimit)
+	instance.session = session
+	if err != nil {
+		return instance, err
+	}
+	if err := session.create(parent, bundle); err != nil {
+		return instance, fmt.Errorf("create sandbox: %w", err)
+	}
+	if err := group.VerifyPopulated(); err != nil {
+		return instance, err
+	}
+	return instance, nil
+}
+
+func (e *Engine) prepareSandboxFiles(bundlePath, hostCgroupPath string) error {
+	if err := prepareInputDirectory(bundlePath); err != nil {
+		return fmt.Errorf("prepare sandbox input directory: %w", err)
 	}
 	relativeCgroupPath, err := filepath.Rel("/sys/fs/cgroup", hostCgroupPath)
 	if err != nil {
@@ -337,30 +464,43 @@ func (e *Engine) prepareTaskFiles(bundlePath, hostCgroupPath string, request api
 	return nil
 }
 
+// destroyInstanceResources reclaims an idle, used, or partially created
+// instance. It does not change pool state or construct a task result.
+func (e *Engine) destroyInstanceResources(instance *executionState) (retErr error) {
+	defer func() {
+		if retErr != nil {
+			e.broken.Store(true)
+		}
+	}()
+	cleanupErr := e.destroyContainerAndCgroup(instance.id, instance.group)
+	// Finish local streams even when runtime deletion fails. The collector
+	// remains readable afterwards, so execution finalization can report output.
+	if instance.session != nil {
+		instance.session.finishStreams()
+	}
+	if cleanupErr != nil {
+		return fmt.Errorf("cleanup %s: %w", instance.id, cleanupErr)
+	}
+	// Keep the durable intent whenever external resource cleanup is uncertain.
+	return os.RemoveAll(instance.bundlePath)
+}
+
 func (e *Engine) finalizeExecution(execution *executionState, result *api.Result) error {
 	cleanupStart := time.Now()
 	defer func() {
 		result.Timings.CleanupMS = ms(time.Since(cleanupStart))
 		result.Timings.TotalMS = ms(time.Since(execution.startedAt))
 	}()
-
-	cleanupErr := e.destroyContainerAndCgroup(execution.id, execution.group)
+	cleanupErr := e.destroyInstanceResources(execution)
 	if execution.session != nil {
-		execution.session.finishStreams()
-		result.Stdout, result.Stderr, result.OutputTruncated = execution.session.outputCollector.result()
+		result.Stdout, result.Stderr, result.OutputTruncated = execution.session.outputResult()
 		if result.OutputTruncated && (result.Status == "succeeded" || result.Status == "failed") {
 			result.Status = "output_limit"
 		}
 	}
 	if cleanupErr != nil {
-		e.broken.Store(true)
 		result.Status = "infrastructure_error"
-		return fmt.Errorf("cleanup %s: %w", execution.id, cleanupErr)
-	}
-	if err := os.RemoveAll(execution.bundlePath); err != nil {
-		e.broken.Store(true)
-		result.Status = "infrastructure_error"
-		return err
+		return cleanupErr
 	}
 	result.CleanupComplete = true
 	return nil
@@ -378,7 +518,7 @@ func (e *Engine) runAndCollectResult(parent context.Context, timeoutMS int, exec
 	monitorDone := make(chan struct{})
 	go func() {
 		select {
-		case <-s.outputCollector.limitExceeded:
+		case <-s.outputLimitExceeded():
 			cancel()
 		case <-monitorDone:
 		}
@@ -392,7 +532,7 @@ func (e *Engine) runAndCollectResult(parent context.Context, timeoutMS int, exec
 	result.Timings.ExecutionMS = ms(time.Since(execStart))
 	if execCtx.Err() != nil {
 		select {
-		case <-s.outputCollector.limitExceeded:
+		case <-s.outputLimitExceeded():
 			result.Status = "output_limit"
 		default:
 			if parent.Err() != nil {
@@ -459,10 +599,10 @@ func (e *Engine) reconcile() error {
 		if err != nil {
 			return err
 		}
-		if err = e.destroyContainerAndCgroup(entry.Name(), g); err != nil {
-			return err
+		instance := &executionState{
+			id: entry.Name(), bundlePath: filepath.Join(e.config.StateDir, "bundles", entry.Name()), group: g,
 		}
-		if err = os.RemoveAll(filepath.Join(e.config.StateDir, "bundles", entry.Name())); err != nil {
+		if err = e.destroyInstanceResources(instance); err != nil {
 			return err
 		}
 	}

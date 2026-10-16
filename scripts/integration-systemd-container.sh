@@ -3,6 +3,8 @@ set -euo pipefail
 
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 platform=${1:-kvm}
+mode=${2:-cold}
+case "$mode" in cold|warm) ;; *) echo "mode must be cold or warm" >&2; exit 1;; esac
 case "$platform" in kvm|systrap) ;; *) echo "platform must be kvm or systrap" >&2; exit 1;; esac
 test -x "$project_dir/bin/agentboxd"
 test -x "$project_dir/.local/gvisor/runsc"
@@ -27,8 +29,9 @@ if [[ "$platform" == kvm ]]; then device_args=(--device /dev/kvm); fi
 container_id=$(docker run --detach --privileged --cgroupns=private --network=none \
     --memory=5g --memory-swap=5g --cpus=6 --pids-limit=2304 \
     --tmpfs /run:rw,nosuid,nodev,mode=755 \
+    --tmpfs /opt:rw,exec,nosuid,nodev,mode=755 \
     --stop-signal SIGRTMIN+3 \
-    "${device_args[@]}" -e "AGENTBOX_PLATFORM=$platform" \
+    "${device_args[@]}" -e "AGENTBOX_PLATFORM=$platform" -e "AGENTBOX_TEST_MODE=$mode" \
     --mount "type=bind,source=$project_dir,target=/workspace,readonly" \
     --entrypoint /sbin/init "$image_id" --unit=basic.target)
 ready=false

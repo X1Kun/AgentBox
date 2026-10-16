@@ -7,7 +7,7 @@ import (
 	"github.com/X1Kun/AgentBox/internal/api"
 )
 
-func prepareInput(bundle string, request api.Request) error {
+func prepareInputDirectory(bundle string) error {
 	input := filepath.Join(bundle, "input")
 	if err := os.Mkdir(input, 0755); err != nil {
 		return err
@@ -15,6 +15,18 @@ func prepareInput(bundle string, request api.Request) error {
 	// Creation modes are filtered by the daemon's umask (0077 in systemd).
 	// Set guest access explicitly; the enclosing bundle stays private (0700).
 	if err := os.Chmod(input, 0755); err != nil {
+		return err
+	}
+	return nil
+}
+
+func prepareInput(bundle string, request api.Request) error {
+	input := filepath.Join(bundle, "input")
+	if _, err := os.Stat(input); os.IsNotExist(err) {
+		if err := prepareInputDirectory(bundle); err != nil {
+			return err
+		}
+	} else if err != nil {
 		return err
 	}
 	task := filepath.Join(input, "task.json")

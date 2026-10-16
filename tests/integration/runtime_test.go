@@ -26,8 +26,21 @@ func TestRealRuntime(t *testing.T) {
 		t.Skip("requires explicit AGENTBOX_INTEGRATION=1 and an isolated delegated runtime environment")
 	}
 	state := filepath.Join(t.TempDir(), "state")
-	c := sandbox.Config{Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: state, CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"), Platform: os.Getenv("AGENTBOX_PLATFORM"), Concurrency: 1, OutputLimit: 16384}
-	e, err := sandbox.New(c)
+	c := sandbox.Config{Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: state, CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"), Platform: os.Getenv("AGENTBOX_PLATFORM"), Concurrency: 1, OutputLimit: 16384, Mode: os.Getenv("AGENTBOX_EXECUTION_MODE")}
+	newEngine := func(config sandbox.Config) (*sandbox.Engine, error) {
+		engine, err := sandbox.New(config)
+		if err != nil {
+			return nil, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := engine.Start(ctx); err != nil {
+			_ = engine.Close()
+			return nil, err
+		}
+		return engine, nil
+	}
+	e, err := newEngine(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +51,12 @@ func TestRealRuntime(t *testing.T) {
 	})
 	execute := func(t *testing.T, code string, timeout int) api.Result {
 		t.Helper()
+		if c.Mode == "warm" {
+			deadline := time.Now().Add(5 * time.Second)
+			for e.Status().Idle == 0 && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
 		r, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: code, TimeoutMS: timeout, Stdin: "input-data\n", Env: map[string]string{"AGENT_VALUE": "allowed"}})
 		if err != nil {
 			t.Fatalf("execute: %v; result=%+v", err, r)
@@ -45,17 +64,28 @@ func TestRealRuntime(t *testing.T) {
 		if !r.CleanupComplete {
 			t.Fatal("cleanup not confirmed")
 		}
-		entries, err := os.ReadDir(filepath.Join(state, "bundles"))
-		if err != nil || len(entries) != 0 {
-			t.Fatalf("bundle residue: %v %v", entries, err)
-		}
-		entries, err = os.ReadDir(filepath.Join(c.CgroupRoot, "sandboxes"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				t.Fatalf("cgroup residue: %s", entry.Name())
+		if c.Mode == "warm" {
+			for _, path := range []string{filepath.Join(state, "bundles", r.ExecutionID), filepath.Join(c.CgroupRoot, "sandboxes", r.ExecutionID)} {
+				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("completed execution residue: %s %v", path, err)
+				}
+			}
+			if status := e.Status(); status.Total > status.MaxSandboxes {
+				t.Fatalf("pool exceeded capacity: %+v", status)
+			}
+		} else {
+			entries, err := os.ReadDir(filepath.Join(state, "bundles"))
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("bundle residue: %v %v", entries, err)
+			}
+			entries, err = os.ReadDir(filepath.Join(c.CgroupRoot, "sandboxes"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, entry := range entries {
+				if entry.IsDir() {
+					t.Fatalf("cgroup residue: %s", entry.Name())
+				}
 			}
 		}
 		t.Logf("status=%s setup=%.1fms execute=%.1fms cleanup=%.1fms peak=%d", r.Status, r.Timings.SetupMS, r.Timings.ExecutionMS, r.Timings.CleanupMS, r.Usage.MemoryPeakBytes)
@@ -306,7 +336,7 @@ finally:
 		if err := os.Mkdir(group, 0755); err != nil {
 			t.Fatal(err)
 		}
-		restarted, err := sandbox.New(c)
+		restarted, err := newEngine(c)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -343,7 +373,7 @@ finally:
 		}
 		injected := c
 		injected.Runsc = wrapper
-		replacement, err := sandbox.New(injected)
+		replacement, err := newEngine(injected)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -362,10 +392,11 @@ finally:
 		if !errors.Is(err, sandbox.ErrUnhealthy) {
 			t.Fatalf("broken executor admitted work: %v", err)
 		}
-		if err := e.Close(); err != nil {
+		// Warm mode also reports failed destruction of unused inventory on Close.
+		if err := e.Close(); err != nil && c.Mode != "warm" {
 			t.Fatal(err)
 		}
-		replacement, err = sandbox.New(c)
+		replacement, err = newEngine(c)
 		if err != nil {
 			t.Fatal(err)
 		}
