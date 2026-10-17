@@ -44,6 +44,7 @@ sudo bash scripts/smoke-host.sh
 - `AGENTBOX_LISTEN`：显式 loopback IP 与端口，默认 `127.0.0.1:8080`。
 - `AGENTBOX_CONCURRENCY`：1～4，默认 1。
 - `AGENTBOX_MODE`：cold 或 warm，默认 cold；其余池容量与队列参数见 [配置表](warm-pool.md#配置)。
+- `AGENTBOX_QOS`：off 或 observe，默认 off；观察模式的周期与受保护 cgroup 路径见 [QoS 配置](qos-observation.md#模式与部署配置)。采集异常只影响观测报告，不改变执行就绪状态。
 
 平台已经写入状态所有权，不能直接修改平台后复用旧状态。配置解析不执行 shell，不输出 token；smoke 脚本读取私有配置后在进程内构造 HTTP 请求，不通过命令行参数传递 token。
 

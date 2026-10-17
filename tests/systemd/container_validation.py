@@ -57,6 +57,30 @@ def check_parallel_inventory_shutdown(smoke, token_path, configuration):
         run("systemctl", "daemon-reload")
 
 
+def check_observation_configuration(smoke, token_path, configuration):
+    """Exercise unit flag expansion and a missing protected service."""
+    run("systemctl", "stop", "agentbox.service")
+    smoke.assert_normal_stop()
+    token_path.write_bytes(configuration+b"AGENTBOX_QOS=observe\nAGENTBOX_QOS_INTERVAL=100ms\n"
+                           b"AGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/agentbox-missing-core\n")
+    try:
+        smoke.start()
+        def degraded():
+            code, status = smoke.http("/v1/status")
+            report = status.get("qos", {})
+            return (code == 200 and status["ready"] and report.get("mode") == "observe"
+                    and report["state"] == "degraded" and not report["stale"]
+                    and any(s["name"] == "protected" and not s["available"] and s["sample"] is None
+                            for s in report["sources"]))
+        wait_until(degraded, "observe mode with unavailable protected service", 20)
+        smoke.execute("observe-missing-core", "print('observation failure does not stop execution')", "succeeded")
+        return ["unit-observe-flags", "missing-source-keeps-ready", "observe-execution"]
+    finally:
+        run("systemctl", "stop", "agentbox.service")
+        smoke.assert_normal_stop()
+        token_path.write_bytes(configuration)
+
+
 def main():
     if not Path("/.dockerenv").exists() or Path("/proc/1/comm").read_text().strip() != "systemd":
         raise RuntimeError("this test must run inside its disposable systemd container")
@@ -92,6 +116,7 @@ def main():
     report = smoke.report()
     if mode == "warm":
         report["parallel_inventory_shutdown"] = check_parallel_inventory_shutdown(smoke, token_path, configuration)
+    report["observation_checks"] = check_observation_configuration(smoke, token_path, configuration)
     run("systemctl", "stop", "agentbox.service")
     smoke.assert_normal_stop()
     owner = Path("/var/lib/agentbox/owner.json").read_bytes()

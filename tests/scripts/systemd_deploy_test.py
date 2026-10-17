@@ -162,10 +162,20 @@ class ToolTests(unittest.TestCase):
                 config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_LISTEN="+address+"\n")
                 self.assertEqual(load_config(config)["AGENTBOX_LISTEN"], address)
 
+    def test_observe_configuration_keeps_protected_path_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config"
+            config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_QOS=observe\n"
+                              "AGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/system.slice/mock-core.service\n"
+                              "AGENTBOX_QOS_INTERVAL=50ms\n")
+            values = load_config(config)
+            self.assertEqual(values["AGENTBOX_QOS"], "observe")
+            self.assertEqual(values["AGENTBOX_QOS_INTERVAL"], "50ms")
+
     def test_configuration_rejects_unsafe_or_ambiguous_values(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "config"
-            for extra in ("AGENTBOX_LISTEN=0.0.0.0:8080", "AGENTBOX_LISTEN=127.0.0.1:8080/path", "AGENTBOX_LISTEN=127.0.0.1", "AGENTBOX_CONCURRENCY=5", "AGENTBOX_PLATFORM=ptrace", "AGENTBOX_MODE=auto", "AGENTBOX_MAX_SANDBOXES=9", "AGENTBOX_QUEUE_TIMEOUT=6s", "AGENTBOX_WARM_SIZE=7", "AGENTBOX_QUEUE_BYTES=0", "UNKNOWN=value", "AGENTBOX_LISTEN='127.0.0.1:8080'", "AGENTBOX_API_TOKEN="+"y"*32):
+            for extra in ("AGENTBOX_LISTEN=0.0.0.0:8080", "AGENTBOX_LISTEN=127.0.0.1:8080/path", "AGENTBOX_LISTEN=127.0.0.1", "AGENTBOX_CONCURRENCY=5", "AGENTBOX_PLATFORM=ptrace", "AGENTBOX_MODE=auto", "AGENTBOX_QOS=enforce", "AGENTBOX_QOS=observe", "AGENTBOX_QOS_INTERVAL=10ms", "AGENTBOX_MAX_SANDBOXES=9", "AGENTBOX_QUEUE_TIMEOUT=6s", "AGENTBOX_WARM_SIZE=7", "AGENTBOX_QUEUE_BYTES=0", "UNKNOWN=value", "AGENTBOX_LISTEN='127.0.0.1:8080'", "AGENTBOX_API_TOKEN="+"y"*32):
                 config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\n"+extra+"\n")
                 with self.subTest(extra=extra), self.assertRaises(ValueError):
                     load_config(config)

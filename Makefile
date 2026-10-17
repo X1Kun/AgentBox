@@ -1,8 +1,9 @@
-.PHONY: build test check integration doctor systemd-integration benchmark
+.PHONY: build test check integration doctor systemd-integration benchmark observe
 
 build:
 	mkdir -p bin
 	go build -trimpath -o bin/agentboxd ./cmd/agentboxd
+	go build -trimpath -o bin/mockcore ./cmd/mockcore
 
 test:
 	go test -race -count=1 ./...
@@ -26,3 +27,6 @@ systemd-integration: build
 
 benchmark:
 	bash scripts/benchmark-container.sh kvm
+
+observe: build
+	bash scripts/observe-container.sh kvm

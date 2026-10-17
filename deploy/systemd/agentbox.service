@@ -7,9 +7,10 @@ Type=notify
 NotifyAccess=main
 User=root
 WorkingDirectory=/opt/agentbox
-ExecStart=/opt/agentbox/bin/agentboxd -runsc /opt/agentbox/.local/gvisor/runsc -rootfs /opt/agentbox/.local/rootfs -state-dir /var/lib/agentbox -cgroup-root auto -platform ${AGENTBOX_PLATFORM} -listen ${AGENTBOX_LISTEN} -concurrency ${AGENTBOX_CONCURRENCY} -mode ${AGENTBOX_MODE} -warm-size ${AGENTBOX_WARM_SIZE} -max-sandboxes ${AGENTBOX_MAX_SANDBOXES} -create-concurrency ${AGENTBOX_CREATE_CONCURRENCY} -queue-size ${AGENTBOX_QUEUE_SIZE} -queue-bytes ${AGENTBOX_QUEUE_BYTES} -queue-timeout ${AGENTBOX_QUEUE_TIMEOUT}
+ExecStart=/opt/agentbox/bin/agentboxd -runsc /opt/agentbox/.local/gvisor/runsc -rootfs /opt/agentbox/.local/rootfs -state-dir /var/lib/agentbox -cgroup-root auto -platform ${AGENTBOX_PLATFORM} -listen ${AGENTBOX_LISTEN} -concurrency ${AGENTBOX_CONCURRENCY} -mode ${AGENTBOX_MODE} -warm-size ${AGENTBOX_WARM_SIZE} -max-sandboxes ${AGENTBOX_MAX_SANDBOXES} -create-concurrency ${AGENTBOX_CREATE_CONCURRENCY} -queue-size ${AGENTBOX_QUEUE_SIZE} -queue-bytes ${AGENTBOX_QUEUE_BYTES} -queue-timeout ${AGENTBOX_QUEUE_TIMEOUT} -qos ${AGENTBOX_QOS} -qos-interval ${AGENTBOX_QOS_INTERVAL} -qos-protected-cgroup ${AGENTBOX_QOS_PROTECTED_CGROUP}
 Environment=AGENTBOX_PLATFORM=kvm AGENTBOX_LISTEN=127.0.0.1:8080 AGENTBOX_CONCURRENCY=1
 Environment=AGENTBOX_MODE=cold AGENTBOX_WARM_SIZE=3 AGENTBOX_MAX_SANDBOXES=6 AGENTBOX_CREATE_CONCURRENCY=1 AGENTBOX_QUEUE_SIZE=16 AGENTBOX_QUEUE_BYTES=8388608 AGENTBOX_QUEUE_TIMEOUT=100ms
+Environment=AGENTBOX_QOS=off AGENTBOX_QOS_INTERVAL=100ms AGENTBOX_QOS_PROTECTED_CGROUP=none
 EnvironmentFile=/etc/agentbox.env
 Delegate=cpu memory pids
 StateDirectory=agentbox
