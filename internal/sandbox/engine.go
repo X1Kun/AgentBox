@@ -18,6 +18,7 @@ import (
 
 	"github.com/X1Kun/AgentBox/internal/api"
 	"github.com/X1Kun/AgentBox/internal/cgroup"
+	"github.com/X1Kun/AgentBox/internal/qos"
 )
 
 var (
@@ -26,6 +27,7 @@ var (
 )
 
 type Config struct {
+	QoS               qos.Config
 	Runsc             string
 	Rootfs            string
 	StateDir          string
@@ -55,6 +57,7 @@ type Engine struct {
 	active    sync.WaitGroup
 	closeOnce sync.Once
 	closeErr  error
+	observer  *qos.Observer
 	pool      *warmPool
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -75,6 +78,9 @@ type executionState struct {
 }
 
 func New(c Config) (_ *Engine, retErr error) {
+	if err := c.QoS.Normalize(); err != nil {
+		return nil, err
+	}
 	if err := normalizePoolConfig(&c); err != nil {
 		return nil, err
 	}
@@ -212,6 +218,10 @@ func New(c Config) (_ *Engine, retErr error) {
 	if err = e.reconcile(); err != nil {
 		return nil, fmt.Errorf("reconcile: %w", err)
 	}
+	e.observer, err = qos.New(c.QoS, groups.SandboxParentPath)
+	if err != nil {
+		return nil, err
+	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	if c.Mode == "warm" {
 		e.pool = newWarmPool(c, e.createSandbox, e.destroyInstanceResources)
@@ -228,12 +238,21 @@ func writeJSON(path string, v any, mode os.FileMode) error {
 }
 
 // Start waits for the first READY instance in warm mode. Remaining inventory
-// fills in the background; cold mode needs no background initialization.
+// fills in the background. Observation starts after pool readiness and is
+// independent of execution admission in both cold and warm modes.
 func (e *Engine) Start(ctx context.Context) error {
-	if e.pool == nil {
-		return nil
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	return e.pool.start(ctx)
+	if e.pool != nil {
+		if err := e.pool.start(ctx); err != nil {
+			return err
+		}
+	}
+	if e.observer != nil {
+		e.observer.Start(e.ctx)
+	}
+	return nil
 }
 
 func (e *Engine) Ready() bool {
@@ -242,10 +261,11 @@ func (e *Engine) Ready() bool {
 
 func (e *Engine) Status() api.StatusReport {
 	if e.pool == nil {
-		return api.StatusReport{Mode: "cold", Ready: e.Ready()}
+		return api.StatusReport{Mode: "cold", Ready: e.Ready(), QoS: e.observationReport()}
 	}
 	snapshot := e.pool.status()
 	return api.StatusReport{
+		QoS:  e.observationReport(),
 		Mode: "warm", Ready: snapshot.Ready && !e.broken.Load() && !e.closed.Load(),
 		Target: snapshot.Target, MaxSandboxes: snapshot.MaxSandboxes,
 		Creating: snapshot.Creating, Idle: snapshot.Idle, Leased: snapshot.Leased,
@@ -270,6 +290,9 @@ func (e *Engine) Close() error {
 		e.active.Wait()
 		if e.pool != nil {
 			e.closeErr = e.pool.drain()
+		}
+		if e.observer != nil {
+			e.observer.Close()
 		}
 		e.closeErr = errors.Join(e.closeErr, e.lock.Close())
 	})

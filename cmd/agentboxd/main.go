@@ -44,6 +44,9 @@ func run() (retErr error) {
 	flag.IntVar(&c.QueueSize, "queue-size", 16, "maximum waiting warm requests")
 	flag.IntVar(&c.QueueBytes, "queue-bytes", 8<<20, "maximum queued request payload bytes")
 	flag.DurationVar(&c.QueueTimeout, "queue-timeout", 100*time.Millisecond, "maximum warm queue wait, 1ms to 5s")
+	flag.StringVar(&c.QoS.Mode, "qos", "off", "resource observation: off or observe (no enforcement)")
+	flag.DurationVar(&c.QoS.Interval, "qos-interval", 100*time.Millisecond, "observation interval, 50ms to 1s")
+	flag.StringVar(&c.QoS.ProtectedCgroup, "qos-protected-cgroup", "none", "absolute protected cgroup path; required in observe mode")
 	flag.StringVar(&address, "listen", "127.0.0.1:8080", "loopback HTTP address")
 	flag.BoolVar(&inspect, "doctor", false, "print read-only environment report and exit")
 	flag.Parse()
@@ -97,7 +100,7 @@ func run() (retErr error) {
 		_ = server.Close()
 		return err
 	}
-	logger.Info("agentbox daemon listening", "address", listener.Addr().String(), "platform", c.Platform, "mode", c.Mode, "state_dir", c.StateDir, "rootfs", c.Rootfs)
+	logger.Info("agentbox daemon listening", "address", listener.Addr().String(), "platform", c.Platform, "mode", c.Mode, "qos", c.QoS.Mode, "state_dir", c.StateDir, "rootfs", c.Rootfs)
 	select {
 	case err := <-done:
 		cancel()

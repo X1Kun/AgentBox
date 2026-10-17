@@ -10,6 +10,8 @@
 
 本阶段由 daemon 直接提供本机 HTTP 接口，后续 Gateway 接入时复用执行协议。
 
+已实现 QoS 观察模式：采集宿主、沙箱父级与受保护服务的 PSI/cgroup 数据，配套固定工作量 Mock Core 和 CSV/JSONL 记录器。默认关闭，观察模式不修改配额。配置、独立容器验收与数据口径见 [QoS 观察说明](docs/qos-observation.md)。
+
 ## 本地开发与检查
 
 需要 Linux、Go 1.25+。Go 代码只使用标准库。依赖准备和容器验收另需 Docker、curl、tar、bzip2、Python 3；KVM 验收还需可访问的 `/dev/kvm`。
@@ -85,7 +87,7 @@ sudo systemctl stop agentbox.service
 - `GET /healthz`：进程存活。
 - `GET /readyz`：是否可接单；不表示当前有空闲并发。
 - `POST /v1/execute`：鉴权、校验后同步执行。
-- `GET /v1/status`：鉴权后查看模式和预热池/队列状态。
+- `GET /v1/status`：鉴权后查看模式和预热池/队列状态，观察模式下还包含资源采样与有效性信息。
 - 并发默认 1，可配置为 1～4；cold 满载立即返回 503，warm 使用有数量、字节和等待时间上限的 FIFO 队列。
 - 每个任务独占全新沙箱，用后销毁；cold 在请求到达后创建，warm 提前创建。任务执行后不归还池、不复用工作目录。
 - 实例内保留待命 init，用户任务通过附着式 `runsc exec` 执行并收集退出码，避免短任务在独立 wait 连接前退出；任务完成后销毁整个实例。

@@ -171,7 +171,9 @@ func TestWarmPoolCleanupFailureStopsAdmissionAndRefill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitPool(t, p, func(s poolSnapshot) bool { return s.Total == 3 })
+	// Wait for refill to finish. Total also includes in-flight creation, which
+	// is correctly destroyed if the pool becomes unhealthy before publication.
+	waitPool(t, p, func(s poolSnapshot) bool { return s.Total == 3 && s.Idle == 2 && s.Creating == 0 })
 	p.mark(first, poolDestroying)
 	p.release(first, false)
 	if p.healthy() {
