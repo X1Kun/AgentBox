@@ -3,14 +3,17 @@ package api
 // QoSReport is observation-only. Missing/invalid rates remain null; they must
 // not be interpreted as zero pressure. Observation failures do not stop tasks.
 type QoSReport struct {
-	Mode         string                `json:"mode"`
-	State        string                `json:"state"`
-	IntervalMS   float64               `json:"interval_ms"`
-	CollectedAt  string                `json:"collected_at,omitempty"`
-	AgeMS        float64               `json:"age_ms"`
-	CollectionMS float64               `json:"collection_ms"`
-	Stale        bool                  `json:"stale"`
-	Sources      []ResourceObservation `json:"sources"`
+	Sequence                uint64                `json:"sequence"`
+	HierarchyBoundary       string                `json:"hierarchy_boundary"`
+	HierarchyBoundaryReason string                `json:"hierarchy_boundary_reason"`
+	Mode                    string                `json:"mode"`
+	State                   string                `json:"state"`
+	IntervalMS              float64               `json:"interval_ms"`
+	CollectedAt             string                `json:"collected_at,omitempty"`
+	AgeMS                   float64               `json:"age_ms"`
+	CollectionMS            float64               `json:"collection_ms"`
+	Stale                   bool                  `json:"stale"`
+	Sources                 []ResourceObservation `json:"sources"`
 }
 type ResourceObservation struct {
 	Name       string          `json:"name"`
@@ -25,9 +28,10 @@ type ResourceObservation struct {
 	Sample     *ResourceSample `json:"sample"`
 }
 type ResourceSample struct {
-	CPU    PressureReport     `json:"cpu_pressure"`
-	Memory PressureReport     `json:"memory_pressure"`
-	Cgroup *CgroupObservation `json:"cgroup,omitempty"`
+	Auxiliary *AuxiliaryReport   `json:"auxiliary,omitempty"`
+	CPU       PressureReport     `json:"cpu_pressure"`
+	Memory    PressureReport     `json:"memory_pressure"`
+	Cgroup    *CgroupObservation `json:"cgroup,omitempty"`
 }
 type PressureReport struct {
 	Some PressureValue  `json:"some"`
@@ -45,6 +49,8 @@ type ResourceLimit struct {
 	Value     uint64 `json:"value"`
 }
 type CgroupObservation struct {
+	CPUUserUsec         uint64        `json:"cpu_user_usec"`
+	CPUSystemUsec       uint64        `json:"cpu_system_usec"`
 	CPUUsageUsec        uint64        `json:"cpu_usage_usec"`
 	CPUPeriods          uint64        `json:"cpu_periods"`
 	CPUThrottledPeriods uint64        `json:"cpu_throttled_periods"`
@@ -61,6 +67,8 @@ type CgroupObservation struct {
 	Delta               *CgroupDelta  `json:"delta"`
 }
 type CgroupDelta struct {
+	CPUUserCores        float64 `json:"cpu_user_cores"`
+	CPUSystemCores      float64 `json:"cpu_system_cores"`
 	CPUUsageCores       float64 `json:"cpu_usage_cores"`
 	CPUPeriods          uint64  `json:"cpu_periods"`
 	CPUThrottledPeriods uint64  `json:"cpu_throttled_periods"`

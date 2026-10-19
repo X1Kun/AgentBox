@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/X1Kun/AgentBox/internal/metrics"
 )
 
 type poolState string
@@ -46,6 +48,7 @@ type warmPool struct {
 	creationFailures uint64
 	cleanupFailures  uint64
 	creationTotalMS  float64
+	telemetry        poolTelemetry
 
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -54,21 +57,33 @@ type warmPool struct {
 
 // poolSnapshot contains internal counters, without transport serialization.
 type poolSnapshot struct {
-	Ready            bool
-	Target           int
-	MaxSandboxes     int
-	Creating         int
-	Idle             int
-	Leased           int
-	Running          int
-	Destroying       int
-	Total            int
-	Queued           int
-	QueuedBytes      int
-	CreationCount    uint64
-	CreationFailures uint64
-	CleanupFailures  uint64
-	CreationTotalMS  float64
+	Telemetry         poolTelemetry
+	ExecutionInFlight int
+	OldestQueueMS     float64
+	Config            Config
+	Ready             bool
+	Target            int
+	MaxSandboxes      int
+	Creating          int
+	Idle              int
+	Leased            int
+	Running           int
+	Destroying        int
+	Total             int
+	Queued            int
+	QueuedBytes       int
+	CreationCount     uint64
+	CreationFailures  uint64
+	CleanupFailures   uint64
+	CreationTotalMS   float64
+}
+
+type poolTelemetry struct {
+	CreationAttempts                                              uint64
+	CreationSucceeded, CreationFailed, CreationAborted            metrics.Duration
+	QueueEntered                                                  uint64
+	QueueAssigned, QueueCanceled, QueueTimedOut, QueueUnavailable metrics.Duration
+	QueueCountFull, QueueBytesFull                                uint64
 }
 
 func newWarmPool(c Config, create func(context.Context) (*executionState, error), destroy func(*executionState) error) *warmPool {
@@ -134,14 +149,17 @@ func (p *warmPool) refill() {
 			continue
 		}
 		p.creating++
+		p.telemetry.CreationAttempts++
 		p.signalLocked()
 		p.mu.Unlock()
 		begin := time.Now()
 		instance, err := p.create(p.ctx)
 		p.mu.Lock()
 		p.creating--
-		p.creationTotalMS += ms(time.Since(begin))
+		elapsed := time.Since(begin)
+		p.creationTotalMS += ms(elapsed)
 		if err == nil && !p.stopped && !p.failed {
+			p.telemetry.CreationSucceeded.Record(elapsed)
 			p.items[instance] = poolReady
 			p.ready = append(p.ready, instance)
 			p.initialized = true
@@ -152,12 +170,15 @@ func (p *warmPool) refill() {
 			continue
 		}
 		if err != nil && !p.stopped {
+			p.telemetry.CreationFailed.Record(elapsed)
 			p.creationFailures++
 			p.consecutiveFailures++
 			p.lastError = err.Error()
 			if p.consecutiveFailures >= 3 {
 				p.failed = true
 			}
+		} else {
+			p.telemetry.CreationAborted.Record(elapsed)
 		}
 		if instance != nil {
 			p.items[instance] = poolDestroying
@@ -272,10 +293,13 @@ func (p *warmPool) drain() error {
 func (p *warmPool) status() poolSnapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	s := poolSnapshot{Ready: p.initialized && !p.failed && !p.stopped,
+	s := poolSnapshot{Ready: p.initialized && !p.failed && !p.stopped, Telemetry: p.telemetry, ExecutionInFlight: p.executing, Config: p.config,
 		Target: p.config.WarmPoolSize, MaxSandboxes: p.config.MaxSandboxes,
 		Creating: p.creating, Total: len(p.items) + p.creating, Queued: len(p.waiters), QueuedBytes: p.queuedBytes,
 		CreationCount: p.creationCount, CreationFailures: p.creationFailures, CleanupFailures: p.cleanupFailures, CreationTotalMS: p.creationTotalMS}
+	if len(p.waiters) > 0 {
+		s.OldestQueueMS = ms(time.Since(p.waiters[0].enteredAt))
+	}
 	for _, state := range p.items {
 		switch state {
 		case poolReady:

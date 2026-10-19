@@ -58,6 +58,7 @@ type Engine struct {
 	closeOnce sync.Once
 	closeErr  error
 	observer  *qos.Observer
+	cleanup   cleanupTelemetry
 	pool      *warmPool
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -70,11 +71,12 @@ type ownership struct {
 }
 
 type executionState struct {
-	id         string
-	bundlePath string
-	group      *cgroup.Group
-	session    *session
-	startedAt  time.Time
+	cleanupPhases []api.CleanupPhase
+	id            string
+	bundlePath    string
+	group         *cgroup.Group
+	session       *session
+	startedAt     time.Time
 }
 
 func New(c Config) (_ *Engine, retErr error) {
@@ -261,10 +263,11 @@ func (e *Engine) Ready() bool {
 
 func (e *Engine) Status() api.StatusReport {
 	if e.pool == nil {
-		return api.StatusReport{Mode: "cold", Ready: e.Ready(), QoS: e.observationReport()}
+		return api.StatusReport{Mode: "cold", Ready: e.Ready(), QoS: e.observationReport(), Cleanup: e.cleanup.report()}
 	}
 	snapshot := e.pool.status()
 	return api.StatusReport{
+		Scheduling: schedulingReport(snapshot), Cleanup: e.cleanup.report(),
 		QoS:  e.observationReport(),
 		Mode: "warm", Ready: snapshot.Ready && !e.broken.Load() && !e.closed.Load(),
 		Target: snapshot.Target, MaxSandboxes: snapshot.MaxSandboxes,
@@ -304,12 +307,12 @@ func (e *Engine) acquireExecutionSlot() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.Ready() {
-		return ErrUnhealthy
+		return admissionError("executor_unhealthy", ErrUnhealthy)
 	}
 	select {
 	case e.slots <- struct{}{}:
 	default:
-		return ErrBusy
+		return admissionError("execution_slots_full", ErrBusy)
 	}
 	e.active.Add(1)
 	return nil
@@ -379,7 +382,7 @@ func (e *Engine) executeWarm(ctx context.Context, request api.Request) (result a
 	e.mu.Lock()
 	if !e.Ready() {
 		e.mu.Unlock()
-		return result, ErrUnhealthy
+		return result, admissionError("executor_unhealthy", ErrUnhealthy)
 	}
 	e.active.Add(1)
 	e.mu.Unlock()
@@ -495,17 +498,17 @@ func (e *Engine) destroyInstanceResources(instance *executionState) (retErr erro
 			e.broken.Store(true)
 		}
 	}()
-	cleanupErr := e.destroyContainerAndCgroup(instance.id, instance.group)
+	cleanupErr := e.destroyContainerAndCgroup(instance)
 	// Finish local streams even when runtime deletion fails. The collector
 	// remains readable afterwards, so execution finalization can report output.
 	if instance.session != nil {
-		instance.session.finishStreams()
+		_ = e.cleanupPhase(instance, "output_readers", func() error { instance.session.finishStreams(); return nil })
 	}
 	if cleanupErr != nil {
 		return fmt.Errorf("cleanup %s: %w", instance.id, cleanupErr)
 	}
 	// Keep the durable intent whenever external resource cleanup is uncertain.
-	return os.RemoveAll(instance.bundlePath)
+	return e.cleanupPhase(instance, "bundle_remove", func() error { return os.RemoveAll(instance.bundlePath) })
 }
 
 func (e *Engine) finalizeExecution(execution *executionState, result *api.Result) error {
@@ -515,6 +518,7 @@ func (e *Engine) finalizeExecution(execution *executionState, result *api.Result
 		result.Timings.TotalMS = ms(time.Since(execution.startedAt))
 	}()
 	cleanupErr := e.destroyInstanceResources(execution)
+	result.CleanupPhases = append([]api.CleanupPhase(nil), execution.cleanupPhases...)
 	if execution.session != nil {
 		result.Stdout, result.Stderr, result.OutputTruncated = execution.session.outputResult()
 		if result.OutputTruncated && (result.Status == "succeeded" || result.Status == "failed") {
@@ -598,12 +602,15 @@ func (e *Engine) runAndCollectResult(parent context.Context, timeoutMS int, exec
 
 func ms(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
 
-func (e *Engine) destroyContainerAndCgroup(id string, g *cgroup.Group) error {
+func (e *Engine) destroyContainerAndCgroup(instance *executionState) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, deleteErr := e.runtime.control(ctx, "delete", "--force", id)
-	killErr := g.Kill()
-	removeErr := g.Remove(ctx)
+	deleteErr := e.cleanupPhase(instance, "runtime_delete", func() error {
+		_, err := e.runtime.control(ctx, "delete", "--force", instance.id)
+		return err
+	})
+	killErr := e.cleanupPhase(instance, "cgroup_kill", instance.group.Kill)
+	removeErr := e.cleanupPhase(instance, "cgroup_empty_and_remove", func() error { return instance.group.Remove(ctx) })
 	// Even after cgroup.kill succeeds, a failed runtime deletion retains the
 	// intent record and stops new admissions until reconciliation succeeds.
 	return errors.Join(deleteErr, killErr, removeErr)

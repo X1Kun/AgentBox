@@ -28,13 +28,15 @@ Mock Core 是实验工具，`make build` 生成 `bin/mockcore`；现有安装脚
 
 ## 信号与数据有效性
 
-鉴权后的 `GET /v1/status` 在观察模式下增加 `qos`，包含三个来源：
+鉴权后的 `GET /v1/status` 在观察模式下增加 `qos`，包含以下基础来源：
 
 | 来源 | 文件 | 用途 |
 | --- | --- | --- |
 | `host` | `/proc/pressure/{cpu,memory}` | 系统争用背景 |
 | `sandboxes` | 沙箱父级的压力及资源统计文件 | 沙箱成本、CPU 节流、内存水位与事件 |
 | `protected` | 指定核心服务 cgroup 的相同文件 | 被保护服务的资源等待 |
+
+后续观测补充增加了 manager、可见祖先和一秒刷新一次的可选 I/O/PID 指标，并提供采样序号、池供给统计和清理阶段。完整字段及跨层级统计限制见 [观测链路说明](observability.md)；来源数量不再固定为三个。
 
 cgroup 读取 `cpu.pressure`、`memory.pressure`、`cpu.stat`、`cpu.max`、`memory.current`、`memory.high`、`memory.max` 和 `memory.events`。保留原始累计值与当前限制；`max` 使用 `{"unlimited":true,"value":0}` 表达，数值零是 `{"unlimited":false,"value":0}`。
 
@@ -99,4 +101,4 @@ python3 scripts/observe.py --output artifacts/observe-manual --duration 30 --rat
 
 这轮实验用于验收采集链路和负载工具。五秒、每组约一百个请求的 P99 只是样本统计，不能据此承诺稳定尾延迟。`idle-pool` 包含库存和观察开销，不能当作核心服务独占基线；两个阶段均处于 observe 模式，也没有测量观察器开销差值。容器内 `/proc/pressure` 反映宿主系统背景，不能看作私有容器压力。外层 2 CPU 限制也会影响各子 cgroup，结果不能直接推广为裸机表现。
 
-下一步先补“核心服务独占、沙箱仅硬上限、静态保护”的可重复对照与更长窗口，再实现有上下界、冷却时间和审计记录的独立 CPU 配额控制。准入和补池联动随后分别验证。
+可重复的基线、默认配额、静态保护对照与离线绘图见 [静态 CPU 实验](static-cpu-experiment.md)。后续实现有上下界、冷却时间和审计记录的独立 CPU 配额控制，再分别验证准入和补池联动。

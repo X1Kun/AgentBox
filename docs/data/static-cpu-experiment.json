@@ -1,0 +1,951 @@
+{
+  "format": 1,
+  "recorded_at": "2026-10-17T14:30:39.325850+00:00",
+  "platform": "kvm",
+  "kernel": "6.8.0-138-generic",
+  "supervisor": "docker-init",
+  "runsc_version": "runsc version release-20261005.0\nspec: 1.2.1",
+  "rootfs_images": [
+    "python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258"
+  ],
+  "source_revision": "d4ccb8def4e65b019e4cfc1d21606ab21726e81c",
+  "source_dirty": true,
+  "measurement_sha256": {
+    "scripts/observe.py": "542c974c22b47f3e12236f87f4fab4b365ab48f11ff8c42ed027ae2afba24fff",
+    "scripts/static_experiment.py": "ce39efeb71b205e1f3e5a2d375e6470fd783d27eda832fdf8080a0364d066813",
+    "tests/observation/static_container.py": "e93efaa0097adbcf11323730408b25d1c48bf4d8ca486e186252f15fac7d440a"
+  },
+  "binary_sha256": "adf72e8e10f2764b2c1d23087b54a4fa39e47b42bf61377c488fb12826dc270b",
+  "mockcore_sha256": "5b0ce24e1db10c401a1a66ac970ae444ff0a21ab536586f4f84ee7e0d9e91539",
+  "runsc_sha256": "210b437a9cfae51e8f8c9074ed19b8b5e59477178e2e391a18117d8d6b924f7a",
+  "host_io_pressure_at_setup": "some avg10=70.16 avg60=70.79 avg300=68.60 total=12141407266\nfull avg10=64.54 avg60=64.64 avg300=62.28 total=11091179030",
+  "tmpfs_used_bytes_at_setup": 440193024,
+  "snapshot_preparation_seconds": 508.46915861399975,
+  "runtime_debug_command": "delete",
+  "outer_limits": {
+    "cpu.max": "200000 100000",
+    "memory.high": "max",
+    "memory.max": "5368709120",
+    "memory.swap.max": "0",
+    "pids.max": "2304"
+  },
+  "core_limits": {
+    "cpu.max": "max 100000",
+    "memory.high": "max",
+    "memory.max": "268435456",
+    "memory.swap.max": "0",
+    "pids.max": "64"
+  },
+  "config": {
+    "duration_seconds": 60,
+    "repetitions": 3,
+    "edge_seconds": 5,
+    "core_rate": 20,
+    "core_iterations": 50000,
+    "core_concurrency": 4,
+    "sandbox_workers": 2,
+    "sandbox_workload": {
+      "kind": "fixed",
+      "iterations": 8000000,
+      "code": "s = 1\nfor _ in range(8000000):\n    s = (1664525*s + 1013904223) & 0xffffffff\nprint(f'{s:08x}')",
+      "timeout_ms": 20000,
+      "expected_status": "succeeded",
+      "expected_stdout": "cd496201\n"
+    },
+    "qos_interval_ms": 100,
+    "default_cpu_max": "80000 20000",
+    "protected_cpu_max": "20000 20000"
+  },
+  "scope": "isolated Docker; runtime, rootfs, binaries, state and recordings on 1GiB tmpfs; host-side /tmp on 256MiB tmpfs; exported after shutdown; baseline includes idle cold daemon and observer; static quota only; host PSI is system-wide",
+  "runs": [
+    {
+      "phase": "r1-core-baseline",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 11.243753997405292,
+      "success_wall_p99_ms": 19.332299998495728,
+      "success_scheduled_p50_ms": 11.425780001445673,
+      "success_scheduled_p99_ms": 19.483693002257496,
+      "send_lag_p99_ms": 0.3760270010388922,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 11.232676002691733,
+        "success_wall_p99_ms": 19.507133998558857,
+        "success_scheduled_p50_ms": 11.415422999561997,
+        "success_scheduled_p99_ms": 19.640082002297277,
+        "send_lag_p99_ms": 0.3760270010388922
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 0,
+      "sandbox_completed": 0,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 0,
+      "sandbox_completions_per_second": 0.0,
+      "sandbox_wall_p50_ms": null,
+      "sandbox_wall_p99_ms": null,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 694,
+        "usable_frames": 694,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "core-baseline",
+      "repeat": 1,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    },
+    {
+      "phase": "r1-default-quota",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 15.360778998001479,
+      "success_wall_p99_ms": 76.43106899922714,
+      "success_scheduled_p50_ms": 15.517190000537084,
+      "success_scheduled_p99_ms": 76.61175899920636,
+      "send_lag_p99_ms": 44.47488200094085,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 15.881933002674486,
+        "success_wall_p99_ms": 94.27795400188188,
+        "success_scheduled_p50_ms": 16.159658000105992,
+        "success_scheduled_p99_ms": 94.52467300070566,
+        "send_lag_p99_ms": 44.514080000226386
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 35,
+      "sandbox_completed": 35,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 33,
+      "sandbox_completions_per_second": 0.55,
+      "sandbox_wall_p50_ms": 3478.9336020003248,
+      "sandbox_wall_p99_ms": 4093.453984998632,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 685,
+        "usable_frames": 685,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "default-quota",
+      "repeat": 1,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    },
+    {
+      "phase": "r1-protected-quota",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 13.082540001050802,
+      "success_wall_p99_ms": 21.4063929997792,
+      "success_scheduled_p50_ms": 13.221555997006362,
+      "success_scheduled_p99_ms": 21.574688998953206,
+      "send_lag_p99_ms": 0.3281319986854214,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 13.202393001847668,
+        "success_wall_p99_ms": 21.609470997645985,
+        "success_scheduled_p50_ms": 13.337526997929672,
+        "success_scheduled_p99_ms": 21.774939996248577,
+        "send_lag_p99_ms": 0.32578999889665283
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 24,
+      "sandbox_completed": 24,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 22,
+      "sandbox_completions_per_second": 0.36666666666666664,
+      "sandbox_wall_p50_ms": 5309.498304002773,
+      "sandbox_wall_p99_ms": 5996.696493002673,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 694,
+        "usable_frames": 694,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "protected-quota",
+      "repeat": 1,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "20000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "20000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    },
+    {
+      "phase": "r2-default-quota",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 17.07352800076478,
+      "success_wall_p99_ms": 76.1148140009027,
+      "success_scheduled_p50_ms": 17.780263999156887,
+      "success_scheduled_p99_ms": 80.89770499645965,
+      "send_lag_p99_ms": 54.76345899660373,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 17.748500999005046,
+        "success_wall_p99_ms": 79.05640700118965,
+        "success_scheduled_p50_ms": 18.431562995829154,
+        "success_scheduled_p99_ms": 81.10712499910733,
+        "send_lag_p99_ms": 54.83202699906542
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 34,
+      "sandbox_completed": 34,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 32,
+      "sandbox_completions_per_second": 0.5333333333333333,
+      "sandbox_wall_p50_ms": 3445.1758859977417,
+      "sandbox_wall_p99_ms": 4310.878641001182,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 687,
+        "usable_frames": 687,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "default-quota",
+      "repeat": 2,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    },
+    {
+      "phase": "r2-protected-quota",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 13.031113001488848,
+      "success_wall_p99_ms": 23.179642001196044,
+      "success_scheduled_p50_ms": 13.162856001144974,
+      "success_scheduled_p99_ms": 23.324022000451805,
+      "send_lag_p99_ms": 0.34928899913211353,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 13.223537996964296,
+        "success_wall_p99_ms": 23.66808700026013,
+        "success_scheduled_p50_ms": 13.353972000913927,
+        "success_scheduled_p99_ms": 23.76501600156189,
+        "send_lag_p99_ms": 0.328867001371691
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 24,
+      "sandbox_completed": 24,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 22,
+      "sandbox_completions_per_second": 0.36666666666666664,
+      "sandbox_wall_p50_ms": 5287.768918999063,
+      "sandbox_wall_p99_ms": 5787.6710960008495,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 694,
+        "usable_frames": 694,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "protected-quota",
+      "repeat": 2,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "20000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "20000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    },
+    {
+      "phase": "r2-core-baseline",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 11.041270001442172,
+      "success_wall_p99_ms": 20.767957001226023,
+      "success_scheduled_p50_ms": 11.213783000130206,
+      "success_scheduled_p99_ms": 21.01439699981711,
+      "send_lag_p99_ms": 0.3692940008477308,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 11.052176996599883,
+        "success_wall_p99_ms": 20.844001999648754,
+        "success_scheduled_p50_ms": 11.21853699805797,
+        "success_scheduled_p99_ms": 21.438322997710202,
+        "send_lag_p99_ms": 0.3579929980332963
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 0,
+      "sandbox_completed": 0,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 0,
+      "sandbox_completions_per_second": 0.0,
+      "sandbox_wall_p50_ms": null,
+      "sandbox_wall_p99_ms": null,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 694,
+        "usable_frames": 694,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "core-baseline",
+      "repeat": 2,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    },
+    {
+      "phase": "r3-protected-quota",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 12.599988000147277,
+      "success_wall_p99_ms": 22.453141002188204,
+      "success_scheduled_p50_ms": 12.765808001859114,
+      "success_scheduled_p99_ms": 22.60322000074666,
+      "send_lag_p99_ms": 0.30507900009979494,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 12.722131999908015,
+        "success_wall_p99_ms": 22.737153001799015,
+        "success_scheduled_p50_ms": 12.878933001047699,
+        "success_scheduled_p99_ms": 22.880303004058078,
+        "send_lag_p99_ms": 0.30507900009979494
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 24,
+      "sandbox_completed": 24,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 22,
+      "sandbox_completions_per_second": 0.36666666666666664,
+      "sandbox_wall_p50_ms": 5189.0673889975005,
+      "sandbox_wall_p99_ms": 6228.460850001284,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 694,
+        "usable_frames": 694,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "protected-quota",
+      "repeat": 3,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "20000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "20000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    },
+    {
+      "phase": "r3-core-baseline",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 11.050418001104845,
+      "success_wall_p99_ms": 17.278299997997237,
+      "success_scheduled_p50_ms": 11.218266001378652,
+      "success_scheduled_p99_ms": 17.457308000302874,
+      "send_lag_p99_ms": 0.3316330003144685,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 11.0527920005552,
+        "success_wall_p99_ms": 17.04197399885743,
+        "success_scheduled_p50_ms": 11.229399999137968,
+        "success_scheduled_p99_ms": 17.14775399887003,
+        "send_lag_p99_ms": 0.3277389987488277
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 0,
+      "sandbox_completed": 0,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 0,
+      "sandbox_completions_per_second": 0.0,
+      "sandbox_wall_p50_ms": null,
+      "sandbox_wall_p99_ms": null,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 695,
+        "usable_frames": 695,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "core-baseline",
+      "repeat": 3,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    },
+    {
+      "phase": "r3-default-quota",
+      "core_offered": 1400,
+      "core_succeeded": 1400,
+      "core_rejected": 0,
+      "client_dropped": 0,
+      "core_errors": 0,
+      "success_wall_p50_ms": 21.70830099930754,
+      "success_wall_p99_ms": 77.89382099872455,
+      "success_scheduled_p50_ms": 22.62200399854919,
+      "success_scheduled_p99_ms": 79.8145589978958,
+      "send_lag_p99_ms": 11.767363001126796,
+      "load_window": {
+        "start_seconds": 5,
+        "end_seconds": 65
+      },
+      "load_window_core": {
+        "core_offered": 1200,
+        "core_succeeded": 1200,
+        "core_rejected": 0,
+        "client_dropped": 0,
+        "core_errors": 0,
+        "success_wall_p50_ms": 22.409593999327626,
+        "success_wall_p99_ms": 78.20427199840196,
+        "success_scheduled_p50_ms": 23.123637998651247,
+        "success_scheduled_p99_ms": 80.64067500163219,
+        "send_lag_p99_ms": 12.308620000112569
+      },
+      "workload_checksums": [
+        "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8"
+      ],
+      "sandbox_requests": 36,
+      "sandbox_completed": 36,
+      "sandbox_completed_timeouts": 0,
+      "sandbox_completed_in_load_window": 34,
+      "sandbox_completions_per_second": 0.5666666666666667,
+      "sandbox_wall_p50_ms": 3346.9905279998784,
+      "sandbox_wall_p99_ms": 3978.1125460031035,
+      "sandbox_rejected": 0,
+      "sandbox_errors": 0,
+      "observation_errors": 0,
+      "sample_quality": {
+        "frames": 688,
+        "usable_frames": 688,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "group": "default-quota",
+      "repeat": 3,
+      "limits_before": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "limits_after": {
+        "sandboxes": {
+          "cpu.max": "80000 20000",
+          "memory.high": "3221225472",
+          "memory.max": "4294967296",
+          "memory.swap.max": "0",
+          "pids.max": "2048"
+        },
+        "protected": {
+          "cpu.max": "max 100000",
+          "memory.high": "max",
+          "memory.max": "268435456",
+          "memory.swap.max": "0",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "200000 100000",
+          "memory.high": "max",
+          "memory.max": "5368709120",
+          "memory.swap.max": "0",
+          "pids.max": "2304"
+        }
+      },
+      "cleanup_complete": true
+    }
+  ],
+  "checks": [
+    "rotating-order",
+    "fixed-workloads",
+    "three-observation-sources",
+    "fixed-limits-per-run",
+    "clean-shutdown"
+  ]
+}

@@ -14,8 +14,10 @@ device_args=()
 if [[ "$platform" == kvm ]]; then device_args=(--device /dev/kvm); fi
 # All cgroup writes belong to this explicitly isolated test controller. The
 # observer inside agentboxd only reads its configured sources.
-docker run --rm --privileged --cgroupns=private --network=none \
+docker run --rm --init --privileged --cgroupns=private --network=none \
     --memory=5g --memory-swap=5g --cpus=2 --pids-limit=2304 \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=268435456 \
+    --tmpfs /state:rw,nosuid,nodev,mode=700,size=134217728 \
     "${device_args[@]}" -e "AGENTBOX_PLATFORM=$platform" \
     --mount "type=bind,source=$project_dir,target=/workspace,readonly" \
     --mount "type=bind,source=$result_dir,target=/results" \

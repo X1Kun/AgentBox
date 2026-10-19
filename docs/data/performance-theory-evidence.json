@@ -1,0 +1,742 @@
+{
+  "analysis_date": "2026-10-19",
+  "book_pdf_sha256": "18bc406ccb9c71ac3fedb016df8b0c85ccf55d7d86f724c3abb3ddb05a823e17",
+  "book_selection": {
+    "pdf": "/data/zhengxikun/ResumeProject/Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf",
+    "offset": 39,
+    "ranges": [
+      [
+        23,
+        24
+      ],
+      [
+        33,
+        34
+      ],
+      [
+        44,
+        45
+      ],
+      [
+        47,
+        53
+      ],
+      [
+        56,
+        57
+      ],
+      [
+        64,
+        64
+      ],
+      [
+        66,
+        69
+      ],
+      [
+        74,
+        77
+      ],
+      [
+        167,
+        167
+      ],
+      [
+        177,
+        180
+      ],
+      [
+        189,
+        194
+      ],
+      [
+        225,
+        227
+      ],
+      [
+        309,
+        310
+      ],
+      [
+        324,
+        324
+      ],
+      [
+        330,
+        331
+      ],
+      [
+        585,
+        585
+      ],
+      [
+        613,
+        620
+      ],
+      [
+        631,
+        633
+      ],
+      [
+        643,
+        650
+      ],
+      [
+        657,
+        659
+      ],
+      [
+        662,
+        666
+      ]
+    ],
+    "selected_pages": 79,
+    "additional_pages": [
+      35,
+      54,
+      65,
+      173,
+      621,
+      622,
+      623,
+      624
+    ]
+  },
+  "book_references": [
+    {
+      "id": "B01",
+      "section": "§2.2.1–2.2.2：系统边界与干扰",
+      "printed_pages": [
+        23,
+        24
+      ],
+      "pdf_pages": [
+        62,
+        63
+      ],
+      "verified_excerpt": "perturbations (interference) can affect results"
+    },
+    {
+      "id": "B02",
+      "section": "§5.1.1：性能目标",
+      "printed_pages": [
+        173
+      ],
+      "pdf_pages": [
+        212
+      ],
+      "verified_excerpt": "A performance goal provides direction for your performance analysis work"
+    },
+    {
+      "id": "B03",
+      "section": "§2.3.11–2.3.12：使用率与饱和",
+      "printed_pages": [
+        33,
+        34
+      ],
+      "pdf_pages": [
+        72,
+        73
+      ],
+      "verified_excerpt": "100% busy does not mean 100% capacity."
+    },
+    {
+      "id": "B04",
+      "section": "§2.5.9：USE 与软件资源",
+      "printed_pages": [
+        47,
+        48,
+        49,
+        50,
+        51,
+        52
+      ],
+      "pdf_pages": [
+        86,
+        87,
+        88,
+        89,
+        90,
+        91
+      ],
+      "verified_excerpt": "For every resource, check utilization, saturation, and errors."
+    },
+    {
+      "id": "B05",
+      "section": "§2.5.10：RED",
+      "printed_pages": [
+        53
+      ],
+      "pdf_pages": [
+        92
+      ],
+      "verified_excerpt": "For every service, check the request rate, errors, and duration."
+    },
+    {
+      "id": "B06",
+      "section": "§2.5.13–2.5.15：延迟分解与事件",
+      "printed_pages": [
+        56,
+        57
+      ],
+      "pdf_pages": [
+        95,
+        96
+      ],
+      "verified_excerpt": "breaks it into smaller components"
+    },
+    {
+      "id": "B07",
+      "section": "§2.6.5：排队论",
+      "printed_pages": [
+        66,
+        67,
+        68,
+        69
+      ],
+      "pdf_pages": [
+        105,
+        106,
+        107,
+        108
+      ],
+      "verified_excerpt": "L = λW"
+    },
+    {
+      "id": "B08",
+      "section": "§2.6.3–2.6.4：Amdahl 与扩展性",
+      "printed_pages": [
+        64,
+        65,
+        66
+      ],
+      "pdf_pages": [
+        103,
+        104,
+        105
+      ],
+      "verified_excerpt": "accounting for serial components of workloads that do not scale in parallel"
+    },
+    {
+      "id": "B09",
+      "section": "§2.8.2–2.8.6：时间窗、分位数、分布",
+      "printed_pages": [
+        74,
+        75,
+        76,
+        77
+      ],
+      "pdf_pages": [
+        113,
+        114,
+        115,
+        116
+      ],
+      "verified_excerpt": "Averages are a summary statistic that hides details."
+    },
+    {
+      "id": "B10",
+      "section": "§2.3.10、§4.6：观察开销与测量可信性",
+      "printed_pages": [
+        33,
+        167
+      ],
+      "pdf_pages": [
+        72,
+        206
+      ],
+      "verified_excerpt": "Performance metrics are not free"
+    },
+    {
+      "id": "B11",
+      "section": "§5.2.3–5.2.4：缓冲与轮询",
+      "printed_pages": [
+        177
+      ],
+      "pdf_pages": [
+        216
+      ],
+      "verified_excerpt": "High latency between the occurrence of the event and the next polled check"
+    },
+    {
+      "id": "B12",
+      "section": "§5.2.5：并发与同步",
+      "printed_pages": [
+        177,
+        178,
+        179,
+        180
+      ],
+      "pdf_pages": [
+        216,
+        217,
+        218,
+        219
+      ],
+      "verified_excerpt": "they do not necessarily execute on-CPU at the same instant"
+    },
+    {
+      "id": "B13",
+      "section": "§5.4.2–5.4.5：Off-CPU、系统调用与线程状态",
+      "printed_pages": [
+        189,
+        190,
+        191,
+        192,
+        193,
+        194
+      ],
+      "pdf_pages": [
+        228,
+        229,
+        230,
+        231,
+        232,
+        233
+      ],
+      "verified_excerpt": "Performance for an application request is improved by reducing the time in every state except idle."
+    },
+    {
+      "id": "B14",
+      "section": "§6.3.6–6.3.11：CPU 解释边界",
+      "printed_pages": [
+        225,
+        226,
+        227
+      ],
+      "pdf_pages": [
+        264,
+        265,
+        266
+      ],
+      "verified_excerpt": "The performance of each hardware thread is not the same as a separate CPU core"
+    },
+    {
+      "id": "B15",
+      "section": "§7.2.6–7.2.10：缓存、内存容量和工作集",
+      "printed_pages": [
+        309,
+        310
+      ],
+      "pdf_pages": [
+        348,
+        349
+      ],
+      "verified_excerpt": "Memory used by the file system cache can be treated as unused"
+    },
+    {
+      "id": "B16",
+      "section": "§7.4.2、§7.5.2：内存饱和与 PSI",
+      "printed_pages": [
+        324,
+        330,
+        331
+      ],
+      "pdf_pages": [
+        363,
+        369,
+        370
+      ],
+      "verified_excerpt": "PSI statistics are also tracked per cgroup2"
+    },
+    {
+      "id": "B17",
+      "section": "§11.1.5：多租户与邻居干扰",
+      "printed_pages": [
+        585
+      ],
+      "pdf_pages": [
+        624
+      ],
+      "verified_excerpt": "performance issues may be caused by noisy neighbors"
+    },
+    {
+      "id": "B18",
+      "section": "§11.3.3：优先级、上限、CPU 带宽和内存控制",
+      "printed_pages": [
+        613,
+        614,
+        615,
+        616
+      ],
+      "pdf_pages": [
+        652,
+        653,
+        654,
+        655
+      ],
+      "verified_excerpt": "a container gets a quota of CPU microseconds every period"
+    },
+    {
+      "id": "B19",
+      "section": "§11.3.4：容器观测范围与资源控制统计",
+      "printed_pages": [
+        617,
+        618,
+        619,
+        620,
+        621,
+        622,
+        623,
+        624
+      ],
+      "pdf_pages": [
+        656,
+        657,
+        658,
+        659,
+        660,
+        661,
+        662,
+        663
+      ],
+      "verified_excerpt": "these often show the host rather than just the container"
+    },
+    {
+      "id": "B20",
+      "section": "§11.4.1–11.4.4：gVisor 的适用边界",
+      "printed_pages": [
+        631,
+        632,
+        633
+      ],
+      "pdf_pages": [
+        670,
+        671,
+        672
+      ],
+      "verified_excerpt": "gVisor is a different approach that implements its own lightweight kernel"
+    },
+    {
+      "id": "B21",
+      "section": "§2.5.5–2.5.6：问题陈述与科学方法",
+      "printed_pages": [
+        44,
+        45
+      ],
+      "pdf_pages": [
+        83,
+        84
+      ],
+      "verified_excerpt": "changing multiple factors at once makes it harder to identify which one mattered"
+    },
+    {
+      "id": "B22",
+      "section": "§2.5.11：工作负载特征",
+      "printed_pages": [
+        54
+      ],
+      "pdf_pages": [
+        93
+      ],
+      "verified_excerpt": "It focuses on the input to the system, rather than the resulting performance."
+    },
+    {
+      "id": "B23",
+      "section": "§12.1.2：有效基准测试",
+      "printed_pages": [
+        643,
+        644
+      ],
+      "pdf_pages": [
+        682,
+        683
+      ],
+      "verified_excerpt": "What the limiting factor or factors are"
+    },
+    {
+      "id": "B24",
+      "section": "§12.1.3：压测工具、错误和干扰",
+      "printed_pages": [
+        645,
+        646,
+        647,
+        648,
+        649,
+        650
+      ],
+      "pdf_pages": [
+        684,
+        685,
+        686,
+        687,
+        688,
+        689
+      ],
+      "verified_excerpt": "the result reported is limited by the benchmark software itself"
+    },
+    {
+      "id": "B25",
+      "section": "§12.3.2：主动基准测试",
+      "printed_pages": [
+        657,
+        658,
+        659
+      ],
+      "pdf_pages": [
+        696,
+        697,
+        698
+      ],
+      "verified_excerpt": "you analyze performance while the benchmark is running"
+    },
+    {
+      "id": "B26",
+      "section": "§12.3.5–12.3.10：递增负载、校验、重复统计",
+      "printed_pages": [
+        662,
+        663,
+        664,
+        665,
+        666
+      ],
+      "pdf_pages": [
+        701,
+        702,
+        703,
+        704,
+        705
+      ],
+      "verified_excerpt": "measure latency as well as the throughput"
+    },
+    {
+      "id": "B27",
+      "section": "§2.3.13–2.3.14：采样与缓存",
+      "printed_pages": [
+        35
+      ],
+      "pdf_pages": [
+        74
+      ],
+      "verified_excerpt": "How coarse depends on the rate of sampling."
+    }
+  ],
+  "code_revision": "d4ccb8def4e65b019e4cfc1d21606ab21726e81c",
+  "code_sha256": {
+    "internal/httpapi/server.go": "b62715bd33b363f9c2adc4d83156e7e5a1b85e4172721de57978c3c253290908",
+    "cmd/agentboxd/main.go": "3566e271b4f94a0edecdfa77be89173e62c6a39976e769a91a73abbabd5a0fb0",
+    "internal/sandbox/engine.go": "66ead14aa9d8ec12b02a42963fa07e9b49a77c745ea6b13bbe565a6c27dfb773",
+    "internal/sandbox/scheduler.go": "f0ca84ca3380daea0c67647c110eadd2990acdf2dd771fbcd12784599560a83c",
+    "internal/sandbox/pool.go": "d17a2c25a2d65609133fb7fe1ab48beeccab3ecd3054ce26c2d3a2072dd882a4",
+    "internal/sandbox/config.go": "bdba36638f96ded5988f5150aa190644cf0f2f33d3575cb518a42dc559166f3d",
+    "internal/sandbox/runsc.go": "ce87a6e37dd5edc85a69bc3f1c90d58db03c26ffdf4626f229499eff6dd07976",
+    "internal/cgroup/cgroup_linux.go": "68645143c4b622ad8a03758a7cd99933b945b1913f3da03c0943a762c6229be4",
+    "internal/cgroup/stats.go": "c9d08a2ac3095a315609a4e9a81036f9f9b3b91b47e3981a2158571a7df365de",
+    "internal/qos/reader.go": "dad6da7e9db6d0e8f64b7199e086fdc49683a5129355226eaa68b7d5a0530b3d",
+    "internal/qos/observer.go": "3788e0ae51715423006cb337e5e959872b1d53e4958ff8d4015bfcf24f699d72",
+    "internal/sandbox/observation.go": "448719bbccc437712244fa9ad2217461bf81440986ac20c2e9cc99e18a152d85",
+    "internal/sandbox/spec.go": "faf509e499bf70e62c8c41ecfdb8c91b7f6068fced1491d709e2bd6c303daa63",
+    "internal/sandbox/output.go": "0c0359e58e67193ff2d6a1ab917737f48acc3a4e48bf900676267fbade4990f0",
+    "internal/mockcore/server.go": "82ef6611a1b69e979042753ba3609b8de842c4968e610751f4a1afb4486ded45",
+    "scripts/observe.py": "542c974c22b47f3e12236f87f4fab4b365ab48f11ff8c42ed027ae2afba24fff",
+    "tests/observation/static_container.py": "e93efaa0097adbcf11323730408b25d1c48bf4d8ca486e186252f15fac7d440a",
+    "scripts/static_experiment.py": "ce39efeb71b205e1f3e5a2d375e6470fd783d27eda832fdf8080a0364d066813",
+    "scripts/plot-static.py": "a0d435db4ce3e01e939838977d8fc78bcbf02e2d0bec0afd01e8750a61df0e72",
+    "tests/benchmarks/latency_test.go": "43f3b665246f1582e37e74a4c0df43e70763f005859824e6564604aaaeb55bb6"
+  },
+  "existing_evidence_sha256": {
+    "docs/data/static-cpu-summary.csv": "0232917ee7a01e183dfc46c3893cdf27f889c17f3ff38f281d2a8f04300c61a1",
+    "docs/data/static-cpu-experiment.json": "78d11403ec3dc5f7b0b50b6277a380fccb1be5378978c7cedfc12ec10d8441b6"
+  },
+  "method": {
+    "selection": "planned send in [window_start,window_end); HTTP=200; empty error",
+    "percentile": "sorted values at ceil(0.99*n)-1; each metric independently",
+    "sample_count_per_run": 1200,
+    "new_load_experiment": false
+  },
+  "runs": [
+    {
+      "phase": "r1-core-baseline",
+      "group": "core-baseline",
+      "repeat": 1,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r1-core-baseline-core.csv",
+      "raw_sha256": "baed68acd2f5c951974778adfc92e09690faae1618efe9ca5c8f314fa0518238",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 19.640082002297277,
+      "actual_send_wall_p99_ms": 19.507133998558857,
+      "server_work_p99_ms": 18.932631,
+      "send_lag_p99_ms": 0.3760270010388922,
+      "sandbox_completions_per_second": 0.0
+    },
+    {
+      "phase": "r1-default-quota",
+      "group": "default-quota",
+      "repeat": 1,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r1-default-quota-core.csv",
+      "raw_sha256": "d154a9dcf2acb6ad41f8ff799945fec9451797c9aaed0d3cee1c667b4a86440f",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 94.52467300070566,
+      "actual_send_wall_p99_ms": 94.27795400188188,
+      "server_work_p99_ms": 71.385216,
+      "send_lag_p99_ms": 44.514080000226386,
+      "sandbox_completions_per_second": 0.55
+    },
+    {
+      "phase": "r1-protected-quota",
+      "group": "protected-quota",
+      "repeat": 1,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r1-protected-quota-core.csv",
+      "raw_sha256": "89cb4323ad73736705050c799ffdffa5e64b009836e7c43024c24da0087a4354",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 21.774939996248577,
+      "actual_send_wall_p99_ms": 21.609470997645985,
+      "server_work_p99_ms": 20.844898,
+      "send_lag_p99_ms": 0.32578999889665283,
+      "sandbox_completions_per_second": 0.36666666666666664
+    },
+    {
+      "phase": "r2-default-quota",
+      "group": "default-quota",
+      "repeat": 2,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r2-default-quota-core.csv",
+      "raw_sha256": "d002d2ec9879cfaf589acfce15ae1ac18e78c1fab2d9e09735fd4cb0c71d7a5d",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 81.10712499910733,
+      "actual_send_wall_p99_ms": 79.05640700118965,
+      "server_work_p99_ms": 76.381021,
+      "send_lag_p99_ms": 54.83202699906542,
+      "sandbox_completions_per_second": 0.5333333333333333
+    },
+    {
+      "phase": "r2-protected-quota",
+      "group": "protected-quota",
+      "repeat": 2,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r2-protected-quota-core.csv",
+      "raw_sha256": "e9be67fd2c9c81c8cf47fe20718cd3aec8c5589ccaa9ce703bfb02aa729e08c7",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 23.76501600156189,
+      "actual_send_wall_p99_ms": 23.66808700026013,
+      "server_work_p99_ms": 22.686919,
+      "send_lag_p99_ms": 0.328867001371691,
+      "sandbox_completions_per_second": 0.36666666666666664
+    },
+    {
+      "phase": "r2-core-baseline",
+      "group": "core-baseline",
+      "repeat": 2,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r2-core-baseline-core.csv",
+      "raw_sha256": "398e256a339172e7ba63c222423f94260b954fa73a0a4344d513c1fa49391cb1",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 21.438322997710202,
+      "actual_send_wall_p99_ms": 20.844001999648754,
+      "server_work_p99_ms": 20.065119,
+      "send_lag_p99_ms": 0.3579929980332963,
+      "sandbox_completions_per_second": 0.0
+    },
+    {
+      "phase": "r3-protected-quota",
+      "group": "protected-quota",
+      "repeat": 3,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r3-protected-quota-core.csv",
+      "raw_sha256": "29384965f067ae7739a80011dfbc7216ec0e1b6f71685e62c431bb4a13435267",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 22.880303004058078,
+      "actual_send_wall_p99_ms": 22.737153001799015,
+      "server_work_p99_ms": 21.970481,
+      "send_lag_p99_ms": 0.30507900009979494,
+      "sandbox_completions_per_second": 0.36666666666666664
+    },
+    {
+      "phase": "r3-core-baseline",
+      "group": "core-baseline",
+      "repeat": 3,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r3-core-baseline-core.csv",
+      "raw_sha256": "01ad14a994e0b3b297c46261a8107a3ac5fe060968ed7a137bdd2857894bb951",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 17.14775399887003,
+      "actual_send_wall_p99_ms": 17.04197399885743,
+      "server_work_p99_ms": 16.515717,
+      "send_lag_p99_ms": 0.3277389987488277,
+      "sandbox_completions_per_second": 0.0
+    },
+    {
+      "phase": "r3-default-quota",
+      "group": "default-quota",
+      "repeat": 3,
+      "raw_source": "artifacts/static-kvm-XCmQHtIX/r3-default-quota-core.csv",
+      "raw_sha256": "a83f6b45223b1f2e80a10db33649fe87228d17e4c7d69dc64d95680d5c5f4706",
+      "planned_window_ms": [
+        5000,
+        65000
+      ],
+      "successful_samples": 1200,
+      "scheduled_p99_ms": 80.64067500163219,
+      "actual_send_wall_p99_ms": 78.20427199840196,
+      "server_work_p99_ms": 77.352251,
+      "send_lag_p99_ms": 12.308620000112569,
+      "sandbox_completions_per_second": 0.5666666666666667
+    }
+  ],
+  "paired_changes": [
+    {
+      "repeat": 1,
+      "core_scheduled_p99_reduction_pct": 76.96374998717424,
+      "sandbox_completion_rate_reduction_pct": 33.33333333333335
+    },
+    {
+      "repeat": 2,
+      "core_scheduled_p99_reduction_pct": 70.69922525077365,
+      "sandbox_completion_rate_reduction_pct": 31.25
+    },
+    {
+      "repeat": 3,
+      "core_scheduled_p99_reduction_pct": 71.62684587697836,
+      "sandbox_completion_rate_reduction_pct": 35.29411764705883
+    }
+  ],
+  "group_medians": {
+    "core-baseline": {
+      "scheduled_p99_ms": 19.640082002297277,
+      "actual_send_wall_p99_ms": 19.507133998558857,
+      "server_work_p99_ms": 18.932631,
+      "send_lag_p99_ms": 0.3579929980332963,
+      "sandbox_completions_per_second": 0.0
+    },
+    "default-quota": {
+      "scheduled_p99_ms": 81.10712499910733,
+      "actual_send_wall_p99_ms": 79.05640700118965,
+      "server_work_p99_ms": 76.381021,
+      "send_lag_p99_ms": 44.514080000226386,
+      "sandbox_completions_per_second": 0.55
+    },
+    "protected-quota": {
+      "scheduled_p99_ms": 22.880303004058078,
+      "actual_send_wall_p99_ms": 22.737153001799015,
+      "server_work_p99_ms": 21.970481,
+      "send_lag_p99_ms": 0.32578999889665283,
+      "sandbox_completions_per_second": 0.36666666666666664
+    }
+  }
+}

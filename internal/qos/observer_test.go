@@ -95,6 +95,12 @@ func TestSnapshotStalenessAndOwnership(t *testing.T) {
 	if o.snapshot.Sources[0].Error != "" || !o.snapshot.Sources[0].Delta.Valid {
 		t.Fatal("snapshot mutated observer state")
 	}
+	o.snapshot.Sources[0].Reading.Auxiliary.Devices = []cgroup.DeviceIO{{Device: "8:0"}}
+	s = o.Snapshot()
+	s.Sources[0].Reading.Auxiliary.Devices[0].Device = "mutated"
+	if o.snapshot.Sources[0].Reading.Auxiliary.Devices[0].Device != "8:0" {
+		t.Fatal("optional device snapshot aliased")
+	}
 }
 func TestObserverLifecycleAndConcurrentReads(t *testing.T) {
 	r := &fixtureReader{readings: map[string]Reading{"host": reading(time.Now(), 0)}, failures: map[string]error{}}
@@ -148,7 +154,7 @@ func TestFileReaderIsReadOnlyAndDistinguishesMissingData(t *testing.T) {
 	data := map[string]string{
 		"cpu.pressure":    "some avg10=1 avg60=2 avg300=3 total=200\nfull avg10=0 avg60=0 avg300=0 total=20\n",
 		"memory.pressure": "some avg10=0 avg60=0 avg300=0 total=0\nfull avg10=0 avg60=0 avg300=0 total=0\n",
-		"cpu.stat":        "usage_usec 10\nnr_periods 1\nnr_throttled 0\nthrottled_usec 0\n",
+		"cpu.stat":        "usage_usec 10\nuser_usec 7\nsystem_usec 3\nnr_periods 1\nnr_throttled 0\nthrottled_usec 0\n",
 		"cpu.max":         "max 20000\n", "memory.current": "1024\n", "memory.high": "2048\n", "memory.max": "max\n",
 		"memory.events": "high 0\nmax 0\noom 0\noom_kill 0\n",
 	}
@@ -157,7 +163,7 @@ func TestFileReaderIsReadOnlyAndDistinguishesMissingData(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r, err := (FileReader{}).Read(Source{Name: "fixture", Path: dir, Cgroup: true})
+	r, err := (&FileReader{}).Read(Source{Name: "fixture", Path: dir, Cgroup: true})
 	if err != nil || r.Resources.MemoryCurrentBytes != 1024 || !r.Resources.CPUQuota.Unlimited || !r.CPU.HasFull {
 		t.Fatalf("read: %+v %v", r, err)
 	}
@@ -170,7 +176,7 @@ func TestFileReaderIsReadOnlyAndDistinguishesMissingData(t *testing.T) {
 	if err := os.Remove(filepath.Join(dir, "cpu.stat")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (FileReader{}).Read(Source{Path: dir, Cgroup: true}); err == nil {
+	if _, err := (&FileReader{}).Read(Source{Path: dir, Cgroup: true}); err == nil {
 		t.Fatal("missing CPU counters accepted as zero")
 	}
 	host := t.TempDir()
@@ -179,7 +185,7 @@ func TestFileReaderIsReadOnlyAndDistinguishesMissingData(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	h, err := (FileReader{}).Read(Source{Path: host})
+	h, err := (&FileReader{}).Read(Source{Path: host})
 	if err != nil || h.CPU.HasFull || !h.Memory.HasFull {
 		t.Fatalf("host CPU full is not meaningful: %+v %v", h, err)
 	}
