@@ -1,6 +1,6 @@
 # QoS 第一阶段：观察资源争用
 
-当前实现读取 PSI 与 cgroup 统计，提供固定工作量的 Mock Core Service，并记录其请求延迟。它回答“沙箱负载出现时，核心服务是否在等待资源，以及采集信号是否可信”。自动调整 `cpu.max`、AIMD、内存准入与补池联动留到后续。
+观察模式读取 PSI 与 cgroup 统计，提供固定工作量的 Mock Core Service，并记录其请求延迟。它回答“沙箱负载出现时，核心服务是否在等待资源，以及采集信号是否可信”。后续 CPU QoS 初版已接入 AIMD 预演与显式 enforce，见 [CPU QoS 说明](cpu-qos.md)；本页保留观察与历史实验口径，内存准入与补池联动仍待实现。
 
 已运行的检查、真实平台验证和数据见 [本阶段验收记录](qos-observation-validation.md)。
 

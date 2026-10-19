@@ -3,13 +3,20 @@ package qos
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/X1Kun/AgentBox/internal/cgroup"
 )
 
 type Config struct {
+	Scheduling      bool
+	CPUControl      bool
+	CPU             CPUConfig
+	Logger          *slog.Logger
 	Mode            string
 	Interval        time.Duration
 	ProtectedCgroup string
@@ -19,8 +26,8 @@ func (c *Config) Normalize() error {
 	if c.Mode == "" {
 		c.Mode = "off"
 	}
-	if c.Mode != "off" && c.Mode != "observe" {
-		return fmt.Errorf("qos mode must be off or observe; enforcement is not implemented")
+	if c.Mode != "off" && c.Mode != "observe" && c.Mode != "enforce" {
+		return fmt.Errorf("qos mode must be off, observe or enforce")
 	}
 	if c.Interval == 0 {
 		c.Interval = 100 * time.Millisecond
@@ -29,7 +36,21 @@ func (c *Config) Normalize() error {
 		return fmt.Errorf("qos interval must be 50ms..1s")
 	}
 	if c.Mode == "off" {
+		if c.CPUControl || c.Scheduling {
+			return fmt.Errorf("QoS policies require observe or enforce mode")
+		}
 		return nil
+	}
+	if c.Mode == "enforce" {
+		c.CPUControl = true
+	}
+	if c.CPUControl || c.Scheduling {
+		if err := c.CPU.Normalize(); err != nil {
+			return err
+		}
+		if c.CPU.DecisionInterval < c.Interval {
+			return fmt.Errorf("CPU decision interval must not be shorter than observation interval")
+		}
 	}
 	path := filepath.Clean(c.ProtectedCgroup)
 	if !filepath.IsAbs(path) || !strings.HasPrefix(path, "/sys/fs/cgroup/") {
@@ -66,6 +87,8 @@ type Observation struct {
 	Delta           Delta
 }
 type Snapshot struct {
+	Pressure      *PressureReport
+	Control       *ControlReport
 	Sequence      uint64
 	Boundary      HierarchyBoundary
 	State         string
@@ -76,6 +99,9 @@ type Snapshot struct {
 	Sources       []Observation
 }
 type Observer struct {
+	pressure        *PressurePolicy
+	pressureHandler func(PressureReport)
+	controller      *CPUController
 	sequence        uint64
 	boundary        HierarchyBoundary
 	config          Config
@@ -109,10 +135,35 @@ func New(config Config, sandboxParent string) (*Observer, error) {
 	sources, boundary := discoverSources(sandboxParent, protected)
 	o := newObserver(config, &FileReader{}, sources)
 	o.boundary = boundary
+	if config.CPUControl || config.Scheduling {
+		pressure, err := NewPressurePolicy(config.CPU)
+		if err != nil {
+			return nil, err
+		}
+		o.pressure = pressure
+	}
+	if config.CPUControl {
+		controller, err := NewCPUController(config.Mode, config.CPU, &cgroup.Manager{SandboxParentPath: sandboxParent}, config.Logger)
+		if err != nil {
+			return nil, err
+		}
+		o.controller = controller
+	}
 	return o, nil
 }
 func newObserver(config Config, reader Reader, sources []Source) *Observer {
 	return &Observer{config: config, reader: reader, sources: sources, previous: make(map[string]Reading), snapshot: Snapshot{State: "starting", Interval: config.Interval}}
+}
+
+// Register before Start. The callback runs without the observer mutex held.
+func (o *Observer) SetPressureHandler(handler func(PressureReport)) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.started || o.closed {
+		return fmt.Errorf("pressure handler must be registered before observer start")
+	}
+	o.pressureHandler = handler
+	return nil
 }
 
 func (o *Observer) Start(parent context.Context) {
@@ -140,6 +191,10 @@ func (o *Observer) run(ctx context.Context) {
 		snapshot := o.collect()
 		snapshot.CollectedAt = time.Now()
 		snapshot.Duration = snapshot.CollectedAt.Sub(begin)
+		if ctx.Err() != nil {
+			return
+		}
+		o.updatePolicies(&snapshot, time.Now())
 		o.mu.Lock()
 		o.snapshot = snapshot
 		o.mu.Unlock()
@@ -184,10 +239,36 @@ func (o *Observer) collect() Snapshot {
 	}
 	return snapshot
 }
+
+func (o *Observer) updatePolicies(snapshot *Snapshot, now time.Time) {
+	if o.pressure != nil {
+		report := o.pressure.Update(*snapshot, now)
+		snapshot.Pressure = &report
+		if o.pressureHandler != nil {
+			o.pressureHandler(report)
+		}
+	}
+	if o.controller != nil {
+		report := o.controller.Update(*snapshot, now)
+		snapshot.Control = &report
+	}
+}
 func (o *Observer) Snapshot() Snapshot {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	snapshot := o.snapshot
+	if snapshot.Pressure != nil {
+		pressure := *snapshot.Pressure
+		snapshot.Pressure = &pressure
+	}
+	if snapshot.Control != nil {
+		control := *snapshot.Control
+		if control.ActualCPU != nil {
+			actual := *control.ActualCPU
+			control.ActualCPU = &actual
+		}
+		snapshot.Control = &control
+	}
 	snapshot.Sources = append([]Observation(nil), snapshot.Sources...)
 	for i := range snapshot.Sources {
 		snapshot.Sources[i].Reading.Auxiliary = cloneAuxiliary(snapshot.Sources[i].Reading.Auxiliary)
@@ -197,6 +278,15 @@ func (o *Observer) Snapshot() Snapshot {
 	}
 	snapshot.Stale = snapshot.CollectedAt.IsZero() || snapshot.Age > 3*o.config.Interval || snapshot.Duration > 3*o.config.Interval || snapshot.State == "stopped"
 	if snapshot.Stale {
+		if snapshot.Pressure != nil {
+			snapshot.Pressure.State = "unknown"
+			snapshot.Pressure.Reason = "stale_snapshot"
+		}
+		if snapshot.Control != nil {
+			snapshot.Control.State = "degraded"
+			snapshot.Control.Reason = "stale_snapshot"
+			snapshot.Control.Applied = false
+		}
 		for i := range snapshot.Sources {
 			snapshot.Sources[i].Delta.Valid = false
 			if snapshot.Sources[i].Available {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,7 @@ var (
 )
 
 type Config struct {
+	Logger            *slog.Logger
 	QoS               qos.Config
 	Runsc             string
 	Rootfs            string
@@ -46,22 +48,24 @@ type Config struct {
 }
 
 type Engine struct {
-	config    Config
-	runtime   runscCLI
-	groups    *cgroup.Manager
-	lock      *os.File
-	slots     chan struct{}
-	broken    atomic.Bool
-	closed    atomic.Bool
-	mu        sync.Mutex
-	active    sync.WaitGroup
-	closeOnce sync.Once
-	closeErr  error
-	observer  *qos.Observer
-	cleanup   cleanupTelemetry
-	pool      *warmPool
-	ctx       context.Context
-	cancel    context.CancelFunc
+	pressurePaused     bool
+	pressureRejections uint64
+	config             Config
+	runtime            runscCLI
+	groups             *cgroup.Manager
+	lock               *os.File
+	slots              chan struct{}
+	broken             atomic.Bool
+	closed             atomic.Bool
+	mu                 sync.Mutex
+	active             sync.WaitGroup
+	closeOnce          sync.Once
+	closeErr           error
+	observer           *qos.Observer
+	cleanup            cleanupTelemetry
+	pool               *warmPool
+	ctx                context.Context
+	cancel             context.CancelFunc
 }
 
 type ownership struct {
@@ -80,6 +84,7 @@ type executionState struct {
 }
 
 func New(c Config) (_ *Engine, retErr error) {
+	c.QoS.Logger = c.Logger
 	if err := c.QoS.Normalize(); err != nil {
 		return nil, err
 	}
@@ -212,6 +217,7 @@ func New(c Config) (_ *Engine, retErr error) {
 			binaryPath: c.Runsc,
 			stateDir:   filepath.Join(c.StateDir, "runsc"),
 			platform:   c.Platform,
+			logger:     c.Logger,
 		},
 		groups: groups,
 		lock:   lock,
@@ -227,6 +233,15 @@ func New(c Config) (_ *Engine, retErr error) {
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	if c.Mode == "warm" {
 		e.pool = newWarmPool(c, e.createSandbox, e.destroyInstanceResources)
+	}
+	if e.observer != nil && c.QoS.Scheduling {
+		if err := e.observer.SetPressureHandler(e.applyPressure); err != nil {
+			e.cancel()
+			if e.pool != nil {
+				e.pool.cancel()
+			}
+			return nil, err
+		}
 	}
 	return e, nil
 }
@@ -309,6 +324,10 @@ func (e *Engine) acquireExecutionSlot() error {
 	if !e.Ready() {
 		return admissionError("executor_unhealthy", ErrUnhealthy)
 	}
+	if e.pressurePaused {
+		e.pressureRejections++
+		return admissionError("qos_pressure", ErrPressure)
+	}
 	select {
 	case e.slots <- struct{}{}:
 	default:
@@ -384,6 +403,11 @@ func (e *Engine) executeWarm(ctx context.Context, request api.Request) (result a
 		e.mu.Unlock()
 		return result, admissionError("executor_unhealthy", ErrUnhealthy)
 	}
+	if e.pressurePaused {
+		e.pressureRejections++
+		e.mu.Unlock()
+		return result, admissionError("qos_pressure", ErrPressure)
+	}
 	e.active.Add(1)
 	e.mu.Unlock()
 	defer e.active.Done()
@@ -391,6 +415,12 @@ func (e *Engine) executeWarm(ctx context.Context, request api.Request) (result a
 	execution, err := e.pool.acquire(ctx, requestBytes(request))
 	queueMS := ms(time.Since(begin))
 	if err != nil {
+		if errors.Is(err, ErrPressure) {
+			e.mu.Lock()
+			e.pressureRejections++
+			e.mu.Unlock()
+			return result, err
+		}
 		if ctx.Err() != nil {
 			return api.Result{RequestID: request.RequestID, Status: "cancelled", Timings: api.Timings{QueueMS: queueMS, TotalMS: queueMS}}, nil
 		}

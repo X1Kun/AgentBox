@@ -1,4 +1,4 @@
-.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment
+.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration
 
 build:
 	mkdir -p bin
@@ -33,3 +33,6 @@ observe: build
 
 static-experiment: build
 	bash scripts/static-experiment-container.sh kvm
+
+qos-integration: build
+	bash scripts/qos-container.sh kvm

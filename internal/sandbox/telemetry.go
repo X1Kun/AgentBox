@@ -94,6 +94,7 @@ func schedulingReport(s poolSnapshot) *api.SchedulingReport {
 		CreationFailed: durationReport(t.CreationFailed), CreationAborted: durationReport(t.CreationAborted),
 		QueueEntered: t.QueueEntered, QueueAssigned: durationReport(t.QueueAssigned), QueueCanceled: durationReport(t.QueueCanceled),
 		QueueTimedOut: durationReport(t.QueueTimedOut), QueueUnavailable: durationReport(t.QueueUnavailable),
-		QueueCountFull: t.QueueCountFull, QueueBytesFull: t.QueueBytesFull,
+		QueuePressureRejected: durationReport(t.QueuePressureRejected),
+		QueueCountFull:        t.QueueCountFull, QueueBytesFull: t.QueueBytesFull,
 	}
 }

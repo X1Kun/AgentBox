@@ -190,9 +190,15 @@ class Smoke:
         if not membership.strip().endswith("/agentbox.service/manager"):
             raise ValueError("daemon is not in its manager leaf")
         group = self.cgroup_root()
-        for name, expected in {"cpu.max": "80000 20000", "memory.max": "4294967296", "memory.swap.max": "0"}.items():
+        for name, expected in {"memory.max": "4294967296", "memory.swap.max": "0"}.items():
             if (group / "sandboxes" / name).read_text().strip() != expected:
                 raise ValueError("unexpected parent cgroup setting: "+name)
+        cpu = (group/"sandboxes/cpu.max").read_text().split()
+        if self.config["AGENTBOX_QOS"] == "enforce":
+            if len(cpu) != 2 or cpu[1] != "20000" or not 10000 <= int(cpu[0]) <= 80000:
+                raise ValueError("controlled CPU budget is outside configured service bounds")
+        elif cpu != ["80000", "20000"]:
+            raise ValueError("unexpected static parent CPU setting")
         status, _ = self.http("/v1/execute", {"runtime": "python", "code": "print(1)"}, authenticate=False)
         if status != 401:
             raise ValueError("unauthenticated request was accepted")

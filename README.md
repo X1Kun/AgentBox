@@ -4,13 +4,17 @@
 
 ## 当前范围
 
-支持冷启动和一次性预热池两种执行模式：HTTP 请求、runsc 生命周期、输出上限、执行超时、取消、静态资源限制，以及任务结束后的完整销毁。预热模式提供有界 FIFO 队列、后台补池、总实例容量约束和关闭恢复。动态 PSI QoS、独立 Gateway、MCP 和多节点尚未实现；没有固定时延承诺。详见 [预热池设计与实验](docs/warm-pool.md)。
+支持冷启动和一次性预热池两种执行模式：HTTP 请求、runsc 生命周期、输出上限、执行超时、取消、资源限制，以及任务结束后的完整销毁。预热模式提供有界 FIFO 队列、后台补池、总实例容量约束和关闭恢复。单机 QoS 支持 CPU AIMD、压力准入和补池暂停/恢复；动态库存、动态并发、独立 Gateway、MCP 和多节点尚未实现，没有固定时延承诺。详见 [预热池设计](docs/warm-pool.md) 和 [压力 QoS 调度](docs/qos-scheduling.md)。
 
 单次执行与固定 systemd 部署的历史验证见 [第一阶段验收记录](docs/phase1-validation.md) 和 [systemd 部署与验收](docs/systemd-deployment.md)。预热池及关闭修复的最新结果见 [预热池验收记录](docs/warm-pool-validation.md)，与本机原有 cold 服务的验收分别记录。
 
 本阶段由 daemon 直接提供本机 HTTP 接口，后续 Gateway 接入时复用执行协议。
 
 已实现 QoS 观察模式：采集宿主、沙箱父级与受保护服务的 PSI/cgroup 数据，配套固定工作量 Mock Core 和 CSV/JSONL 记录器。默认关闭，观察模式不修改配额。配置、独立容器验收与数据口径见 [QoS 观察说明](docs/qos-observation.md)。
+
+CPU QoS 闭环可使用 `-qos=observe -qos-cpu-control` 预演，或 `-qos=enforce` 写入沙箱父级 CPU 配额；包含上下界、滞回、动作间隔、恢复、写入确认和失败降级。参数、部署与功能验收见 [CPU QoS 说明](docs/cpu-qos.md)。
+
+另加 `-qos-scheduling` 可预演或执行压力准入与补池门控。临时高压返回 `503 qos_pressure`，在途任务继续；稳定低压后恢复，见 [调度规则](docs/qos-scheduling.md)。
 
 观测补充覆盖 manager、可见祖先、低频 I/O/PID、分类创建与排队耗时、拒绝原因和清理阶段；已有实验可离线重算业务延迟与池供给图。新增字段及统计边界见 [观测链路说明](docs/observability.md)。
 
@@ -95,7 +99,7 @@ sudo systemctl stop agentbox.service
 ## 接口与资源语义
 
 - `GET /healthz`：进程存活。
-- `GET /readyz`：是否可接单；不表示当前有空闲并发。
+- `GET /readyz`：引擎是否健康、已准备且未关闭；当前容量和 QoS 接单门控另见状态接口及执行请求的 503 原因。
 - `POST /v1/execute`：鉴权、校验后同步执行。
 - `GET /v1/status`：鉴权后查看模式和预热池/队列状态，观察模式下还包含资源采样与有效性信息。
 - 并发默认 1，可配置为 1～4；cold 满载立即返回 503，warm 使用有数量、字节和等待时间上限的 FIFO 队列。

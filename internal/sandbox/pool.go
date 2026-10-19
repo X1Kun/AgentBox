@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -33,9 +34,11 @@ type warmPool struct {
 	ready   []*executionState
 	waiters []*poolWaiter
 
-	queuedBytes int
-	creating    int
-	executing   int
+	queuedBytes    int
+	creating       int
+	executing      int
+	pressurePaused bool
+	pressureEpoch  uint64
 
 	started             bool
 	initialized         bool
@@ -83,6 +86,7 @@ type poolTelemetry struct {
 	CreationSucceeded, CreationFailed, CreationAborted            metrics.Duration
 	QueueEntered                                                  uint64
 	QueueAssigned, QueueCanceled, QueueTimedOut, QueueUnavailable metrics.Duration
+	QueuePressureRejected                                         metrics.Duration
 	QueueCountFull, QueueBytesFull                                uint64
 }
 
@@ -117,7 +121,10 @@ func (p *warmPool) start(ctx context.Context) error {
 		p.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			p.mu.Lock()
+			err := fmt.Errorf("warm pool startup: %w (creating=%d, idle=%d, last_error=%q)", ctx.Err(), p.creating, len(p.ready), p.lastError)
+			p.mu.Unlock()
+			return err
 		case <-changed:
 		}
 		p.mu.Lock()
@@ -138,7 +145,7 @@ func (p *warmPool) refill() {
 			p.mu.Unlock()
 			return
 		}
-		if len(p.ready)+p.creating >= p.config.WarmPoolSize || len(p.items)+p.creating >= p.config.MaxSandboxes {
+		if p.pressurePaused || len(p.ready)+p.creating >= p.config.WarmPoolSize || len(p.items)+p.creating >= p.config.MaxSandboxes {
 			changed := p.changed
 			p.mu.Unlock()
 			select {
@@ -191,7 +198,7 @@ func (p *warmPool) refill() {
 			if cleanupErr == nil {
 				delete(p.items, instance)
 			} else {
-				p.failCleanupLocked(cleanupErr)
+				p.failCleanupLocked(errors.Join(err, cleanupErr))
 			}
 			p.signalLocked()
 			p.mu.Unlock()

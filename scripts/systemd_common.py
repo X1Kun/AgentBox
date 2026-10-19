@@ -10,7 +10,7 @@ def load_config(path):
     values = {"AGENTBOX_PLATFORM": "kvm", "AGENTBOX_LISTEN": "127.0.0.1:8080", "AGENTBOX_CONCURRENCY": "1", "AGENTBOX_MODE": "cold",
               "AGENTBOX_WARM_SIZE": "3", "AGENTBOX_MAX_SANDBOXES": "6", "AGENTBOX_CREATE_CONCURRENCY": "1",
               "AGENTBOX_QUEUE_SIZE": "16", "AGENTBOX_QUEUE_BYTES": "8388608", "AGENTBOX_QUEUE_TIMEOUT": "100ms", "AGENTBOX_QOS": "off", "AGENTBOX_QOS_INTERVAL": "100ms",
-              "AGENTBOX_QOS_PROTECTED_CGROUP": "none"}
+              "AGENTBOX_QOS_PROTECTED_CGROUP": "none", "AGENTBOX_QOS_CPU_CONTROL": "false", "AGENTBOX_QOS_SCHEDULING": "false"}
     allowed = {*values, "AGENTBOX_API_TOKEN"}
     seen = set()
     for line in path.read_text().splitlines():
@@ -45,12 +45,16 @@ def load_config(path):
     duration = re.fullmatch(r"([0-9]+)(ms|s)", values["AGENTBOX_QUEUE_TIMEOUT"])
     if not duration or not 1 <= int(duration[1]) * (1000 if duration[2] == "s" else 1) <= 5000:
         raise ValueError("queue timeout must be 1ms..5s")
-    if values["AGENTBOX_QOS"] not in ("off", "observe"):
-        raise ValueError("qos must be off or observe; enforcement is not implemented")
+    if values["AGENTBOX_QOS"] not in ("off", "observe", "enforce"):
+        raise ValueError("qos must be off, observe or enforce")
+    if any(values[key] not in ("true", "false") for key in ("AGENTBOX_QOS_CPU_CONTROL", "AGENTBOX_QOS_SCHEDULING")):
+        raise ValueError("QoS policy switches must be true or false")
+    if values["AGENTBOX_QOS"] == "off" and any(values[key] == "true" for key in ("AGENTBOX_QOS_CPU_CONTROL", "AGENTBOX_QOS_SCHEDULING")):
+        raise ValueError("QoS policies require observe or enforce mode")
     interval = re.fullmatch(r"([0-9]+)(ms|s)", values["AGENTBOX_QOS_INTERVAL"])
     if not interval or not 50 <= int(interval[1]) * (1000 if interval[2] == "s" else 1) <= 1000:
         raise ValueError("qos interval must be 50ms..1s")
-    if values["AGENTBOX_QOS"] == "observe":
+    if values["AGENTBOX_QOS"] != "off":
         protected = PurePosixPath(values["AGENTBOX_QOS_PROTECTED_CGROUP"])
         if ".." in protected.parts or not str(protected).startswith("/sys/fs/cgroup/"):
             raise ValueError("observe requires a protected cgroup below /sys/fs/cgroup")

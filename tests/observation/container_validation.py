@@ -122,7 +122,7 @@ def main():
         creations = sum(scheduling["creation_"+outcome]["count"] for outcome in ("succeeded", "failed", "aborted"))
         if scheduling["creation_attempts"] != creations+final_status["creating"]:
             raise RuntimeError("creation accounting does not conserve attempts")
-        outcomes = sum(scheduling["queue_"+outcome]["count"] for outcome in ("assigned", "canceled", "timed_out", "unavailable"))
+        outcomes = sum(scheduling["queue_"+outcome]["count"] for outcome in ("assigned", "canceled", "timed_out", "unavailable", "pressure_rejected"))
         if scheduling["queue_entered"] != outcomes+final_status["queued"]:
             raise RuntimeError("queue accounting does not conserve entrants")
         if final_status["qos"]["sequence"] <= initial_status["qos"]["sequence"]:

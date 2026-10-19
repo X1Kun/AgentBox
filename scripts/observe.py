@@ -231,13 +231,14 @@ def record(core_url, agent_url, token, output, duration=10, rate=20, sandbox_wor
     directory.mkdir(parents=True, exist_ok=True)
     core, agent = Client(core_url), Client(agent_url, token)
     code, initial = agent.request("/v1/status")
-    if code != 200 or initial.get("qos", {}).get("mode") != "observe":
-        raise ValueError("AgentBox must be running in observe mode")
+    if code != 200 or initial.get("qos", {}).get("mode") not in ("observe", "enforce"):
+        raise ValueError("AgentBox must be running in observe or enforce mode")
     phases = [run_phase("idle-pool", duration, rate, 0, core, agent, directory),
               run_phase("sandbox-load", duration, rate, sandbox_workers, core, agent, directory)]
     report = {"recorded_at": datetime.now(timezone.utc).isoformat(), "duration_seconds_per_phase": duration,
               "core_offered_per_second": rate, "sandbox_workers": sandbox_workers, "initial_status": initial, "phases": phases,
-              "scope": "observation only; idle-pool includes warm inventory and the observer; no quota changes or QoS benefit claims"}
+              "qos_mode": initial["qos"]["mode"],
+              "scope": "idle-pool includes warm inventory and observer; enforce may change CPU quota; functional recording without QoS benefit claims"}
     with (directory / "summary.json").open("x") as stream:
         json.dump(report, stream, indent=2)
         stream.write("\n")

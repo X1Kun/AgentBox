@@ -1,6 +1,6 @@
 # 固定 systemd 部署与验收
 
-固定 `agentbox.service` 支持 cold 和一次性 warm 模式，默认 cold。预热池配置与调度语义见 [预热池文档](warm-pool.md)；动态 QoS 与多节点尚未实现。
+固定 `agentbox.service` 支持 cold 和一次性 warm 模式，默认 cold。预热池配置与调度语义见 [预热池文档](warm-pool.md)，CPU 配额与压力准入/补池门控见 [QoS 调度](qos-scheduling.md)。动态库存和多节点仍待实现。
 
 ## 部署前提
 
@@ -44,7 +44,8 @@ sudo bash scripts/smoke-host.sh
 - `AGENTBOX_LISTEN`：显式 loopback IP 与端口，默认 `127.0.0.1:8080`。
 - `AGENTBOX_CONCURRENCY`：1～4，默认 1。
 - `AGENTBOX_MODE`：cold 或 warm，默认 cold；其余池容量与队列参数见 [配置表](warm-pool.md#配置)。
-- `AGENTBOX_QOS`：off 或 observe，默认 off；观察模式的周期与受保护 cgroup 路径见 [QoS 配置](qos-observation.md#模式与部署配置)。采集异常只影响观测报告，不改变执行就绪状态。
+- `AGENTBOX_QOS`：off、observe 或 enforce，默认 off。`AGENTBOX_QOS_CPU_CONTROL=true` 可在 observe 下预演，enforce 自动开启真实控制。两者均需显式受保护 cgroup 路径；采样与执行器失败行为见 [CPU QoS](cpu-qos.md)。
+- `AGENTBOX_QOS_SCHEDULING=true`：启用压力准入与补池门控，默认 false；observe 只报告建议，enforce 实际执行。当前是否接单应同时查看 `qos.scheduling.admission_open`。
 
 平台已经写入状态所有权，不能直接修改平台后复用旧状态。配置解析不执行 shell，不输出 token；smoke 脚本读取私有配置后在进程内构造 HTTP 请求，不通过命令行参数传递 token。
 
