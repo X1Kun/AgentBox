@@ -71,14 +71,15 @@ type Usage struct {
 }
 
 type Result struct {
-	ExecutionID     string  `json:"execution_id"`
-	RequestID       string  `json:"request_id,omitempty"`
-	Status          string  `json:"status"`
-	ExitCode        *int    `json:"exit_code,omitempty"`
-	Stdout          string  `json:"stdout"`
-	Stderr          string  `json:"stderr"`
-	OutputTruncated bool    `json:"output_truncated"`
-	Timings         Timings `json:"timings"`
-	Usage           Usage   `json:"usage"`
-	CleanupComplete bool    `json:"cleanup_complete"`
+	CleanupPhases   []CleanupPhase `json:"cleanup_phases,omitempty"`
+	ExecutionID     string         `json:"execution_id"`
+	RequestID       string         `json:"request_id,omitempty"`
+	Status          string         `json:"status"`
+	ExitCode        *int           `json:"exit_code,omitempty"`
+	Stdout          string         `json:"stdout"`
+	Stderr          string         `json:"stderr"`
+	OutputTruncated bool           `json:"output_truncated"`
+	Timings         Timings        `json:"timings"`
+	Usage           Usage          `json:"usage"`
+	CleanupComplete bool           `json:"cleanup_complete"`
 }

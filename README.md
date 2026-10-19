@@ -12,6 +12,16 @@
 
 已实现 QoS 观察模式：采集宿主、沙箱父级与受保护服务的 PSI/cgroup 数据，配套固定工作量 Mock Core 和 CSV/JSONL 记录器。默认关闭，观察模式不修改配额。配置、独立容器验收与数据口径见 [QoS 观察说明](docs/qos-observation.md)。
 
+观测补充覆盖 manager、可见祖先、低频 I/O/PID、分类创建与排队耗时、拒绝原因和清理阶段；已有实验可离线重算业务延迟与池供给图。新增字段及统计边界见 [观测链路说明](docs/observability.md)。
+
+如何从业务异常逐步定位到等待阶段、供给约束和资源争用，见[六阶段观测系统总览](docs/observability-system.md)。
+
+静态 CPU 对照实验比较无沙箱基线、默认配额和较低配额，记录核心服务延迟与固定沙箱任务完成率，并生成 PNG/SVG 图表。运行方式与统计口径见 [实验说明](docs/static-cpu-experiment.md)。
+
+三轮 KVM 对照已完成，实际结果、实验边界与失败批次排查见 [验收记录](docs/static-cpu-validation.md)。
+
+![静态 CPU 配额对照](docs/assets/static-cpu-comparison.png)
+
 ## 本地开发与检查
 
 需要 Linux、Go 1.25+。Go 代码只使用标准库。依赖准备和容器验收另需 Docker、curl、tar、bzip2、Python 3；KVM 验收还需可访问的 `/dev/kvm`。

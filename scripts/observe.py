@@ -48,11 +48,55 @@ def percentile(values, ratio):
     return sorted(values)[math.ceil(len(values)*ratio)-1] if values else None
 
 
-def run_phase(name, duration, rate, sandbox_workers, core, agent, directory):
+def sandbox_workload(kind):
+    if kind == "hog":
+        return {"kind": kind, "code": "while True: pass", "timeout_ms": 2000,
+                "expected_status": "timeout", "expected_stdout": None}
+    if kind != "fixed":
+        raise ValueError("sandbox workload must be hog or fixed")
+    iterations = 8_000_000
+    code = ("s = 1\n"
+            f"for _ in range({iterations}):\n    s = (1664525*s + 1013904223) & 0xffffffff\nprint(f'{{s:08x}}')")
+    return {"kind": kind, "iterations": iterations, "code": code, "timeout_ms": 20000,
+            "expected_status": "succeeded", "expected_stdout": "cd496201\n"}
+
+
+def core_metrics(rows):
+    successful = [r for r in rows if r["http_status"] == 200 and not r["error"]]
+    return {"core_offered": len(rows), "core_succeeded": len(successful),
+            "core_rejected": sum(r["http_status"] == 503 for r in rows),
+            "client_dropped": sum(r["client_drop"] for r in rows),
+            "core_errors": sum(not r["client_drop"] and (r["http_status"] not in (200, 503) or bool(r["error"])) for r in rows),
+            "success_wall_p50_ms": percentile([r["wall_ms"] for r in successful], .50),
+            "success_wall_p99_ms": percentile([r["wall_ms"] for r in successful], .99),
+            "success_scheduled_p50_ms": percentile([r["scheduled_wall_ms"] for r in successful], .50),
+            "success_scheduled_p99_ms": percentile([r["scheduled_wall_ms"] for r in successful], .99),
+            "send_lag_p99_ms": percentile([max(0, r["started_ms"]-r["scheduled_ms"]) for r in rows], .99)}
+
+
+def summarize_sandboxes(rows, workload, load_start, load_end):
+    successful = [r for r in rows if r["http_status"] == 200 and r["status"] == workload["expected_status"]
+                  and r["cleanup_complete"] and not r["error"]]
+    completed_in_window = sum(load_start*1000 <= r["finished_ms"] < load_end*1000 for r in successful)
+    return {"sandbox_requests": len(rows), "sandbox_completed": len(successful),
+            "sandbox_completed_timeouts": sum(r["status"] == "timeout" for r in successful),
+            "sandbox_completed_in_load_window": completed_in_window,
+            "sandbox_completions_per_second": completed_in_window/(load_end-load_start),
+            "sandbox_wall_p50_ms": percentile([r["wall_ms"] for r in successful], .50),
+            "sandbox_wall_p99_ms": percentile([r["wall_ms"] for r in successful], .99),
+            "sandbox_rejected": sum(r["http_status"] == 503 for r in rows),
+            "sandbox_errors": sum(r["http_status"] != 503 and r not in successful for r in rows)}
+
+
+def run_phase(name, duration, rate, sandbox_workers, core, agent, directory, *, workload=None, load_start=0, load_end=None):
+    workload = workload or sandbox_workload("hog")
+    load_end = duration if load_end is None else load_end
+    if not 0 <= load_start < load_end <= duration:
+        raise ValueError("load window must be inside the core request window")
     origin = time.monotonic()
     stop_sampling, stop_sandboxes = threading.Event(), threading.Event()
     core_rows, sandbox_rows, observation_errors = [], [], []
-    quality = {"frames": 0, "stale_frames": 0, "unavailable_frames": 0, "baseline_frames": 0}
+    quality = {"frames": 0, "usable_frames": 0, "stale_frames": 0, "unavailable_frames": 0, "baseline_frames": 0}
     row_lock = threading.Lock()
     # Bound queued + running client work; report client drops separately.
     permits = threading.BoundedSemaphore(32)
@@ -71,6 +115,8 @@ def run_phase(name, duration, rate, sandbox_workers, core, agent, directory):
                 else:
                     q = status["qos"]
                     quality["frames"] += 1
+                    quality["usable_frames"] += int(not q["stale"] and {"host", "sandboxes", "protected"}.issubset({s["name"] for s in q["sources"]})
+                                                    and all(s["available"] and s["interval_ms"] is not None for s in q["sources"]))
                     quality["stale_frames"] += int(q["stale"])
                     quality["unavailable_frames"] += int(any(not s["available"] for s in q["sources"]))
                     quality["baseline_frames"] += int(any(s["available"] and s["interval_ms"] is None for s in q["sources"]))
@@ -83,18 +129,31 @@ def run_phase(name, duration, rate, sandbox_workers, core, agent, directory):
 
     def execute_sandboxes(worker):
         sequence = 0
-        while not stop_sandboxes.is_set():
+        if stop_sandboxes.wait(max(0, origin+load_start-time.monotonic())):
+            return
+        while not stop_sandboxes.is_set() and time.monotonic() < origin+load_end:
             started = time.monotonic()
             row = {"worker": worker, "sequence": sequence, "started_ms": (started-origin)*1000}
             sequence += 1
             try:
-                code, result = agent.request("/v1/execute", {"runtime": "python", "code": "while True: pass",
-                    "timeout_ms": 2000, "request_id": f"observe-{worker}-{sequence}"})
+                code, result = agent.request("/v1/execute", {"runtime": "python", "code": workload["code"],
+                    "timeout_ms": workload["timeout_ms"], "request_id": f"{name}-{worker}-{sequence}"})
                 row.update(http_status=code, status=result.get("status", ""), execution_id=result.get("execution_id", ""),
-                           cleanup_complete=result.get("cleanup_complete", False), error="")
+                           cleanup_complete=result.get("cleanup_complete", False), error="",
+                           cpu_usec=result.get("usage", {}).get("cpu_usec", ""),
+                           execution_ms=result.get("timings", {}).get("execution_ms", ""))
+                row.update(rejection_reason=result.get("reason", ""), queue_ms=result.get("timings", {}).get("queue_ms", result.get("queue_ms", "")),
+                           setup_ms=result.get("timings", {}).get("setup_ms", ""), cleanup_ms=result.get("timings", {}).get("cleanup_ms", ""),
+                           total_ms=result.get("timings", {}).get("total_ms", ""), cleanup_phases_json=json.dumps(result["cleanup_phases"]) if "cleanup_phases" in result else "")
+                if code == 200 and workload["expected_stdout"] is not None and result.get("stdout") != workload["expected_stdout"]:
+                    row["error"] = "fixed sandbox workload checksum mismatch"
+                if code not in (200, 503) or (code == 200 and (row["status"] != workload["expected_status"] or not row["cleanup_complete"])):
+                    row["error"] = json.dumps(result)[:8192]
             except (OSError, ValueError, http.client.HTTPException) as error:
-                row.update(http_status=0, status="", execution_id="", cleanup_complete=False, error=str(error))
-            row["wall_ms"] = (time.monotonic()-started)*1000
+                row.update(http_status=0, status="", execution_id="", cleanup_complete=False, cpu_usec="", execution_ms="", error=str(error))
+                row.update(rejection_reason="",queue_ms="",setup_ms="",cleanup_ms="",total_ms="",cleanup_phases_json="")
+            finished = time.monotonic()
+            row.update(wall_ms=(finished-started)*1000, finished_ms=(finished-origin)*1000)
             with row_lock:
                 sandbox_rows.append(row)
             # Every iteration is a new workload request, never a retry of an
@@ -114,7 +173,8 @@ def run_phase(name, duration, rate, sandbox_workers, core, agent, directory):
         except (OSError, ValueError, http.client.HTTPException) as error:
             row.update(http_status=0, work_ms="", checksum="", iterations="", error=str(error))
         finally:
-            row["wall_ms"] = (time.monotonic()-started)*1000
+            finished = time.monotonic()
+            row.update(wall_ms=(finished-started)*1000, scheduled_wall_ms=(finished-scheduled)*1000)
             with row_lock:
                 core_rows.append(row)
             permits.release()
@@ -137,7 +197,8 @@ def run_phase(name, duration, rate, sandbox_workers, core, agent, directory):
                     with row_lock:
                         core_rows.append({"sequence": sequence, "scheduled_ms": (scheduled-origin)*1000,
                             "started_ms": (time.monotonic()-origin)*1000, "client_drop": True,
-                            "http_status": 0, "work_ms": "", "checksum": "", "iterations": "", "wall_ms": 0, "error": "client capacity exhausted"})
+                            "http_status": 0, "work_ms": "", "checksum": "", "iterations": "", "wall_ms": 0,
+                            "scheduled_wall_ms": "", "error": "client capacity exhausted"})
     finally:
         stop_sandboxes.set()
         for worker in workers:
@@ -146,23 +207,18 @@ def run_phase(name, duration, rate, sandbox_workers, core, agent, directory):
         sampler.join()
         observations.close()
     for filename, fields, rows in (
-        (f"{name}-core.csv", ["sequence", "scheduled_ms", "started_ms", "http_status", "client_drop", "wall_ms", "work_ms", "checksum", "iterations", "error"], sorted(core_rows, key=lambda r: r["sequence"])),
-        (f"{name}-sandboxes.csv", ["worker", "sequence", "started_ms", "wall_ms", "http_status", "status", "execution_id", "cleanup_complete", "error"], sandbox_rows),
+        (f"{name}-core.csv", ["sequence", "scheduled_ms", "started_ms", "http_status", "client_drop", "wall_ms", "scheduled_wall_ms", "work_ms", "checksum", "iterations", "error"], sorted(core_rows, key=lambda r: r["sequence"])),
+        (f"{name}-sandboxes.csv", ["worker", "sequence", "started_ms", "finished_ms", "wall_ms", "http_status", "status", "execution_id", "cleanup_complete", "cpu_usec", "execution_ms", "rejection_reason", "queue_ms", "setup_ms", "cleanup_ms", "total_ms", "cleanup_phases_json", "error"], sandbox_rows),
     ):
         with (directory / filename).open("x", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=fields)
             writer.writeheader()
             writer.writerows(rows)
-    latencies = [r["wall_ms"] for r in core_rows if r["http_status"] == 200 and not r["error"]]
-    return {"phase": name, "core_offered": len(core_rows), "core_succeeded": len(latencies),
-            "core_rejected": sum(r["http_status"] == 503 for r in core_rows),
-            "client_dropped": sum(r["client_drop"] for r in core_rows),
-            "core_errors": sum(not r["client_drop"] and (r["http_status"] not in (200, 503) or bool(r["error"])) for r in core_rows),
+    return {"phase": name, **core_metrics(core_rows),
+            "load_window": {"start_seconds": load_start, "end_seconds": load_end},
+            "load_window_core": core_metrics([r for r in core_rows if load_start*1000 <= r["scheduled_ms"] < load_end*1000]),
             "workload_checksums": sorted({r["checksum"] for r in core_rows if r["http_status"] == 200 and not r["error"]}),
-            "success_wall_p50_ms": percentile(latencies, .50), "success_wall_p99_ms": percentile(latencies, .99),
-            "sandbox_requests": len(sandbox_rows), "sandbox_completed_timeouts": sum(r["status"] == "timeout" and r["cleanup_complete"] for r in sandbox_rows),
-            "sandbox_rejected": sum(r["http_status"] == 503 for r in sandbox_rows),
-            "sandbox_errors": sum(r["http_status"] not in (200, 503) or (r["http_status"] == 200 and (r["status"] != "timeout" or not r["cleanup_complete"])) for r in sandbox_rows),
+            **summarize_sandboxes(sandbox_rows, workload, load_start, load_end),
             "observation_errors": len(observation_errors), "sample_quality": quality}
 
 

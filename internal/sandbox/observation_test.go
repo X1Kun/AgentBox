@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/X1Kun/AgentBox/internal/cgroup"
 	"github.com/X1Kun/AgentBox/internal/qos"
@@ -34,5 +35,18 @@ func TestObservationDistinguishesUnknownFromZero(t *testing.T) {
 	}
 	if (&Engine{}).observationReport() != nil {
 		t.Fatal("off mode must omit observation report")
+	}
+}
+
+func TestAuxiliaryStalenessAndUnsupportedAreExplicit(t *testing.T) {
+	a := qos.Auxiliary{At: time.Now(), IOAvailable: true, IO: qos.Pressure{HasFull: true}, IOValid: true, IOInterval: time.Second, PIDsAvailable: true, PIDDeltaValid: true}
+	r := auxiliaryReport(a, true, false)
+	if r.Stale || r.IO.Pressure.Some.StallPercent == nil || *r.IO.Pressure.Some.StallPercent != 0 || r.PIDs.LimitHitsDelta == nil || r.Devices.Available {
+		t.Fatalf("missing/zero conflated: %+v", r)
+	}
+	a.At = time.Now().Add(-4 * time.Second)
+	r = auxiliaryReport(a, true, false)
+	if !r.Stale || r.IO.Pressure.Some.StallPercent != nil || r.PIDs.LimitHitsDelta != nil {
+		t.Fatal("stale optional rates remained valid")
 	}
 }

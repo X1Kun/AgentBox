@@ -14,6 +14,8 @@ type Limit struct {
 }
 type Stats struct {
 	CPUUsageUsec        uint64
+	CPUUserUsec         uint64
+	CPUSystemUsec       uint64
 	CPUPeriods          uint64
 	CPUThrottledPeriods uint64
 	CPUThrottledUsec    uint64
@@ -33,7 +35,7 @@ type Stats struct {
 func ReadStats(read func(string) (string, error)) (Stats, error) {
 	var s Stats
 	for name, destinations := range map[string]map[string]*uint64{
-		"cpu.stat":      {"usage_usec": &s.CPUUsageUsec, "nr_periods": &s.CPUPeriods, "nr_throttled": &s.CPUThrottledPeriods, "throttled_usec": &s.CPUThrottledUsec},
+		"cpu.stat":      {"usage_usec": &s.CPUUsageUsec, "user_usec": &s.CPUUserUsec, "system_usec": &s.CPUSystemUsec, "nr_periods": &s.CPUPeriods, "nr_throttled": &s.CPUThrottledPeriods, "throttled_usec": &s.CPUThrottledUsec},
 		"memory.events": {"high": &s.MemoryHighEvents, "max": &s.MemoryMaxEvents, "oom": &s.OOMEvents, "oom_kill": &s.OOMKills},
 	} {
 		data, err := read(name)

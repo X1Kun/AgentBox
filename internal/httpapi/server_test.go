@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/X1Kun/AgentBox/internal/api"
 	"github.com/X1Kun/AgentBox/internal/sandbox"
@@ -93,5 +95,22 @@ func TestCapacityRejectedWithoutRetrying(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 503 || e.called != 1 || w.Header().Get("Retry-After") == "" {
 		t.Fatalf("unexpected admission result: %d calls=%d", w.Code, e.called)
+	}
+}
+
+func TestAdmissionResponseKeepsWaitAndCause(t *testing.T) {
+	e := &stub{err: &sandbox.AdmissionError{Reason: "queue_timeout", Cause: sandbox.ErrBusy, Queued: true, QueueWait: 25 * time.Millisecond}}
+	h := Handler(e, "token", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := httptest.NewRequest("POST", "/v1/execute", strings.NewReader(`{"runtime":"python","code":"1","request_id":"request-1"}`))
+	r.Header.Set("Authorization", "Bearer token")
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	var report api.UnavailableResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 503 || e.called != 1 || report.Reason != "queue_timeout" || report.QueueMS == nil || *report.QueueMS != 25 || report.RequestID != "request-1" {
+		t.Fatalf("admission report: %d %+v", w.Code, report)
 	}
 }

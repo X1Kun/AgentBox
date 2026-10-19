@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -12,8 +13,9 @@ import (
 )
 
 type Source struct {
-	Name, Path string
-	Cgroup     bool
+	Name, Path     string
+	Cgroup         bool
+	DiscoveryError string
 }
 type identity struct{ Device, Inode uint64 }
 type Reading struct {
@@ -22,14 +24,23 @@ type Reading struct {
 	CPU, Memory Pressure
 	Resources   cgroup.Stats
 	Identity    identity
+	Auxiliary   Auxiliary
 }
 
 type Reader interface{ Read(Source) (Reading, error) }
-type FileReader struct{}
+type FileReader struct {
+	mu        sync.Mutex
+	auxiliary map[string]cachedAuxiliary
+}
 
-func (FileReader) Read(source Source) (Reading, error) {
+func (r *FileReader) Read(source Source) (Reading, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	begin := time.Now()
 	var reading Reading
+	if source.DiscoveryError != "" {
+		return reading, fmt.Errorf("source discovery: %s", source.DiscoveryError)
+	}
 	before, err := os.Stat(source.Path)
 	if err != nil {
 		return reading, err
@@ -47,6 +58,15 @@ func (FileReader) Read(source Source) (Reading, error) {
 	if source.Cgroup {
 		cpuName, memoryName = "cpu.pressure", "memory.pressure"
 	}
+	previous := r.auxiliary[source.Path]
+	if previous.identity != reading.Identity || previous.reading.At.IsZero() || time.Since(previous.reading.At) >= auxiliaryInterval {
+		if r.auxiliary == nil {
+			r.auxiliary = make(map[string]cachedAuxiliary)
+		}
+		previous = cachedAuxiliary{reading.Identity, readAuxiliary(source, read, previous, reading.Identity)}
+		r.auxiliary[source.Path] = previous
+	}
+	reading.Auxiliary = cloneAuxiliary(previous.reading)
 	data, err := read(cpuName)
 	if err != nil {
 		return reading, err
@@ -77,6 +97,7 @@ func (FileReader) Read(source Source) (Reading, error) {
 		return reading, err
 	}
 	if !os.SameFile(before, after) {
+		delete(r.auxiliary, source.Path)
 		return reading, fmt.Errorf("source changed during collection")
 	}
 	reading.At = time.Now()

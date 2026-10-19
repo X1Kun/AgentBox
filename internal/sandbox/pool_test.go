@@ -89,7 +89,10 @@ func TestWarmPoolFIFOAndSingleUse(t *testing.T) {
 		t.Fatalf("instance reused: %+v", third)
 	}
 	p.release(third.instance, true)
-	waitPool(t, p, func(s poolSnapshot) bool { return s.Queued == 0 && s.QueuedBytes == 0 && s.Idle == 2 })
+	status := waitPool(t, p, func(s poolSnapshot) bool { return s.Queued == 0 && s.QueuedBytes == 0 && s.Idle == 2 })
+	if status.Telemetry.QueueEntered != 2 || status.Telemetry.QueueAssigned.Count != 2 || status.ExecutionInFlight != 0 {
+		t.Fatalf("assigned queue accounting: %+v", status)
+	}
 }
 
 func TestWarmPoolCancellationExpiryAndByteBound(t *testing.T) {
@@ -211,6 +214,9 @@ func TestWarmPoolStopsQueuedAndPartialCreation(t *testing.T) {
 	if destroyed.Load() != 1 || p.status().Total != 0 {
 		t.Fatalf("partial creation not destroyed: %+v", p.status())
 	}
+	if telemetry := p.status().Telemetry; telemetry.CreationAttempts != 1 || telemetry.CreationAborted.Count != 1 || telemetry.CreationFailed.Count != 0 {
+		t.Fatalf("stopped creation accounting: %+v", telemetry)
+	}
 	p2 := testPool(t, c)
 	first, err := p2.acquire(context.Background(), 1)
 	if err != nil {
@@ -221,6 +227,9 @@ func TestWarmPoolStopsQueuedAndPartialCreation(t *testing.T) {
 	p2.stop()
 	if err := <-done; !errors.Is(err, ErrUnhealthy) {
 		t.Fatalf("queued stop: %v", err)
+	}
+	if telemetry := p2.status().Telemetry; telemetry.QueueEntered != 1 || telemetry.QueueUnavailable.Count != 1 {
+		t.Fatalf("unavailable queue accounting: %+v", telemetry)
 	}
 	p2.release(first, true)
 }

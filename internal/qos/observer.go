@@ -47,6 +47,8 @@ type Delta struct {
 	MemorySomePercent   float64
 	MemoryFullPercent   float64
 	CPUUsageCores       float64
+	CPUUserCores        float64
+	CPUSystemCores      float64
 	CPUPeriods          uint64
 	CPUThrottledPeriods uint64
 	CPUThrottledUsec    uint64
@@ -64,6 +66,8 @@ type Observation struct {
 	Delta           Delta
 }
 type Snapshot struct {
+	Sequence      uint64
+	Boundary      HierarchyBoundary
 	State         string
 	Interval      time.Duration
 	CollectedAt   time.Time
@@ -72,6 +76,8 @@ type Snapshot struct {
 	Sources       []Observation
 }
 type Observer struct {
+	sequence        uint64
+	boundary        HierarchyBoundary
 	config          Config
 	reader          Reader
 	sources         []Source
@@ -100,8 +106,10 @@ func New(config Config, sandboxParent string) (*Observer, error) {
 	if protected == sandboxParent || strings.HasPrefix(protected, sandboxParent+"/") || strings.HasPrefix(sandboxParent, protected+"/") || !strings.HasPrefix(protected, "/sys/fs/cgroup/") {
 		return nil, fmt.Errorf("protected cgroup must be separate from sandbox subtree")
 	}
-	sources := []Source{{Name: "host", Path: "/proc/pressure"}, {Name: "sandboxes", Path: sandboxParent, Cgroup: true}, {Name: "protected", Path: protected, Cgroup: true}}
-	return newObserver(config, FileReader{}, sources), nil
+	sources, boundary := discoverSources(sandboxParent, protected)
+	o := newObserver(config, &FileReader{}, sources)
+	o.boundary = boundary
+	return o, nil
 }
 func newObserver(config Config, reader Reader, sources []Source) *Observer {
 	return &Observer{config: config, reader: reader, sources: sources, previous: make(map[string]Reading), snapshot: Snapshot{State: "starting", Interval: config.Interval}}
@@ -143,7 +151,8 @@ func (o *Observer) run(ctx context.Context) {
 	}
 }
 func (o *Observer) collect() Snapshot {
-	snapshot := Snapshot{State: "observing", Interval: o.config.Interval}
+	o.sequence++
+	snapshot := Snapshot{State: "observing", Interval: o.config.Interval, Sequence: o.sequence, Boundary: o.boundary}
 	for _, source := range o.sources {
 		observation := Observation{Source: source}
 		reading, err := o.reader.Read(source)
@@ -180,6 +189,9 @@ func (o *Observer) Snapshot() Snapshot {
 	defer o.mu.Unlock()
 	snapshot := o.snapshot
 	snapshot.Sources = append([]Observation(nil), snapshot.Sources...)
+	for i := range snapshot.Sources {
+		snapshot.Sources[i].Reading.Auxiliary = cloneAuxiliary(snapshot.Sources[i].Reading.Auxiliary)
+	}
 	if !snapshot.CollectedAt.IsZero() {
 		snapshot.Age = time.Since(snapshot.CollectedAt)
 	}
@@ -218,7 +230,7 @@ func countersReset(a, b Reading, group bool) bool {
 		return false
 	}
 	x, y := a.Resources, b.Resources
-	return y.CPUUsageUsec < x.CPUUsageUsec || y.CPUPeriods < x.CPUPeriods || y.CPUThrottledPeriods < x.CPUThrottledPeriods || y.CPUThrottledUsec < x.CPUThrottledUsec || y.MemoryHighEvents < x.MemoryHighEvents || y.MemoryMaxEvents < x.MemoryMaxEvents || y.OOMEvents < x.OOMEvents || y.OOMKills < x.OOMKills
+	return y.CPUUsageUsec < x.CPUUsageUsec || y.CPUUserUsec < x.CPUUserUsec || y.CPUSystemUsec < x.CPUSystemUsec || y.CPUPeriods < x.CPUPeriods || y.CPUThrottledPeriods < x.CPUThrottledPeriods || y.CPUThrottledUsec < x.CPUThrottledUsec || y.MemoryHighEvents < x.MemoryHighEvents || y.MemoryMaxEvents < x.MemoryMaxEvents || y.OOMEvents < x.OOMEvents || y.OOMKills < x.OOMKills
 }
 func derive(a, b Reading, group bool) Delta {
 	elapsed := b.At.Sub(a.At)
@@ -230,6 +242,8 @@ func derive(a, b Reading, group bool) Delta {
 	if group {
 		x, y := a.Resources, b.Resources
 		d.CPUUsageCores = float64(y.CPUUsageUsec-x.CPUUsageUsec) / us
+		d.CPUUserCores = float64(y.CPUUserUsec-x.CPUUserUsec) / us
+		d.CPUSystemCores = float64(y.CPUSystemUsec-x.CPUSystemUsec) / us
 		d.CPUPeriods = y.CPUPeriods - x.CPUPeriods
 		d.CPUThrottledPeriods = y.CPUThrottledPeriods - x.CPUThrottledPeriods
 		d.CPUThrottledUsec = y.CPUThrottledUsec - x.CPUThrottledUsec

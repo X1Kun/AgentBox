@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/X1Kun/AgentBox/internal/api"
 	"github.com/X1Kun/AgentBox/internal/sandbox"
@@ -78,7 +79,20 @@ func Handler(executor Executor, token string, logger *slog.Logger) http.Handler 
 		result, err := executor.Execute(r.Context(), request)
 		if errors.Is(err, sandbox.ErrBusy) || errors.Is(err, sandbox.ErrUnhealthy) {
 			w.Header().Set("Retry-After", "1")
-			send(w, 503, map[string]string{"error": "executor unavailable"})
+			report := api.UnavailableResponse{Error: "executor unavailable", Reason: "executor_unhealthy", RequestID: request.RequestID}
+			if errors.Is(err, sandbox.ErrBusy) {
+				report.Reason = "capacity_exhausted"
+			}
+			var admission *sandbox.AdmissionError
+			if errors.As(err, &admission) {
+				report.Reason = admission.Reason
+				if admission.Queued {
+					elapsed := float64(admission.QueueWait) / float64(time.Millisecond)
+					report.QueueMS = &elapsed
+				}
+			}
+			logger.Info("execution rejected", "request_id", request.RequestID, "reason", report.Reason, "queue_ms", report.QueueMS)
+			send(w, 503, report)
 			return
 		}
 		if err != nil {

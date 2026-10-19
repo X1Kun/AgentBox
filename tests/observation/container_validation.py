@@ -1,5 +1,6 @@
 """Observe real runsc and a separate core cgroup in a disposable container."""
 
+import csv
 import hashlib
 import json
 import os
@@ -34,8 +35,11 @@ def main():
     root = Path("/sys/fs/cgroup")
     if not Path("/.dockerenv").exists() or Path("/proc/self/cgroup").read_text().strip() != "0::/":
         raise RuntimeError("requires disposable container with private cgroup namespace")
+    if os.getpid()==1 or Path("/proc/1/comm").read_text().strip() not in ("docker-init","tini"):
+        raise RuntimeError("requires Docker --init")
     manager = root / "observer-controller"
     manager.mkdir()
+    (manager / "cgroup.procs").write_text("1")
     (manager / "cgroup.procs").write_text(str(os.getpid()))
     (root / "cgroup.subtree_control").write_text("+cpu +memory +pids")
     lab = root / "observation"
@@ -81,11 +85,18 @@ def main():
                          "-qos=observe", "-qos-interval=100ms", "-qos-protected-cgroup="+str(core_group)], engine_group, "agentbox", daemon_env)
         client, core_client = Client("http://127.0.0.1:8080", token), Client("http://127.0.0.1:8081")
         def observed():
+            if daemon.poll() is not None:
+                raise RuntimeError("daemon exited during startup; inspect agentbox.log")
             code, status = client.request("/v1/status")
             q = status.get("qos", {})
             return code == 200 and status["ready"] and status["idle"] == 3 and q.get("state") == "observing" and not q["stale"] and all(s["available"] and s["interval_ms"] is not None for s in q["sources"])
         wait_until(lambda: core_client.request("/healthz")[0] == 200, "core readiness")
-        wait_until(observed, "three valid observation sources")
+        wait_until(observed, "valid observation sources and warm inventory")
+        _, initial_status = client.request("/v1/status")
+        (output/"initial-status.json").write_text(json.dumps(initial_status, indent=2)+"\n")
+        sources = initial_status["qos"]["sources"]
+        if not any(s["name"]=="manager" for s in sources) or not any(s["name"].startswith("ancestor_") for s in sources):
+            raise RuntimeError("management or ancestor scope missing")
         sandbox_parent = engine_group / "sandboxes"
         before = {"sandboxes": limits(sandbox_parent), "protected": limits(core_group)}
         report = record("http://127.0.0.1:8081", "http://127.0.0.1:8080", token, output, duration=5, rate=20, sandbox_workers=2)
@@ -99,6 +110,23 @@ def main():
             raise RuntimeError("core workload was not consistent between phases")
         if report["phases"][1]["sandbox_completed_timeouts"] == 0:
             raise RuntimeError("sandbox load did not execute")
+        with (output/"sandbox-load-sandboxes.csv").open() as stream:
+            tasks = list(csv.DictReader(stream))
+        successful_responses = [row for row in tasks if row["http_status"]=="200"]
+        expected_phases = ["runtime_delete", "cgroup_kill", "cgroup_empty_and_remove", "output_readers", "bundle_remove"]
+        if not successful_responses or any([p["phase"] for p in json.loads(row.get("cleanup_phases_json") or "[]")] != expected_phases for row in successful_responses):
+            raise RuntimeError("task cleanup phases missing or reordered")
+        _, final_status = client.request("/v1/status")
+        (output/"post-load-status.json").write_text(json.dumps(final_status, indent=2)+"\n")
+        scheduling = final_status["scheduling"]
+        creations = sum(scheduling["creation_"+outcome]["count"] for outcome in ("succeeded", "failed", "aborted"))
+        if scheduling["creation_attempts"] != creations+final_status["creating"]:
+            raise RuntimeError("creation accounting does not conserve attempts")
+        outcomes = sum(scheduling["queue_"+outcome]["count"] for outcome in ("assigned", "canceled", "timed_out", "unavailable"))
+        if scheduling["queue_entered"] != outcomes+final_status["queued"]:
+            raise RuntimeError("queue accounting does not conserve entrants")
+        if final_status["qos"]["sequence"] <= initial_status["qos"]["sequence"]:
+            raise RuntimeError("collector sequence did not advance")
         # Missing protected service is an observation error, not zero pressure
         # and not a reason for observe mode to stop accepting sandbox work.
         stop(core)
@@ -121,7 +149,7 @@ def main():
                     "outer_limits": {name: (root / name).read_text().strip() for name in ("cpu.max", "memory.max")},
                     "binary_sha256": hashlib.sha256(Path("/workspace/bin/agentboxd").read_bytes()).hexdigest(),
                     "mockcore_sha256": hashlib.sha256(Path("/workspace/bin/mockcore").read_bytes()).hexdigest(),
-                    "checks": ["valid-sources", "core-load-recorded", "sandbox-load-executed", "limits-unchanged", "missing-source-not-zero", "source-recreated", "clean-shutdown"]}
+                    "checks": ["valid-sources", "manager-and-ancestors", "cleanup-phase-traces", "scheduling-accounting", "sample-sequence", "core-load-recorded", "sandbox-load-executed", "limits-unchanged", "missing-source-not-zero", "source-recreated", "clean-shutdown"]}
         (output / "validation.json").write_text(json.dumps(evidence, indent=2)+"\n")
         print(json.dumps(evidence, indent=2))
     finally:

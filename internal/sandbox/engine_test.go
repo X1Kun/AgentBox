@@ -22,7 +22,7 @@ func TestStatusReportPreservesPublicFieldsAndReadiness(t *testing.T) {
 	p.items[&executionState{id: "leased"}] = poolLeased
 	p.items[&executionState{id: "running"}] = poolRunning
 	p.items[&executionState{id: "destroying"}] = poolDestroying
-	p.waiters = []*poolWaiter{{bytes: 100}, {bytes: 200}}
+	p.waiters = []*poolWaiter{{bytes: 100, enteredAt: time.Now()}, {bytes: 200, enteredAt: time.Now()}}
 	p.queuedBytes = 300
 	p.creationCount = 17
 	p.creationFailures = 2
@@ -41,6 +41,10 @@ func TestStatusReportPreservesPublicFieldsAndReadiness(t *testing.T) {
 	if err := json.Unmarshal([]byte(expected), &want); err != nil {
 		t.Fatal(err)
 	}
+	if got["scheduling"] == nil {
+		t.Fatal("missing scheduling telemetry")
+	}
+	delete(got, "scheduling")
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("status contract changed: %s", data)
 	}
