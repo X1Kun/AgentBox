@@ -9,8 +9,9 @@ import (
 // Queue membership, instance ownership and execution permits share the pool
 // mutex, so a dispatch cannot consume only one of the two required resources.
 type poolWaiter struct {
-	bytes     int
-	enteredAt time.Time
+	pressureEpoch uint64
+	bytes         int
+	enteredAt     time.Time
 }
 
 func (p *warmPool) takeLocked() *executionState {
@@ -34,6 +35,9 @@ func (p *warmPool) acquire(ctx context.Context, bytes int) (_ *executionState, r
 	if !p.initialized || p.failed || p.stopped {
 		return nil, admissionError("executor_unhealthy", ErrUnhealthy)
 	}
+	if p.pressurePaused {
+		return nil, admissionError("qos_pressure", ErrPressure)
+	}
 	if len(p.waiters) == 0 && len(p.ready) > 0 && p.executing < p.config.Concurrency {
 		return p.takeLocked(), nil
 	}
@@ -45,7 +49,7 @@ func (p *warmPool) acquire(ctx context.Context, bytes int) (_ *executionState, r
 		p.telemetry.QueueBytesFull++
 		return nil, admissionError("queue_bytes_full", ErrBusy)
 	}
-	waiter := &poolWaiter{bytes: bytes, enteredAt: time.Now()}
+	waiter := &poolWaiter{bytes: bytes, enteredAt: time.Now(), pressureEpoch: p.pressureEpoch}
 	p.telemetry.QueueEntered++
 	p.waiters = append(p.waiters, waiter)
 	p.queuedBytes += bytes
@@ -59,6 +63,8 @@ func (p *warmPool) acquire(ctx context.Context, bytes int) (_ *executionState, r
 			p.telemetry.QueueCanceled.Record(elapsed)
 		case errors.Is(retErr, ErrUnhealthy):
 			p.telemetry.QueueUnavailable.Record(elapsed)
+		case errors.Is(retErr, ErrPressure):
+			p.telemetry.QueuePressureRejected.Record(elapsed)
 		default:
 			p.telemetry.QueueTimedOut.Record(elapsed)
 		}
@@ -84,6 +90,9 @@ func (p *warmPool) acquire(ctx context.Context, bytes int) (_ *executionState, r
 		}
 		if p.failed || p.stopped {
 			return nil, admissionError("executor_unhealthy", ErrUnhealthy)
+		}
+		if p.pressurePaused || waiter.pressureEpoch != p.pressureEpoch {
+			return nil, admissionError("qos_pressure", ErrPressure)
 		}
 		if !time.Now().Before(deadline) {
 			return nil, admissionError("queue_timeout", ErrBusy)

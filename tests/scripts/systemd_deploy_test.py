@@ -180,6 +180,25 @@ class ToolTests(unittest.TestCase):
                 with self.subTest(extra=extra), self.assertRaises(ValueError):
                     load_config(config)
 
+    def test_cpu_control_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)/"config"
+            for mode in ("observe", "enforce"):
+                config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_QOS="+mode+"\nAGENTBOX_QOS_CPU_CONTROL=true\nAGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/core\n")
+                self.assertEqual(load_config(config)["AGENTBOX_QOS"],mode)
+            config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_QOS_CPU_CONTROL=true\n")
+            with self.assertRaises(ValueError):load_config(config)
+
+    def test_pressure_scheduling_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config=Path(directory)/"config"
+            for mode in ("observe","enforce"):
+                config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_QOS="+mode+"\nAGENTBOX_QOS_SCHEDULING=true\nAGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/core\n")
+                self.assertEqual(load_config(config)["AGENTBOX_QOS_SCHEDULING"],"true")
+            for mode,enabled in (("off","true"),("observe","yes")):
+                config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_QOS="+mode+"\nAGENTBOX_QOS_SCHEDULING="+enabled+"\nAGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/core\n")
+                with self.assertRaises(ValueError):load_config(config)
+
     def test_evidence_contains_versions_and_limits_but_no_token(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

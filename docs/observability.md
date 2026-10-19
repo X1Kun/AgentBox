@@ -4,6 +4,8 @@
 
 检查结果、只读真实内核采集及 KVM 短测未通过的记录见[验收记录](observability-validation.md)。
 
+本页描述只读观测层。后续 CPU QoS 初版已提供预算预演与显式 enforce，实际控制配置和功能验收见 [CPU QoS](cpu-qos.md)。
+
 按业务结果、时间、供给、资源、生命周期和对照验证组织的六阶段诊断流程见[观测系统总览](observability-system.md)。
 
 ## 1. 资源范围与采样边界
@@ -55,7 +57,7 @@ warm 模式的状态增加 `scheduling`，同时保留原有池字段。
 
 ```text
 creation_attempts = succeeded.count + failed.count + aborted.count + creating
-queue_entered = assigned.count + canceled.count + timed_out.count + unavailable.count + queued
+queue_entered = assigned.count + canceled.count + timed_out.count + unavailable.count + pressure_rejected.count + queued
 ```
 
 这些计数在进程生命周期内累计，重启归零。创建 worker 的尝试耗时不含两次失败之间的退避，因此不能用 `并发 / 单次均值` 直接宣称持续供给能力。成功创建计数的窗口差分也只是该窗口的观测创建率，不是最大容量；窗口两端的在途实例、初始库存和 drain 会让它与窗口完成率不同。

@@ -13,8 +13,17 @@ func (e *Engine) observationReport() *api.QoSReport {
 		return nil
 	}
 	snapshot := e.observer.Snapshot()
-	report := &api.QoSReport{Mode: "observe", State: snapshot.State, IntervalMS: ms(snapshot.Interval), AgeMS: ms(snapshot.Age), CollectionMS: ms(snapshot.Duration), Stale: snapshot.Stale, Sources: make([]api.ResourceObservation, 0, len(snapshot.Sources))}
+	var pressure *api.PressureStateReport
+	if p := snapshot.Pressure; p != nil {
+		pressure = &api.PressureStateReport{State: p.State, EffectiveState: p.EffectiveState, Reason: p.Reason, SuggestedAdmissionOpen: p.AdmissionOpen, SuggestedRefillPaused: p.RefillPaused, SampleSequence: p.Sequence, EvaluatedAt: p.At.UTC().Format(time.RFC3339Nano)}
+	}
+	report := &api.QoSReport{Mode: e.config.QoS.Mode, State: snapshot.State, IntervalMS: ms(snapshot.Interval), AgeMS: ms(snapshot.Age), CollectionMS: ms(snapshot.Duration), Stale: snapshot.Stale, Sources: make([]api.ResourceObservation, 0, len(snapshot.Sources))}
+	if c := snapshot.Control; c != nil {
+		report.CPUControl = &api.CPUControlReport{State: c.State, Reason: c.Reason, Action: c.Action, SampleSequence: c.Sequence, ActualCPU: c.ActualCPU, SuggestedCPU: c.SuggestedCPU, Applied: c.Applied, Decisions: c.Decisions, Changes: c.Changes, WriteFailures: c.WriteFailures, Error: c.Error, EvaluatedAt: c.At.UTC().Format(time.RFC3339Nano), MinCPU: c.Config.MinCPU, MaxCPU: c.Config.MaxCPU, LowPressure: c.Config.LowPressure, HighPressure: c.Config.HighPressure, DecisionIntervalMS: ms(c.Config.DecisionInterval)}
+		report.CPUControl.StableForMS, report.CPUControl.DecreaseFactor, report.CPUControl.IncreaseCPUPerSecond = ms(c.Config.StableFor), c.Config.DecreaseFactor, c.Config.IncreaseCPUPerSecond
+	}
 	report.Sequence, report.HierarchyBoundary, report.HierarchyBoundaryReason = snapshot.Sequence, snapshot.Boundary.Path, snapshot.Boundary.Reason
+	report.Pressure, report.Scheduling = pressure, e.qosSchedulingReport()
 	if !snapshot.CollectedAt.IsZero() {
 		report.CollectedAt = snapshot.CollectedAt.UTC().Format(time.RFC3339Nano)
 	}

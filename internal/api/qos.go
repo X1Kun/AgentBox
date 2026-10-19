@@ -1,8 +1,11 @@
 package api
 
-// QoSReport is observation-only. Missing/invalid rates remain null; they must
-// not be interpreted as zero pressure. Observation failures do not stop tasks.
+// QoSReport contains observations and optional bounded CPU control decisions.
+// Invalid rates remain null. Sampling errors do not by themselves stop tasks.
 type QoSReport struct {
+	Pressure                *PressureStateReport  `json:"pressure,omitempty"`
+	Scheduling              *QoSSchedulingReport  `json:"scheduling,omitempty"`
+	CPUControl              *CPUControlReport     `json:"cpu_control,omitempty"`
 	Sequence                uint64                `json:"sequence"`
 	HierarchyBoundary       string                `json:"hierarchy_boundary"`
 	HierarchyBoundaryReason string                `json:"hierarchy_boundary_reason"`

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,42 @@ type runscCLI struct {
 	binaryPath string
 	stateDir   string // runsc metadata directory, passed as --root.
 	platform   string
+	logger     *slog.Logger
+}
+
+// Only operator-controlled operation names and IDs are logged. Command args,
+// environment, user input and guest stdout/stderr are never logged here.
+func (r runscCLI) runControl(ctx context.Context, cmd *exec.Cmd, operation, id string) (retErr error) {
+	start := time.Now()
+	log := r.logger
+	if log != nil {
+		log.Info("runtime operation started", "operation", operation, "sandbox_id", id)
+	}
+	defer func() {
+		if log == nil {
+			return
+		}
+		fields := []any{"operation", operation, "sandbox_id", id, "elapsed_ms", ms(time.Since(start))}
+		if cmd.Process != nil {
+			fields = append(fields, "pid", cmd.Process.Pid)
+		}
+		if retErr != nil {
+			fields = append(fields, "error", retErr.Error())
+			if ctx.Err() != nil {
+				fields = append(fields, "context_error", ctx.Err().Error())
+			}
+			log.Error("runtime operation failed", fields...)
+		} else {
+			log.Info("runtime operation completed", fields...)
+		}
+	}()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if log != nil {
+		log.Info("runtime process started", "operation", operation, "sandbox_id", id, "pid", cmd.Process.Pid)
+	}
+	return cmd.Wait()
 }
 
 func (r runscCLI) command(ctx context.Context, args ...string) *exec.Cmd {
@@ -34,7 +71,7 @@ func (r runscCLI) control(ctx context.Context, args ...string) ([]byte, error) {
 	collector := newOutputCollector(64 << 10)
 	cmd := r.command(ctx, args...)
 	cmd.Stdout, cmd.Stderr = collector.writer(false), collector.writer(true)
-	err := cmd.Run()
+	err := r.runControl(ctx, cmd, args[0], args[len(args)-1])
 	out, stderr, limitExceeded := collector.result()
 	if err != nil {
 		return nil, fmt.Errorf("runsc %s: %w: %s", args[0], err, strings.TrimSpace(stderr))
@@ -121,8 +158,8 @@ func (s *session) create(ctx context.Context, bundle string) error {
 	// Files are passed directly, so create.Wait does not wait for sandbox-held
 	// stdout/stderr to close. Stream draining belongs to this session.
 	cmd.Stdout, cmd.Stderr = s.writers[0], s.writers[1]
-	if err := cmd.Run(); err != nil {
-		return err
+	if err := s.runtime.runControl(setupCtx, cmd, "create", s.id); err != nil {
+		return fmt.Errorf("runsc create: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return err

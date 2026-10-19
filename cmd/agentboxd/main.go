@@ -44,9 +44,19 @@ func run() (retErr error) {
 	flag.IntVar(&c.QueueSize, "queue-size", 16, "maximum waiting warm requests")
 	flag.IntVar(&c.QueueBytes, "queue-bytes", 8<<20, "maximum queued request payload bytes")
 	flag.DurationVar(&c.QueueTimeout, "queue-timeout", 100*time.Millisecond, "maximum warm queue wait, 1ms to 5s")
-	flag.StringVar(&c.QoS.Mode, "qos", "off", "resource observation: off or observe (no enforcement)")
+	flag.StringVar(&c.QoS.Mode, "qos", "off", "QoS mode: off, observe or enforce")
+	flag.BoolVar(&c.QoS.CPUControl, "qos-cpu-control", false, "preview AIMD in observe mode; automatic in enforce mode")
+	flag.BoolVar(&c.QoS.Scheduling, "qos-scheduling", false, "preview or enforce pressure admission and refill gates")
+	flag.Float64Var(&c.QoS.CPU.MinCPU, "qos-min-cpu", .5, "minimum sandbox CPU bandwidth")
+	flag.Float64Var(&c.QoS.CPU.MaxCPU, "qos-max-cpu", 4, "maximum sandbox CPU bandwidth, at most 4")
+	flag.Float64Var(&c.QoS.CPU.LowPressure, "qos-cpu-low", 10, "CPU PSI recovery threshold in percent")
+	flag.Float64Var(&c.QoS.CPU.HighPressure, "qos-cpu-high", 20, "CPU PSI suppression threshold in percent")
+	flag.DurationVar(&c.QoS.CPU.DecisionInterval, "qos-control-interval", time.Second, "minimum CPU action interval and pressure confirmation duration")
+	flag.DurationVar(&c.QoS.CPU.StableFor, "qos-stable-for", 2*time.Second, "continuous low pressure duration before recovery")
+	flag.Float64Var(&c.QoS.CPU.DecreaseFactor, "qos-decrease-factor", .8, "AIMD multiplier, at least 0.5 and below 1")
+	flag.Float64Var(&c.QoS.CPU.IncreaseCPUPerSecond, "qos-increase-cpu", .25, "maximum additive CPU recovery rate per second")
 	flag.DurationVar(&c.QoS.Interval, "qos-interval", 100*time.Millisecond, "observation interval, 50ms to 1s")
-	flag.StringVar(&c.QoS.ProtectedCgroup, "qos-protected-cgroup", "none", "absolute protected cgroup path; required in observe mode")
+	flag.StringVar(&c.QoS.ProtectedCgroup, "qos-protected-cgroup", "none", "absolute protected cgroup path; required in observe/enforce mode")
 	flag.StringVar(&address, "listen", "127.0.0.1:8080", "loopback HTTP address")
 	flag.BoolVar(&inspect, "doctor", false, "print read-only environment report and exit")
 	flag.Parse()
@@ -71,6 +81,7 @@ func run() (retErr error) {
 		return fmt.Errorf("AGENTBOX_API_TOKEN must contain at least 32 characters")
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	c.Logger = logger
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	engine, err := sandbox.New(c)
@@ -79,11 +90,15 @@ func run() (retErr error) {
 	}
 	defer func() { retErr = errors.Join(retErr, engine.Close()) }()
 	startupCtx, startupCancel := context.WithTimeout(ctx, 20*time.Second)
+	logger.Info("engine startup started", "mode", c.Mode, "platform", c.Platform)
+	startupStarted := time.Now()
 	err = engine.Start(startupCtx)
 	startupCancel()
 	if err != nil {
+		logger.Error("engine startup failed", "elapsed_ms", float64(time.Since(startupStarted))/float64(time.Millisecond), "error", err)
 		return err
 	}
+	logger.Info("engine startup completed", "elapsed_ms", float64(time.Since(startupStarted))/float64(time.Millisecond))
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return err

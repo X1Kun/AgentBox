@@ -21,6 +21,23 @@ type stub struct {
 	request api.Request
 }
 
+func TestPressureRejectionIsCapacityResponse(t *testing.T) {
+	e := &stub{err: &sandbox.AdmissionError{Reason: "qos_pressure", Cause: sandbox.ErrPressure, Queued: true, QueueWait: 20 * time.Millisecond}}
+	h := Handler(e, "token", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := httptest.NewRequest("POST", "/v1/execute", strings.NewReader(`{"runtime":"python","code":"1"}`))
+	r.Header.Set("Authorization", "Bearer token")
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	var report api.UnavailableResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 503 || report.Reason != "qos_pressure" || report.QueueMS == nil || *report.QueueMS != 20 || e.called != 1 {
+		t.Fatalf("pressure mapping: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func (s *stub) Ready() bool { return true }
 func (s *stub) Status() api.StatusReport {
 	return api.StatusReport{Mode: "warm", Idle: 3, Total: 3, Ready: true}
