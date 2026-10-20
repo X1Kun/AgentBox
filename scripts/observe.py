@@ -110,7 +110,7 @@ def run_phase(name, duration, rate, sandbox_workers, core, agent, directory, *, 
                 record.update(http_status=code, status=status)
                 if code != 200:
                     observation_errors.append("HTTP "+str(code))
-                elif status.get("qos", {}).get("mode") != "observe":
+                elif status.get("qos", {}).get("mode") not in ("observe", "enforce"):
                     observation_errors.append("observation report missing")
                 else:
                     q = status["qos"]

@@ -8,11 +8,13 @@ Brendan Gregg, *Systems Performance: Enterprise and the Cloud*, 2nd edition, Add
 
 - 本地文件：[Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf](../../Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf)。
 - 共 929 个 PDF 页面；正文印刷页 1 对应 PDF 第 40 页。本次所引正文使用 `PDF 页 = 印刷页 + 39`，已对照正文页首/页尾核实。
-- 先读目录，再按目录选读正文 79 页（约占文件页数 8.5%）；没有通读全书。引用所用页包含跨页上下文，部分同页非相关段落不作为论据。
+- 首次整理先读目录，再选读正文 79 页（约占文件页数 8.5%）；2026-10-20 的动态库存复核追加以下八页引用。没有通读全书。引用所用页包含跨页上下文，部分同页非相关段落不作为论据。
 - 引文仅保留便于核查的短句/短语；原理说明为中文转述。公式在正文区分书中模型和针对本项目的推导。
 - PDF SHA-256：`18bc406ccb9c71ac3fedb016df8b0c85ccf55d7d86f724c3abb3ddb05a823e17`。
 
 选读印刷页：23–24、33–35、44–45、47–54、56–57、64–69、74–77、167、173、177–180、189–194、225–227、309–310、324、330–331、585、613–624、631–633、643–650、657–659、662–666。
+
+2026-10-20 新增引用页：72–73、317–318、321–322、582–583；用于[动态库存理论复核](dynamic-inventory-theory.md)。本轮重核 PDF SHA-256 与原记录一致。
 
 ## 书中依据
 
@@ -313,6 +315,32 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 
 采样有分辨率；预热库存只能类比提前准备成本，不等同于可重复命中的结果缓存。
 
+<a id="b28"></a>
+
+### B28 · §2.7.3、§11.1.3：动态规模与过量供给
+
+印刷页：72–73、582–583；PDF 页：111–112、621–622。
+[打开扩缩容页](../../Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf#page=111)、[打开风险讨论页](../../Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf#page=622)。
+
+书中讨论按性能指标调整服务实例数，同时指出异常流量、应用回归等可能造成过量供给，需要监控增量是否合理。它支持动态资源管理的方向，不证明 AgentBox 的触发指标合理；READY 库存增加也不等同于服务实例并行度增加。本项为中文转述，无新增逐字引文。
+
+<a id="b29"></a>
+
+### B29 · §7.3.2、§7.3.3：空闲资源、回收、滞回和对象分配
+
+印刷页：317–318、321–322；PDF 页：356–357、360–361。
+[打开空闲列表页](../../Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf#page=356)、[打开滞回页](../../Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf#page=357)、[打开 slab 页](../../Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf#page=360)。
+
+空闲列表便于快速分配，回收可将空闲缓存归还系统；书中以双水位讨论滞回，并介绍 slab 对象缓存及局部库存。用于 AgentBox 时只类比提前准备、保留与回收的取舍；一次性沙箱不能复用已执行实例，时间滞回也不是照搬内存水位算法，不提供 30 秒参数或稳定性证明。本项为中文转述。
+
+<a id="b30"></a>
+
+### B30 · §2.8.1：基于观测和对照量化收益
+
+印刷页：73；PDF 页：112。[打开原文页](../../Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf#page=112)。
+
+书中允许依据可靠观测分解耗时并估计局部收益，也可通过前后对照量化；需区分请求同步路径与后台异步事件。理论模型给出条件化判断，功能测试不能代替收益比较；并不要求先完成大规模实验才能继续开发。本项为中文转述。
+
 ## 项目代码依据
 
 审查时 HEAD 为 `d4ccb8def4e65b019e4cfc1d21606ab21726e81c`，工作区另含静态 CPU 实验未提交改动。链接行号仅定位本次版本，以函数名为稳定检索依据。
@@ -418,6 +446,15 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 
 - [tests/benchmarks/latency_test.go:177](../tests/benchmarks/latency_test.go#L177)：`func TestColdWarmHTTPBenchmark`。
 
+<a id="c13"></a>
+
+### C13 · 2026-10-20 当前动态库存与触发路径
+
+- [internal/sandbox/inventory.go](../internal/sandbox/inventory.go)：当前 v2 的 `adjustInventoryLocked`、`reserveSurplusLocked`；[inventory_policy.go](../internal/sandbox/inventory_policy.go) 提供纯策略与推荐最大值。
+- [internal/sandbox/scheduler.go](../internal/sandbox/scheduler.go)：当前 `observeWaiterLocked` 只确认真实库存阻塞，已移除 v1 的普通领取/任意入队 Demand。
+- [docs/dynamic-inventory.md](dynamic-inventory.md)：当前配置、功能验证及理论复核边界。
+- 上述代码针对 `cc2d381` 加动态库存 diff，与此前 C01–C12 的历史版本区分；E04 保留的是修正前 v1 的源码哈希与反例，不对应当前 v2 源码。
+
 ## 实验及本次重算依据
 
 <a id="e01"></a>
@@ -443,6 +480,14 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 - 从既有 `artifacts/static-kvm-XCmQHtIX/rN-*-core.csv` 重算；每组只选计划发送时刻在 `[5000,65000)` ms、HTTP 200 且 error 为空的 1,200 行。
 - 每列独立使用 nearest-rank P99：排序后取第 `ceil(0.99*n)` 项，不对各列 P99 做相加或相减归因。
 - 阶段耗时中位数来自 E01 已记录的日志分析，本次没有把不同阶段的中位数相加。
+
+<a id="e04"></a>
+
+### E04 · 2026-10-20 动态库存理论复核
+
+- [分析正文](dynamic-inventory-theory.md)、[来源哈希、历史数据重算与反例检查源码](data/dynamic-inventory-theory-evidence.json)。
+- 在 `/tmp` 源码副本调用实际生产方法，构造“已有 READY、仅缺执行名额”和“每 10 秒请求、补池已完成、从未排队”两种状态。记录到目标仍增加；该检查是逻辑时间状态分析，不是真实负载或性能对照。
+- 历史冷暖数据从原 `requests.csv` 只读重算，没有更新运行时、启动压力负载或执行 Git 写操作。
 
 ## 版本语义补充（不是本书引文）
 

@@ -366,7 +366,7 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 		"samples_per_inventory_and_steady": count, "burst_requests": 32, "steady_offered_per_second": rate,
 		"pool_status_before_close": poolStatuses, "idle_parent_memory_current_bytes": idleMemory,
 		"summaries":        summaries,
-		"usage_scope":      "whole sandbox lifetime including runtime startup and warm idle; CLI manager excluded",
+		"usage_scope":      "sandbox cgroup cumulative from creation through pre-cleanup sample, including warm idle; later cleanup and host CLI work excluded; kill completion is not awaited before sampling",
 		"percentile_scope": "successful HTTP requests with confirmed cleanup; rejected and failed counts reported separately",
 	}
 	data, err := json.MarshalIndent(report, "", "  ")

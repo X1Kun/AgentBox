@@ -133,6 +133,42 @@ class DeploymentTests(unittest.TestCase):
 
 
 class ToolTests(unittest.TestCase):
+    def test_dynamic_inventory_configuration_and_unit_wiring(self):
+        unit = (REPOSITORY/"deploy/systemd/agentbox.service").read_text()
+        settings = {
+            "AGENTBOX_WARM_DYNAMIC": ("warm-dynamic", "true"),
+            "AGENTBOX_WARM_MIN_SIZE": ("warm-min-size", "1"),
+            "AGENTBOX_WARM_MAX_SIZE": ("warm-max-size", "4"),
+            "AGENTBOX_WARM_ADJUST_INTERVAL": ("warm-adjust-interval", "100ms"),
+            "AGENTBOX_WARM_DOWNSCALE_WINDOW": ("warm-downscale-window", "300ms"),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)/"config"
+            base = {"AGENTBOX_API_TOKEN": "x"*32, "AGENTBOX_MODE": "warm",
+                    **{key: value for key, (_, value) in settings.items()}}
+            def write(values):
+                config.write_text("".join(key+"="+value+"\n" for key, value in values.items()))
+            write(base)
+            values = load_config(config)
+            for key, (flag, expected) in settings.items():
+                self.assertEqual(values[key], expected)
+                separator = "=" if flag == "warm-dynamic" else " "
+                self.assertIn("-"+flag+separator+"${"+key+"}", unit)
+            # Unset maximum inherits warm-size, and the creation worker count
+            # is bounded by the dynamic maximum when it is explicitly supplied.
+            for extra in ({"AGENTBOX_WARM_MAX_SIZE": "0"},
+                          {"AGENTBOX_WARM_SIZE": "1", "AGENTBOX_CREATE_CONCURRENCY": "2"}):
+                write({**base, **extra})
+                load_config(config)
+            for key, value in (("AGENTBOX_MODE", "cold"), ("AGENTBOX_WARM_DYNAMIC", "yes"),
+                               ("AGENTBOX_WARM_MIN_SIZE", "5"), ("AGENTBOX_WARM_MIN_SIZE", "0"),
+                               ("AGENTBOX_WARM_MAX_SIZE", "7"), ("AGENTBOX_WARM_MAX_SIZE", "-1"),
+                               ("AGENTBOX_WARM_ADJUST_INTERVAL", "99ms"),
+                               ("AGENTBOX_WARM_DOWNSCALE_WINDOW", "99ms"), ("AGENTBOX_WARM_DOWNSCALE_WINDOW", "3601s")):
+                write({**base, key: value})
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    load_config(config)
+
     def test_normal_stop_requires_success_and_no_retained_records(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory)

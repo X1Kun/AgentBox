@@ -4,11 +4,13 @@
 
 ## 当前范围
 
-支持冷启动和一次性预热池两种执行模式：HTTP 请求、runsc 生命周期、输出上限、执行超时、取消、资源限制，以及任务结束后的完整销毁。预热模式提供有界 FIFO 队列、后台补池、总实例容量约束和关闭恢复。单机 QoS 支持 CPU AIMD、压力准入和补池暂停/恢复；动态库存、动态并发、独立 Gateway、MCP 和多节点尚未实现，没有固定时延承诺。详见 [预热池设计](docs/warm-pool.md) 和 [压力 QoS 调度](docs/qos-scheduling.md)。
+支持冷启动和一次性预热池两种执行模式：HTTP 请求、runsc 生命周期、输出上限、执行超时、取消、资源限制，以及任务结束后的完整销毁。预热模式提供有界 FIFO 队列、后台补池、总实例容量约束和关闭恢复。单机 QoS 支持 CPU AIMD、压力准入和补池暂停/恢复；预热池可显式启用[有界动态库存](docs/dynamic-inventory.md)。动态执行并发、独立 Gateway、MCP 和多节点尚未实现，没有固定时延承诺。详见 [预热池设计](docs/warm-pool.md) 和 [压力 QoS 调度](docs/qos-scheduling.md)。
 
 单次执行与固定 systemd 部署的历史验证见 [第一阶段验收记录](docs/phase1-validation.md) 和 [systemd 部署与验收](docs/systemd-deployment.md)。预热池及关闭修复的最新结果见 [预热池验收记录](docs/warm-pool-validation.md)，与本机原有 cold 服务的验收分别记录。
 
 本阶段由 daemon 直接提供本机 HTTP 接口，后续 Gateway 接入时复用执行协议。
+
+后续实施顺序见 [实现计划](docs/implementation-plan.md)：有界动态预热库存已实现，接下来是普通用户 Gateway → MCP 工具接入；各阶段配套必要回归与短流程验证。
 
 已实现 QoS 观察模式：采集宿主、沙箱父级与受保护服务的 PSI/cgroup 数据，配套固定工作量 Mock Core 和 CSV/JSONL 记录器。默认关闭，观察模式不修改配额。配置、独立容器验收与数据口径见 [QoS 观察说明](docs/qos-observation.md)。
 
@@ -117,7 +119,7 @@ sudo systemctl stop agentbox.service
 - 清理失败保留 intent 记录、停止接单；重启时仅对本状态目录记录的实例执行回收。
 - 请求 ID 当前仅用于关联日志和响应，尚无去重或重试保证；客户端不得自动重放不确定结果。
 
-CPU 和内存统计覆盖单个沙箱 cgroup 的完整生命周期，包括运行时创建和预热空闲期；不是仅 Python 进程的用量。宿主 CLI 开销不包含在该统计内。
+`usage` 是单个沙箱 cgroup 从创建到销毁前采样时刻的累计 CPU 用量、内存峰值和 OOM 计数，包含运行时创建与预热空闲期。任务退出后、清理完成前的后台进程活动及后续清理消耗可能未计入；超时或取消时发出 kill 后不等待全部进程退出再采样。它不是完整生命周期成本，也不是纯 Python 进程用量，宿主 CLI 开销另不包含在内。
 
 ## 预热模式与冷暖对比
 

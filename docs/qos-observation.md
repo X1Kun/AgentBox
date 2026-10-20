@@ -1,6 +1,6 @@
 # QoS 第一阶段：观察资源争用
 
-观察模式读取 PSI 与 cgroup 统计，提供固定工作量的 Mock Core Service，并记录其请求延迟。它回答“沙箱负载出现时，核心服务是否在等待资源，以及采集信号是否可信”。后续 CPU QoS 初版已接入 AIMD 预演与显式 enforce，见 [CPU QoS 说明](cpu-qos.md)；本页保留观察与历史实验口径，内存准入与补池联动仍待实现。
+观察模式读取 PSI 与 cgroup 统计，提供固定工作量的 Mock Core Service，并记录其请求延迟。它回答“沙箱负载出现时，核心服务是否在等待资源，以及采集信号是否可信”。CPU QoS 初版已接入 AIMD 预演与显式 enforce，见 [CPU QoS 说明](cpu-qos.md)；压力准入和补池门控见 [QoS 调度](qos-scheduling.md)。本页保留观察与历史实验口径，内存压力准入仍待实现，[有界动态库存](dynamic-inventory.md)已通过独立开关接入。
 
 已运行的检查、真实平台验证和数据见 [本阶段验收记录](qos-observation-validation.md)。
 
@@ -12,9 +12,9 @@
 | `-qos-interval` | `AGENTBOX_QOS_INTERVAL` | `100ms` |
 | `-qos-protected-cgroup` | `AGENTBOX_QOS_PROTECTED_CGROUP` | `none` |
 
-`off` 不启动采样 goroutine，不读取观测文件，状态响应省略 `qos` 字段。`observe` 启动一个采样 goroutine，只读取资源文件；现有静态配额和预热池调度继续生效。`enforce` 尚未实现，配置时拒绝启动。
+`off` 不启动采样 goroutine，不读取观测文件，状态响应省略 `qos` 字段。`observe` 启动一个采样 goroutine，只读取资源文件；现有静态配额和预热池调度继续生效。`enforce` 使用相同采样链路并开启 CPU 配额控制，显式配置 `-qos-scheduling` 后还执行压力准入与补池门控；实际动作边界见上述 CPU QoS 和调度文档。
 
-采样间隔范围为 50ms～1s。受保护 cgroup 必须显式配置为 `/sys/fs/cgroup/` 下的绝对路径，并与沙箱父级子树分开，不能相互包含。服务尚未启动、指标文件缺失或读取失败时，观测报告降级，执行服务继续接单；不能把该状态解释成零压力。
+采样间隔范围为 50ms～1s。受保护 cgroup 必须显式配置为 `/sys/fs/cgroup/` 下的绝对路径，并与沙箱父级子树分开，不能相互包含。服务尚未启动、指标文件缺失或读取失败时，观测报告降级，不能把该状态解释成零压力。observe 下仍按静态调度接单；enforce 的调度门控启用时，缺测保持上次有效门控，不会自动解除已有压力限制，详见 [QoS 调度](qos-scheduling.md)。
 
 更新固定服务时沿用 [部署说明](systemd-deployment.md) 的停止、更新和启动流程，更新后的 unit 支持以下 `/etc/agentbox.env` 配置。路径只是示例，必须对应实际独立服务的 cgroup：
 
@@ -95,10 +95,10 @@ bash scripts/observe-container.sh systrap
 python3 scripts/observe.py --output artifacts/observe-manual --duration 30 --rate 20 --sandbox-workers 2
 ```
 
-此命令要求已设置 `AGENTBOX_API_TOKEN`，AgentBox 已处于 observe 模式，两个服务监听默认端口；可用 `--agent-url` 和 `--core-url` 指定其他 loopback 端口。
+此命令要求已设置 `AGENTBOX_API_TOKEN`，AgentBox 已处于 observe 或 enforce 模式，两个服务监听默认端口；可用 `--agent-url` 和 `--core-url` 指定其他 loopback 端口。两种模式使用相同的采样质量判定，完整状态保留在 JSONL 中，summary 记录实际 QoS 模式。enforce 下的资源动作来自 daemon 的既有配置，记录器本身不修改控制参数。
 
 ## 结果边界与下一步
 
 这轮实验用于验收采集链路和负载工具。五秒、每组约一百个请求的 P99 只是样本统计，不能据此承诺稳定尾延迟。`idle-pool` 包含库存和观察开销，不能当作核心服务独占基线；两个阶段均处于 observe 模式，也没有测量观察器开销差值。容器内 `/proc/pressure` 反映宿主系统背景，不能看作私有容器压力。外层 2 CPU 限制也会影响各子 cgroup，结果不能直接推广为裸机表现。
 
-可重复的基线、默认配额、静态保护对照与离线绘图见 [静态 CPU 实验](static-cpu-experiment.md)。后续实现有上下界、冷却时间和审计记录的独立 CPU 配额控制，再分别验证准入和补池联动。
+可重复的基线、默认配额、静态保护对照与离线绘图见 [静态 CPU 实验](static-cpu-experiment.md)。独立 CPU 配额控制、压力准入和补池门控已有功能验收；动态策略相对静态保护的业务收益仍待对照实验验证，后续顺序见 [实现计划](implementation-plan.md)。

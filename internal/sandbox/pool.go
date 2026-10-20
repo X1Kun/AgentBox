@@ -39,6 +39,9 @@ type warmPool struct {
 	executing      int
 	pressurePaused bool
 	pressureEpoch  uint64
+	inventory      inventoryState
+	policy         *inventoryPolicy
+	now            func() time.Time
 
 	started             bool
 	initialized         bool
@@ -60,6 +63,7 @@ type warmPool struct {
 
 // poolSnapshot contains internal counters, without transport serialization.
 type poolSnapshot struct {
+	Inventory         inventoryState
 	Telemetry         poolTelemetry
 	ExecutionInFlight int
 	OldestQueueMS     float64
@@ -92,16 +96,33 @@ type poolTelemetry struct {
 
 func newWarmPool(c Config, create func(context.Context) (*executionState, error), destroy func(*executionState) error) *warmPool {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &warmPool{config: c, create: create, destroy: destroy, changed: make(chan struct{}), items: make(map[*executionState]poolState), ctx: ctx, cancel: cancel}
+	target, reason := c.WarmPoolSize, "fixed_inventory"
+	if c.DynamicWarmPool {
+		target, reason = c.WarmMinSize, "minimum_inventory"
+	}
+	p := &warmPool{config: c, create: create, destroy: destroy, changed: make(chan struct{}), items: make(map[*executionState]poolState), ctx: ctx, cancel: cancel, now: time.Now,
+		inventory: inventoryState{Target: target, RawTarget: target, StabilizedTarget: target, Reason: reason, LastChange: time.Now()}}
+	if c.DynamicWarmPool {
+		p.policy = &inventoryPolicy{config: c}
+	}
+	return p
 }
 
 // signalLocked broadcasts state changes without holding a lock during waits.
-func (p *warmPool) signalLocked() { close(p.changed); p.changed = make(chan struct{}) }
+func (p *warmPool) signalLocked() {
+	p.observeInventoryLocked(p.now())
+	close(p.changed)
+	p.changed = make(chan struct{})
+}
 
 func (p *warmPool) start(ctx context.Context) error {
 	p.mu.Lock()
 	if !p.started && !p.stopped {
 		p.started = true
+		if p.config.DynamicWarmPool {
+			p.workers.Add(1)
+			go p.manageInventory()
+		}
 		for i := 0; i < p.config.CreateConcurrency; i++ {
 			p.workers.Add(1)
 			go p.refill()
@@ -145,7 +166,7 @@ func (p *warmPool) refill() {
 			p.mu.Unlock()
 			return
 		}
-		if p.pressurePaused || len(p.ready)+p.creating >= p.config.WarmPoolSize || len(p.items)+p.creating >= p.config.MaxSandboxes {
+		if p.pressurePaused || len(p.ready)+p.creating >= p.inventory.Target || len(p.items)+p.creating >= p.config.MaxSandboxes {
 			changed := p.changed
 			p.mu.Unlock()
 			select {
@@ -300,12 +321,21 @@ func (p *warmPool) drain() error {
 func (p *warmPool) status() poolSnapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	s := poolSnapshot{Ready: p.initialized && !p.failed && !p.stopped, Telemetry: p.telemetry, ExecutionInFlight: p.executing, Config: p.config,
-		Target: p.config.WarmPoolSize, MaxSandboxes: p.config.MaxSandboxes,
+	s := poolSnapshot{Ready: p.initialized && !p.failed && !p.stopped, Telemetry: p.telemetry, ExecutionInFlight: p.executing, Config: p.config, Inventory: p.inventory,
+		Target: p.inventory.Target, MaxSandboxes: p.config.MaxSandboxes,
 		Creating: p.creating, Total: len(p.items) + p.creating, Queued: len(p.waiters), QueuedBytes: p.queuedBytes,
 		CreationCount: p.creationCount, CreationFailures: p.creationFailures, CleanupFailures: p.cleanupFailures, CreationTotalMS: p.creationTotalMS}
 	if len(p.waiters) > 0 {
 		s.OldestQueueMS = ms(time.Since(p.waiters[0].enteredAt))
+		s.Inventory.HeadWaitReason = "dispatch_ready"
+		if p.executing >= p.config.Concurrency {
+			s.Inventory.HeadWaitReason = "slot_wait"
+			if len(p.ready) == 0 {
+				s.Inventory.HeadWaitReason = "both_wait"
+			}
+		} else if len(p.ready) == 0 {
+			s.Inventory.HeadWaitReason = "inventory_wait"
+		}
 	}
 	for _, state := range p.items {
 		switch state {

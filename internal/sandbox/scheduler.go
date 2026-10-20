@@ -9,6 +9,7 @@ import (
 // Queue membership, instance ownership and execution permits share the pool
 // mutex, so a dispatch cannot consume only one of the two required resources.
 type poolWaiter struct {
+	waitReasons   uint8
 	pressureEpoch uint64
 	bytes         int
 	enteredAt     time.Time
@@ -100,6 +101,7 @@ func (p *warmPool) acquire(ctx context.Context, bytes int) (_ *executionState, r
 		if p.waiters[0] == waiter && len(p.ready) > 0 && p.executing < p.config.Concurrency {
 			return p.takeLocked(), nil
 		}
+		p.observeWaiterLocked(waiter)
 		changed := p.changed
 		p.mu.Unlock()
 		select {
@@ -108,5 +110,40 @@ func (p *warmPool) acquire(ctx context.Context, bytes int) (_ *executionState, r
 		case <-changed:
 		}
 		p.mu.Lock()
+	}
+}
+
+const (
+	waitSlot uint8 = 1 << iota
+	waitInventory
+	waitBoth
+)
+
+// Only the FIFO head can identify its actual resource blocker. Each reason is
+// counted once per waiter; a later both/slot -> inventory transition is retained.
+func (p *warmPool) observeWaiterLocked(waiter *poolWaiter) {
+	if p.policy == nil || len(p.waiters) == 0 || p.waiters[0] != waiter {
+		return
+	}
+	reason := waitSlot
+	if len(p.ready) == 0 {
+		reason = waitInventory
+		if p.executing >= p.config.Concurrency {
+			reason = waitBoth
+		}
+	}
+	if waiter.waitReasons&reason != 0 {
+		return
+	}
+	waiter.waitReasons |= reason
+	switch reason {
+	case waitSlot:
+		p.inventory.SlotWaitRequests++
+	case waitBoth:
+		p.inventory.BothWaitRequests++
+	case waitInventory:
+		p.inventory.InventoryStalls++
+		p.policy.recordStall(p.now(), len(p.ready), p.inventory.Target)
+		p.signalLocked()
 	}
 }

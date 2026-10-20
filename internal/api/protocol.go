@@ -17,6 +17,7 @@ const (
 var envKey = regexp.MustCompile(`^AGENT_[A-Z0-9_]{1,58}$`)
 
 type Request struct {
+	// RequestID is a caller correlation value, not an idempotency key.
 	RequestID string            `json:"request_id,omitempty"`
 	Runtime   string            `json:"runtime"`
 	Code      string            `json:"code"`
@@ -64,6 +65,9 @@ type Timings struct {
 	TotalMS     float64 `json:"total_ms"`
 }
 
+// Usage is cumulative for the sandbox cgroup from creation through the
+// pre-cleanup sample, including warm idle time. It excludes later cleanup and
+// host CLI work; issuing cgroup.kill does not imply all processes have exited.
 type Usage struct {
 	CPUUsec         uint64 `json:"cpu_usec"`
 	MemoryPeakBytes uint64 `json:"memory_peak_bytes"`

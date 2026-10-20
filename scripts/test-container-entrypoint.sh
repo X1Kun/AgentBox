@@ -42,7 +42,8 @@ if [[ "${AGENTBOX_BENCHMARK:-0}" == 1 ]]; then
     exec /tests/benchmark.test -test.v -test.timeout="${AGENTBOX_BENCH_TEST_TIMEOUT:-20m}"
 fi
 if [[ "${AGENTBOX_QOS_TEST:-0}" == 1 ]]; then
-    exec /tests/integration.test -test.v -test.run='^Test(CPU(ControlCgroup|QoSRuntime)|PressureSchedulingRuntime)$' -test.timeout=120s
+    test_pattern=${AGENTBOX_TEST_RUN:-'^Test(CPU(ControlCgroup|QoSRuntime)|PressureSchedulingRuntime)$'}
+    exec /tests/integration.test -test.v -test.run="$test_pattern" -test.timeout=120s
 fi
 for mode in cold warm; do
     echo "Running real runtime suite: $AGENTBOX_PLATFORM / $mode"

@@ -94,7 +94,7 @@ AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 bash scripts/qos-container.sh kvm
 
 此时在容器内两个各限 512MiB 的 tmpfs 中准备运行时二进制与可信 rootfs，保留 sidecar 和文件权限布局；rootfs 在 OCI 沙箱内仍只读。准备在 daemon 启动前进行，不计入原有 10 秒创建/5 秒清理预算。它不更改宿主部署，也不证明磁盘启动路径已经修复。
 
-本阶段不调整 FIFO、执行并发、库存目标或内存限制。压力准入与补池暂停/恢复已通过独立开关接入；动态库存与多租户公平性仍为后续功能。
+本阶段不调整 FIFO、执行并发、库存目标或内存限制。压力准入与补池暂停/恢复已通过独立开关接入；动态库存由[独立库存控制器](dynamic-inventory.md)调整，多租户公平性仍为后续功能。
 
 ## 本轮验证记录
 
