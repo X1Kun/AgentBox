@@ -2,6 +2,8 @@
 
 固定 `agentbox.service` 支持 cold 和一次性 warm 模式，默认 cold。预热池配置与调度语义见 [预热池文档](warm-pool.md)，CPU 配额与压力准入/补池门控见 [QoS 调度](qos-scheduling.md)。可显式开启[有界动态库存](dynamic-inventory.md)；多节点仍待实现。
 
+独立模式沿用本页；普通用户 Gateway 的可选配对安装、独立凭据和 Unix socket 配置见 [Gateway 部署](gateway.md)。配对期间 base 更新/回退/卸载会拒绝操作，应先按该文档移除组件，保留凭据后再更新和重新配对。
+
 ## 部署前提
 
 - Linux cgroups v2，systemd 249 或更新版本，Python 3.10+。

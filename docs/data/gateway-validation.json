@@ -1,0 +1,1080 @@
+{
+  "date": "2026-10-20",
+  "units": "ms unless explicitly marked KiB/bytes",
+  "environment": {
+    "platform": "systrap",
+    "mode": "warm",
+    "warm_size": 2,
+    "max_sandboxes": 4,
+    "execution_concurrency": 1,
+    "gateway_latency_max_inflight": 8,
+    "gateway_recovery_max_inflight": 1,
+    "container_cpus": 6,
+    "container_memory": "5GiB",
+    "dependencies": "container tmpfs; pinned Python image rootfs",
+    "gateway_cgo_enabled": false,
+    "network": "private container loopback plus Unix HTTP, no external network"
+  },
+  "method": {
+    "warmup_pairs_excluded": 3,
+    "measured_pairs": 30,
+    "route_order": "alternating first route within each pair",
+    "readiness": "wait for two idle sandboxes and no creation/destruction before each request",
+    "task": "print(1)",
+    "outside_engine_ms": "client wall_ms minus returned daemon timings.total_ms; includes client/server HTTP and serialization, not pure Gateway CPU time",
+    "limits": "descriptive small sample, no P99/SLO/throughput claim; no normal-disk or KVM performance claim"
+  },
+  "summary": {
+    "unix-direct": {
+      "wall_ms": {
+        "n": 30,
+        "median": 170.858893,
+        "p90_nearest_rank": 200.544657,
+        "min": 156.940314,
+        "max": 205.961856
+      },
+      "outside_engine_ms": {
+        "n": 30,
+        "median": 0.22974099999998998,
+        "p90_nearest_rank": 0.31038599999999406,
+        "min": 0.18627199999997401,
+        "max": 0.4001309999999876
+      }
+    },
+    "gateway": {
+      "wall_ms": {
+        "n": 30,
+        "median": 177.59441249999998,
+        "p90_nearest_rank": 195.549061,
+        "min": 159.18948,
+        "max": 214.268062
+      },
+      "outside_engine_ms": {
+        "n": 30,
+        "median": 0.5001519999999999,
+        "p90_nearest_rank": 0.5945529999999906,
+        "min": 0.3615430000000117,
+        "max": 0.7083899999999801
+      }
+    }
+  },
+  "paired_outside_engine_delta_ms": {
+    "n": 30,
+    "median": 0.25738000000001193,
+    "p90_nearest_rank": 0.34336599999997475,
+    "min": 0.09071099999999888,
+    "max": 0.514523999999966
+  },
+  "recovery_evidence": [
+    "GATEWAY_OVERLOAD rejection_ms=0.764",
+    "GATEWAY_CONTROL path=/readyz wall_ms=0.461",
+    "GATEWAY_CONTROL path=/v1/status wall_ms=2.227",
+    "GATEWAY_RECOVERY case=client-cancel cleanup_and_refill_ms=50.194 cleanup=true",
+    "GATEWAY_RECOVERY case=gateway-stop cleanup_and_refill_ms=13.214 cleanup=true",
+    "GATEWAY_LARGE_OUTPUT json_bytes=6292835 before=map[VmHWM_KiB:7424 VmRSS_KiB:7424] after=map[VmHWM_KiB:21344 VmRSS_KiB:21344]"
+  ],
+  "systemd": {
+    "gateway_systemd": "passed",
+    "gateway_uid": 999,
+    "socket_mode": "0660",
+    "directory_mode": "0750",
+    "unrelated_user_denied": true,
+    "credential_files_denied": true,
+    "gateway_state_after_daemon_restart": "activating",
+    "socket_inode_before_restart": 1291,
+    "executions": [
+      "paired-initial",
+      "after-daemon-restart",
+      "after-pair-restart",
+      "after-gateway-update",
+      "after-repair"
+    ],
+    "checks": [
+      "dependency-start",
+      "daemon-restart",
+      "dependency-stop",
+      "pair-restart",
+      "gateway-update",
+      "remove-restores-standalone",
+      "repair-retains-credentials",
+      "purge"
+    ],
+    "systemd_version": "systemd 252 (252.22-1~deb12u1)"
+  },
+  "sources": [
+    {
+      "name": "agentbox-gateway-runtime-validation.log",
+      "sha256": "4efd26e1c08b516548ed8044cf532c979714b8b28993d5b273a4a8043d3c176a"
+    },
+    {
+      "name": "agentbox-gateway-recovery-validation.log",
+      "sha256": "72bdcdf2c5cd9d06ae03bc8ee26f8d77fa73903b7a4dff55ddc7f2d943ecfd81"
+    },
+    {
+      "name": "agentbox-gateway-systemd-after-inotify.log",
+      "sha256": "eb6ca57880189262f808902dbf4765a35ffe51cc63329f7bef53f5b877fb2118"
+    }
+  ],
+  "samples": [
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.18627199999997401,
+      "pair": 0,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001066,
+        "setup_ms": 9.049698,
+        "execution_ms": 144.908384,
+        "cleanup_ms": 12.601905,
+        "total_ms": 166.824551
+      },
+      "wall_ms": 167.010823
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5118950000000098,
+      "pair": 0,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001564,
+        "setup_ms": 9.158558,
+        "execution_ms": 145.792136,
+        "cleanup_ms": 11.602822,
+        "total_ms": 166.728893
+      },
+      "wall_ms": 167.240788
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.3615430000000117,
+      "pair": 1,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001098,
+        "setup_ms": 10.072745,
+        "execution_ms": 142.45569,
+        "cleanup_ms": 11.10954,
+        "total_ms": 163.805908
+      },
+      "wall_ms": 164.167451
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.201785000000001,
+      "pair": 1,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001228,
+        "setup_ms": 9.841483,
+        "execution_ms": 149.66705,
+        "cleanup_ms": 12.733156,
+        "total_ms": 172.45643
+      },
+      "wall_ms": 172.658215
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.31038599999999406,
+      "pair": 2,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001338,
+        "setup_ms": 8.61499,
+        "execution_ms": 143.971206,
+        "cleanup_ms": 12.211874,
+        "total_ms": 165.016761
+      },
+      "wall_ms": 165.327147
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5945529999999906,
+      "pair": 2,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.002024,
+        "setup_ms": 8.583092,
+        "execution_ms": 140.27964,
+        "cleanup_ms": 12.745706,
+        "total_ms": 161.789237
+      },
+      "wall_ms": 162.38379
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5694780000000037,
+      "pair": 3,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001382,
+        "setup_ms": 11.165066,
+        "execution_ms": 162.530004,
+        "cleanup_ms": 12.249285,
+        "total_ms": 186.128808
+      },
+      "wall_ms": 186.698286
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.388118999999989,
+      "pair": 3,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001513,
+        "setup_ms": 9.466743,
+        "execution_ms": 144.290782,
+        "cleanup_ms": 12.272203,
+        "total_ms": 166.18179
+      },
+      "wall_ms": 166.569909
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.30502799999999297,
+      "pair": 4,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001927,
+        "setup_ms": 10.47655,
+        "execution_ms": 144.31513,
+        "cleanup_ms": 12.477102,
+        "total_ms": 167.407971
+      },
+      "wall_ms": 167.712999
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5464330000000075,
+      "pair": 4,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001292,
+        "setup_ms": 8.787535,
+        "execution_ms": 162.548959,
+        "cleanup_ms": 12.543537,
+        "total_ms": 184.102745
+      },
+      "wall_ms": 184.649178
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.43006799999997725,
+      "pair": 5,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001204,
+        "setup_ms": 8.456283,
+        "execution_ms": 137.981125,
+        "cleanup_ms": 12.411707,
+        "total_ms": 159.060425
+      },
+      "wall_ms": 159.490493
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.2493029999999976,
+      "pair": 5,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001416,
+        "setup_ms": 10.828565,
+        "execution_ms": 137.576414,
+        "cleanup_ms": 12.229119,
+        "total_ms": 160.839602
+      },
+      "wall_ms": 161.088905
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.2702669999999898,
+      "pair": 6,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001191,
+        "setup_ms": 10.423684,
+        "execution_ms": 147.911981,
+        "cleanup_ms": 11.563928,
+        "total_ms": 170.076964
+      },
+      "wall_ms": 170.347231
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.530540000000002,
+      "pair": 6,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001252,
+        "setup_ms": 10.50567,
+        "execution_ms": 158.492111,
+        "cleanup_ms": 13.182579,
+        "total_ms": 182.290688
+      },
+      "wall_ms": 182.821228
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.49084199999998646,
+      "pair": 7,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.00198,
+        "setup_ms": 9.408865,
+        "execution_ms": 149.668757,
+        "cleanup_ms": 17.77767,
+        "total_ms": 177.00108
+      },
+      "wall_ms": 177.491922
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.4001309999999876,
+      "pair": 7,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.004887,
+        "setup_ms": 9.414673,
+        "execution_ms": 158.396233,
+        "cleanup_ms": 11.681095,
+        "total_ms": 179.657506
+      },
+      "wall_ms": 180.057637
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.23068100000000413,
+      "pair": 8,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001372,
+        "setup_ms": 8.291828,
+        "execution_ms": 148.162312,
+        "cleanup_ms": 11.33431,
+        "total_ms": 167.885191
+      },
+      "wall_ms": 168.115872
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5966789999999946,
+      "pair": 8,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001781,
+        "setup_ms": 9.149051,
+        "execution_ms": 149.103763,
+        "cleanup_ms": 12.011946,
+        "total_ms": 170.378722
+      },
+      "wall_ms": 170.975401
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5652650000000108,
+      "pair": 9,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.00196,
+        "setup_ms": 8.931089,
+        "execution_ms": 158.171567,
+        "cleanup_ms": 14.958386,
+        "total_ms": 182.198278
+      },
+      "wall_ms": 182.763543
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.2671530000000075,
+      "pair": 9,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001865,
+        "setup_ms": 10.858275,
+        "execution_ms": 146.489474,
+        "cleanup_ms": 12.834211,
+        "total_ms": 170.339768
+      },
+      "wall_ms": 170.606921
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.20136099999999146,
+      "pair": 10,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001139,
+        "setup_ms": 9.883906,
+        "execution_ms": 144.445923,
+        "cleanup_ms": 11.219103,
+        "total_ms": 165.671918
+      },
+      "wall_ms": 165.873279
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5403110000000027,
+      "pair": 10,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001163,
+        "setup_ms": 8.962771,
+        "execution_ms": 141.862805,
+        "cleanup_ms": 13.302973,
+        "total_ms": 164.269083
+      },
+      "wall_ms": 164.809394
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.4727980000000116,
+      "pair": 11,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001456,
+        "setup_ms": 8.432084,
+        "execution_ms": 153.364055,
+        "cleanup_ms": 15.982718,
+        "total_ms": 177.995041
+      },
+      "wall_ms": 178.467839
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.21831099999999992,
+      "pair": 11,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001593,
+        "setup_ms": 10.085887,
+        "execution_ms": 144.2695,
+        "cleanup_ms": 12.289982,
+        "total_ms": 166.768945
+      },
+      "wall_ms": 166.987256
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.2725870000000157,
+      "pair": 12,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.00171,
+        "setup_ms": 10.145693,
+        "execution_ms": 155.112204,
+        "cleanup_ms": 11.769315,
+        "total_ms": 177.164484
+      },
+      "wall_ms": 177.437071
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.4527050000000088,
+      "pair": 12,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001273,
+        "setup_ms": 7.945886,
+        "execution_ms": 143.808491,
+        "cleanup_ms": 11.86101,
+        "total_ms": 163.830391
+      },
+      "wall_ms": 164.283096
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.4818030000000135,
+      "pair": 13,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001203,
+        "setup_ms": 8.552807,
+        "execution_ms": 143.154659,
+        "cleanup_ms": 13.020762,
+        "total_ms": 164.833405
+      },
+      "wall_ms": 165.315208
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.23381800000001363,
+      "pair": 13,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.002017,
+        "setup_ms": 9.563345,
+        "execution_ms": 142.41429,
+        "cleanup_ms": 12.122142,
+        "total_ms": 164.236125
+      },
+      "wall_ms": 164.469943
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.29567199999999616,
+      "pair": 14,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001165,
+        "setup_ms": 9.517097,
+        "execution_ms": 141.65811,
+        "cleanup_ms": 13.417716,
+        "total_ms": 164.731233
+      },
+      "wall_ms": 165.026905
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5146230000000003,
+      "pair": 14,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001545,
+        "setup_ms": 9.956648,
+        "execution_ms": 155.748445,
+        "cleanup_ms": 11.640333,
+        "total_ms": 177.456701
+      },
+      "wall_ms": 177.971324
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.41001900000000546,
+      "pair": 15,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001222,
+        "setup_ms": 8.511287,
+        "execution_ms": 145.997401,
+        "cleanup_ms": 11.542311,
+        "total_ms": 166.258987
+      },
+      "wall_ms": 166.669006
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.24284400000001938,
+      "pair": 15,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001205,
+        "setup_ms": 8.510561,
+        "execution_ms": 146.546462,
+        "cleanup_ms": 11.582659,
+        "total_ms": 166.775929
+      },
+      "wall_ms": 167.018773
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.22880099999997583,
+      "pair": 16,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001067,
+        "setup_ms": 7.779146,
+        "execution_ms": 149.536385,
+        "cleanup_ms": 17.103775,
+        "total_ms": 174.626774
+      },
+      "wall_ms": 174.855575
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.47991799999999785,
+      "pair": 16,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001431,
+        "setup_ms": 8.946126,
+        "execution_ms": 137.735365,
+        "cleanup_ms": 11.85777,
+        "total_ms": 158.709562
+      },
+      "wall_ms": 159.18948
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.4440759999999955,
+      "pair": 17,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001424,
+        "setup_ms": 10.154588,
+        "execution_ms": 149.317607,
+        "cleanup_ms": 11.748055,
+        "total_ms": 171.392844
+      },
+      "wall_ms": 171.83692
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.21910299999998983,
+      "pair": 17,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001196,
+        "setup_ms": 10.640135,
+        "execution_ms": 181.290828,
+        "cleanup_ms": 12.713126,
+        "total_ms": 204.763532
+      },
+      "wall_ms": 204.982635
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.19847999999998933,
+      "pair": 18,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001421,
+        "setup_ms": 8.485936,
+        "execution_ms": 135.781464,
+        "cleanup_ms": 12.365225,
+        "total_ms": 156.741834
+      },
+      "wall_ms": 156.940314
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.494371000000001,
+      "pair": 18,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001496,
+        "setup_ms": 9.854577,
+        "execution_ms": 142.65087,
+        "cleanup_ms": 13.736684,
+        "total_ms": 166.342965
+      },
+      "wall_ms": 166.837336
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.47576100000000565,
+      "pair": 19,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001663,
+        "setup_ms": 8.716208,
+        "execution_ms": 151.699611,
+        "cleanup_ms": 12.145339,
+        "total_ms": 172.734321
+      },
+      "wall_ms": 173.210082
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.3599609999999984,
+      "pair": 19,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001625,
+        "setup_ms": 8.897234,
+        "execution_ms": 148.056073,
+        "cleanup_ms": 13.616839,
+        "total_ms": 170.750904
+      },
+      "wall_ms": 171.110865
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.2468900000000076,
+      "pair": 20,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001327,
+        "setup_ms": 8.891988,
+        "execution_ms": 142.896949,
+        "cleanup_ms": 11.90349,
+        "total_ms": 163.832046
+      },
+      "wall_ms": 164.078936
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5403139999999951,
+      "pair": 20,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001476,
+        "setup_ms": 9.448995,
+        "execution_ms": 155.213611,
+        "cleanup_ms": 12.371801,
+        "total_ms": 177.156589
+      },
+      "wall_ms": 177.696903
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.3826689999999928,
+      "pair": 21,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001292,
+        "setup_ms": 9.335826,
+        "execution_ms": 191.073685,
+        "cleanup_ms": 13.29996,
+        "total_ms": 213.885393
+      },
+      "wall_ms": 214.268062
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.23277400000000625,
+      "pair": 21,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001417,
+        "setup_ms": 8.843321,
+        "execution_ms": 169.827894,
+        "cleanup_ms": 14.44539,
+        "total_ms": 193.287424
+      },
+      "wall_ms": 193.520198
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.21627300000000105,
+      "pair": 22,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001368,
+        "setup_ms": 8.932169,
+        "execution_ms": 185.827443,
+        "cleanup_ms": 10.863305,
+        "total_ms": 205.745583
+      },
+      "wall_ms": 205.961856
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.6170540000000244,
+      "pair": 22,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001088,
+        "setup_ms": 9.570395,
+        "execution_ms": 166.855536,
+        "cleanup_ms": 12.405521,
+        "total_ms": 188.952218
+      },
+      "wall_ms": 189.569272
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.3894769999999994,
+      "pair": 23,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001541,
+        "setup_ms": 8.393585,
+        "execution_ms": 174.712772,
+        "cleanup_ms": 10.831294,
+        "total_ms": 194.068946
+      },
+      "wall_ms": 194.458423
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.19492700000000696,
+      "pair": 23,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001199,
+        "setup_ms": 9.777864,
+        "execution_ms": 172.301069,
+        "cleanup_ms": 12.728871,
+        "total_ms": 194.929865
+      },
+      "wall_ms": 195.124792
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.21238000000002444,
+      "pair": 24,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001225,
+        "setup_ms": 9.102856,
+        "execution_ms": 154.284308,
+        "cleanup_ms": 13.046835,
+        "total_ms": 176.61144
+      },
+      "wall_ms": 176.82382
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.4911719999999775,
+      "pair": 24,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001284,
+        "setup_ms": 8.754479,
+        "execution_ms": 142.615213,
+        "cleanup_ms": 13.809837,
+        "total_ms": 165.349195
+      },
+      "wall_ms": 165.840367
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.7083899999999801,
+      "pair": 25,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.003798,
+        "setup_ms": 11.951764,
+        "execution_ms": 161.862893,
+        "cleanup_ms": 11.781366,
+        "total_ms": 185.726547
+      },
+      "wall_ms": 186.434937
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.19386600000001408,
+      "pair": 25,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.00162,
+        "setup_ms": 10.499261,
+        "execution_ms": 165.531849,
+        "cleanup_ms": 11.564272,
+        "total_ms": 187.737441
+      },
+      "wall_ms": 187.931307
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.19927200000000767,
+      "pair": 26,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001119,
+        "setup_ms": 10.081943,
+        "execution_ms": 177.24665,
+        "cleanup_ms": 12.913164,
+        "total_ms": 200.345385
+      },
+      "wall_ms": 200.544657
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5426379999999824,
+      "pair": 26,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001469,
+        "setup_ms": 7.777728,
+        "execution_ms": 168.806421,
+        "cleanup_ms": 12.983366,
+        "total_ms": 189.669136
+      },
+      "wall_ms": 190.211774
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5118949999999813,
+      "pair": 27,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001523,
+        "setup_ms": 10.234652,
+        "execution_ms": 174.337108,
+        "cleanup_ms": 11.431966,
+        "total_ms": 196.175081
+      },
+      "wall_ms": 196.686976
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.19582499999998504,
+      "pair": 27,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001195,
+        "setup_ms": 8.695446,
+        "execution_ms": 165.223619,
+        "cleanup_ms": 12.258838,
+        "total_ms": 186.331693
+      },
+      "wall_ms": 186.527518
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.21227899999999522,
+      "pair": 28,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001074,
+        "setup_ms": 8.38442,
+        "execution_ms": 181.611714,
+        "cleanup_ms": 11.281587,
+        "total_ms": 201.389747
+      },
+      "wall_ms": 201.602026
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.4970519999999965,
+      "pair": 28,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.00115,
+        "setup_ms": 7.608543,
+        "execution_ms": 175.563868,
+        "cleanup_ms": 12.24422,
+        "total_ms": 195.538058
+      },
+      "wall_ms": 196.03511
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.5032520000000034,
+      "pair": 29,
+      "route": "gateway",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.001127,
+        "setup_ms": 11.170805,
+        "execution_ms": 169.500336,
+        "cleanup_ms": 14.234356,
+        "total_ms": 195.045809
+      },
+      "wall_ms": 195.549061
+    },
+    {
+      "cleanup_complete": true,
+      "http": 200,
+      "outside_engine_ms": 0.21544599999998582,
+      "pair": 29,
+      "route": "unix-direct",
+      "status": "succeeded",
+      "timings": {
+        "queue_ms": 0.002015,
+        "setup_ms": 9.804515,
+        "execution_ms": 152.73371,
+        "cleanup_ms": 12.916255,
+        "total_ms": 175.577111
+      },
+      "wall_ms": 175.792557
+    }
+  ]
+}

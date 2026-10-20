@@ -36,6 +36,7 @@ export AGENTBOX_RUNSC=/runtime/runsc
 export AGENTBOX_ROOTFS=/rootfs
 export AGENTBOX_CGROUP_ROOT=/sys/fs/cgroup/agentbox
 export AGENTBOX_PLATFORM=${AGENTBOX_PLATFORM:-kvm}
+export AGENTBOX_GATEWAY_BINARY=/tests/agentbox-gateway
 # Match the supplied systemd service, including guest-input creation permissions.
 umask 0077
 if [[ "${AGENTBOX_BENCHMARK:-0}" == 1 ]]; then

@@ -27,11 +27,11 @@
 
 完成标准：覆盖目标上下界、需求增加、空闲缩容、压力暂停/恢复、关闭竞争和清理失败；验证缩容不误删在途实例、总量守恒、取消和 FIFO 语义保持。用一次短真实 warm 流程验证“补池 → 执行 → 空闲缩容 → 关闭”，无需开展参数扫描或吞吐对照。
 
-本阶段已通过完整 `make check`、构建及一个真实 systrap 短用例（tmpfs 测试依赖），验证结果见[动态库存记录](dynamic-inventory.md#本轮验证记录)。下一项是 Gateway。
+本阶段已通过完整 `make check`、构建及一个真实 systrap 短用例（tmpfs 测试依赖），验证结果见[动态库存记录](dynamic-inventory.md#本轮验证记录)。Gateway 已接入，下一项是 MCP。
 
 [库存控制 v2](inventory-open-source-design.md)的阻塞归因与推荐稳定窗口已实现，替换旧 v1 规则；可选令牌桶留待按需接入。缩容参数已改为 warm-downscale-window，不再要求整个池连续无请求。性能收益另行验证，不作为继续开发的统一前置条件。
 
-## 2. 接着实现：普通用户 Gateway 与本机 daemon 通信
+## 2. 已实现：普通用户 Gateway 与本机 daemon 通信
 
 交付目标：形成可由 Agent 客户端使用的普通用户入口，将网络接入与特权运行时操作分开。
 
@@ -42,7 +42,11 @@
 3. 传播请求取消与剩余期限，保留拒绝原因及结构化执行结果。为入口设置请求大小与并发边界，避免增加无界缓冲；连接中断后不自动重放执行请求。
 4. 补充单 worker 的安装和配置示例，明确 socket 所有者、组权限及就绪依赖。现有 daemon 的 loopback HTTP 模式继续支持本地开发。
 
-完成标准：验证鉴权、socket 权限、取消传播、daemon 不可用与容量拒绝的映射；完成一次 Gateway → daemon → Python → 清理的短流程。
+完成标准：验证鉴权、socket 权限、取消传播、daemon 不可用与容量拒绝的映射；完成一次 Gateway → daemon → Python → 清理的短流程。当前协议、配对安装与验证边界见 [Gateway 说明](gateway.md)。
+
+本阶段已通过 `make check build` 和一次 UID/GID 1000 Gateway → Unix HTTP → root Engine → runsc 的真实 systrap 短流程，详见[验证记录](gateway.md#本轮验证记录)。配对安装已覆盖暂存回归及隔离 systemd 252 / systrap 的完整配对生命周期；宿主配对部署没有切换。
+
+后续有限验收已验证真实取消/停止后的回收、过载下控制接口、大输出及小样本转发开销，详见[结论与原始数据](gateway-validation.md)。隔离 systemd 配对套件曾被 PID 1 创建 inotify 返回 EMFILE 阻塞；用户将实例限额从 128 临时提高到 1024 后，补跑 `bash scripts/integration-systemd-container.sh systrap cold gateway` 已通过，覆盖权限、依赖重启、更新、卸载、重新配对和 purge。默认并发继续保持 8，后续优先考虑入口观测和并发/内存预算联动。
 
 ## 3. 然后实现：MCP 工具接入与 Agent 示例
 

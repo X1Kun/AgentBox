@@ -3,6 +3,7 @@
 build:
 	mkdir -p bin
 	go build -trimpath -o bin/agentboxd ./cmd/agentboxd
+	go build -trimpath -o bin/agentbox-gateway ./cmd/agentbox-gateway
 	go build -trimpath -o bin/mockcore ./cmd/mockcore
 
 test:

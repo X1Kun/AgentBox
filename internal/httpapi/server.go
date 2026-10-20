@@ -2,14 +2,10 @@ package httpapi
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
+	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/X1Kun/AgentBox/internal/api"
@@ -33,17 +29,7 @@ func Handler(executor Executor, token string, logger *slog.Logger) http.Handler 
 		}
 		send(w, code, map[string]bool{"ready": ready})
 	})
-	wanted := sha256.Sum256([]byte(token))
-	authorized := func(w http.ResponseWriter, r *http.Request) bool {
-		provided, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		got := sha256.Sum256([]byte(provided))
-		if !ok || token == "" || subtle.ConstantTimeCompare(wanted[:], got[:]) != 1 {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			send(w, 401, map[string]string{"error": "unauthorized"})
-			return false
-		}
-		return true
-	}
+	authorized := BearerAuthorizer(token)
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		if !authorized(w, r) {
 			return
@@ -54,26 +40,8 @@ func Handler(executor Executor, token string, logger *slog.Logger) http.Handler 
 		if !authorized(w, r) {
 			return
 		}
-		if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
-			send(w, 415, map[string]string{"error": "Content-Type must be application/json"})
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, api.MaxBodyBytes)
-		decoder := json.NewDecoder(r.Body)
-		decoder.DisallowUnknownFields()
-		var request api.Request
-		if err := decoder.Decode(&request); err != nil {
-			decodeError(w, err)
-			return
-		}
-		var trailing any
-		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-			decodeError(w, err)
-			return
-		}
-		request, err := request.Validate()
-		if err != nil {
-			send(w, 400, map[string]string{"error": err.Error()})
+		request, _, ok := ReadRequest(w, r)
+		if !ok {
 			return
 		}
 		result, err := executor.Execute(r.Context(), request)
@@ -112,6 +80,11 @@ func Handler(executor Executor, token string, logger *slog.Logger) http.Handler 
 }
 
 func decodeError(w http.ResponseWriter, err error) {
+	var timedOut net.Error
+	if errors.As(err, &timedOut) && timedOut.Timeout() {
+		send(w, 408, map[string]string{"error": "request body timeout"})
+		return
+	}
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
 		send(w, 413, map[string]string{"error": "request body too large"})
@@ -121,8 +94,5 @@ func decodeError(w http.ResponseWriter, err error) {
 }
 
 func send(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	WriteJSON(w, status, value)
 }

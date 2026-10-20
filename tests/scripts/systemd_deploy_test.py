@@ -131,8 +131,79 @@ class DeploymentTests(unittest.TestCase):
             deployment = Deployment(SimpleNamespace(destdir=root, source=str(self.source)))
             self.assertTrue(deployment.live)
 
+    def prepare_gateway(self):
+        (self.source/"bin/agentboxd").write_text("#!/bin/sh\nprintf '%s\\n' '-listen loopback or unix:/absolute/socket'\n")
+        self.deploy()
+        (self.source/"bin/agentbox-gateway").write_text("#!/bin/sh\nexit 0\n")
+        (self.source/"bin/agentbox-gateway").chmod(0o755)
+        for name in ("agentbox-gateway.service", "agentbox-gateway-daemon.conf"):
+            (self.source/"deploy/systemd"/name).write_bytes((REPOSITORY/"deploy/systemd"/name).read_bytes())
+
+    def gateway(self,*arguments,success=True):
+        result=subprocess.run([sys.executable,str(REPOSITORY/"scripts/gateway_deploy.py"),"--source",str(self.source),"--destdir",str(self.destination),*arguments],
+                              env=dict(os.environ,PYTHONDONTWRITEBYTECODE="1"),text=True,capture_output=True)
+        self.assertEqual(result.returncode==0,success,result.stderr)
+        return result
+
+    def test_gateway_install_update_and_remove_preserve_daemon(self):
+        self.prepare_gateway()
+        original_config=self.config.read_bytes()
+        result=self.gateway()
+        from systemd_common import load_gateway_config
+        config=self.destination/"etc/agentbox-gateway.env"
+        backend=self.destination/"etc/agentbox-gateway-daemon.env"
+        settings=load_gateway_config(config)
+        self.assertEqual(settings["AGENTBOX_GATEWAY_TOKEN"],load_config(self.config)["AGENTBOX_API_TOKEN"])
+        self.assertNotEqual(settings["AGENTBOX_GATEWAY_TOKEN"],settings["AGENTBOX_DAEMON_TOKEN"])
+        self.assertEqual(stat.S_IMODE(config.stat().st_mode),0o600)
+        self.assertEqual(stat.S_IMODE(backend.stat().st_mode),0o600)
+        self.assertIn("AGENTBOX_LISTEN=unix:/run/agentbox/daemon.sock",backend.read_text())
+        self.assertNotIn(settings["AGENTBOX_DAEMON_TOKEN"],result.stdout+result.stderr)
+        self.assertEqual(self.config.read_bytes(),original_config)
+        retained=config.read_bytes()
+        for operation in ("--update","--rollback","--uninstall"):
+            self.deploy(operation,success=False)
+        (self.source/"bin/agentbox-gateway").write_text("#!/bin/sh\nexit 2\n")
+        self.gateway("--update")
+        self.assertEqual(config.read_bytes(),retained)
+        self.gateway("--uninstall")
+        self.assertFalse((self.app/"GATEWAY_INSTALL.json").exists())
+        self.assertFalse(backend.exists())
+        self.assertTrue(config.exists())
+        self.assertEqual(self.config.read_bytes(),original_config)
+        self.gateway() # retained client/internal credentials stay consistent
+        self.assertEqual(config.read_bytes(),retained)
+        self.gateway("--uninstall","--purge")
+        self.assertFalse(config.exists())
+        self.deploy("--update")
+
+    def test_gateway_rejects_symlinked_dropin_and_unreconciled_state(self):
+        self.prepare_gateway()
+        dropin=self.destination/"etc/systemd/system/agentbox.service.d"
+        outside=self.destination.parent/"outside-dropin";outside.mkdir()
+        dropin.symlink_to(outside,target_is_directory=True)
+        self.gateway(success=False)
+        self.assertEqual(list(outside.iterdir()),[])
+        dropin.unlink()
+        bundles=self.state/"bundles";bundles.mkdir(parents=True)
+        (bundles/"ab-retained").mkdir()
+        self.gateway(success=False)
+        self.assertFalse((self.app/"GATEWAY_INSTALL.json").exists())
+
 
 class ToolTests(unittest.TestCase):
+    def test_gateway_configuration(self):
+        from systemd_common import load_gateway_config
+        with tempfile.TemporaryDirectory() as directory:
+            config=Path(directory)/"config"
+            base="AGENTBOX_GATEWAY_TOKEN="+"a"*32+"\nAGENTBOX_DAEMON_TOKEN="+"b"*32+"\n"
+            config.write_text(base)
+            self.assertEqual(load_gateway_config(config)["AGENTBOX_GATEWAY_LISTEN"],"127.0.0.1:8080")
+            for extra in ("AGENTBOX_GATEWAY_LISTEN=0.0.0.0:8080", "AGENTBOX_GATEWAY_MAX_INFLIGHT=65", "AGENTBOX_GATEWAY_TIMEOUT=61s"):
+                config.write_text(base+extra+"\n")
+                with self.subTest(extra=extra),self.assertRaises(ValueError):load_gateway_config(config)
+            config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_LISTEN=unix:/run/agentbox/daemon.sock\n")
+            self.assertEqual(load_config(config)["AGENTBOX_LISTEN"],"unix:/run/agentbox/daemon.sock")
     def test_dynamic_inventory_configuration_and_unit_wiring(self):
         unit = (REPOSITORY/"deploy/systemd/agentbox.service").read_text()
         settings = {
