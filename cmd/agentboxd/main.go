@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/X1Kun/AgentBox/internal/doctor"
 	"github.com/X1Kun/AgentBox/internal/httpapi"
+	"github.com/X1Kun/AgentBox/internal/localhttp"
 	"github.com/X1Kun/AgentBox/internal/sandbox"
 	"github.com/X1Kun/AgentBox/internal/systemd"
 )
@@ -62,7 +64,7 @@ func run() (retErr error) {
 	flag.Float64Var(&c.QoS.CPU.IncreaseCPUPerSecond, "qos-increase-cpu", .25, "maximum additive CPU recovery rate per second")
 	flag.DurationVar(&c.QoS.Interval, "qos-interval", 100*time.Millisecond, "observation interval, 50ms to 1s")
 	flag.StringVar(&c.QoS.ProtectedCgroup, "qos-protected-cgroup", "none", "absolute protected cgroup path; required in observe/enforce mode")
-	flag.StringVar(&address, "listen", "127.0.0.1:8080", "loopback HTTP address")
+	flag.StringVar(&address, "listen", "127.0.0.1:8080", "loopback HTTP address or unix:/absolute/socket")
 	flag.BoolVar(&inspect, "doctor", false, "print read-only environment report and exit")
 	flag.Parse()
 	if inspect {
@@ -77,9 +79,8 @@ func run() (retErr error) {
 		}
 		return nil
 	}
-	host, _, err := net.SplitHostPort(address)
-	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
-		return fmt.Errorf("listen must use an explicit loopback IP address")
+	if err := localhttp.ValidateListen(address); err != nil {
+		return err
 	}
 	token := os.Getenv("AGENTBOX_API_TOKEN")
 	if len(token) < 32 {
@@ -104,12 +105,17 @@ func run() (retErr error) {
 		return err
 	}
 	logger.Info("engine startup completed", "elapsed_ms", float64(time.Since(startupStarted))/float64(time.Millisecond))
-	listener, err := net.Listen("tcp", address)
+	listener, err := localhttp.Listen(address)
 	if err != nil {
 		return err
 	}
+	defer listener.Close()
+	var handler http.Handler = httpapi.Handler(engine, token, logger)
+	if strings.HasPrefix(address, "unix:") {
+		handler = httpapi.DeadlineHandler(handler, 50*time.Second)
+	}
 	server := &http.Server{
-		Handler: httpapi.Handler(engine, token, logger), ReadHeaderTimeout: 3 * time.Second,
+		Handler: handler, ReadHeaderTimeout: 3 * time.Second,
 		ReadTimeout: 5 * time.Second, WriteTimeout: 50 * time.Second, IdleTimeout: 30 * time.Second,
 		MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return ctx },
 	}

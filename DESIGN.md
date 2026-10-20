@@ -68,7 +68,7 @@ gVisor 官方建议裸机优先评估 KVM，无虚拟化支持或虚拟机环境
 | 调度 | 有界队列、并发上限、后台补池 | 多租户公平调度 |
 | 资源控制 | 静态上限＋PSI 动态 CPU 控制 | 更复杂的资源预测 |
 | 网络 | 默认无外网 | 受控代理、TC eBPF |
-| 接入 | HTTP Gateway＋内部 RPC | MCP 适配层 |
+| 接入 | loopback HTTP Gateway＋Unix HTTP daemon | MCP 适配层 |
 | 部署 | 本机 systemd | 多 Worker、Kubernetes |
 | 演示 | Mock Agent、Mock 核心服务 | 本地模型工具调用 |
 
@@ -83,7 +83,7 @@ GPU、本地模型、Kubernetes 可以增加展示效果，但不作为核心执
 ```mermaid
 flowchart TB
     A[Agent / CLI / MCP Adapter] --> G[Gateway<br/>校验、限流、路由]
-    G -->|Execute / Cancel / Status| D[Daemon<br/>准入与任务管理]
+    G -->|Unix HTTP Execute / Status / 取消传播| D[Daemon<br/>准入与任务管理]
 
     D --> Q[有界任务队列]
     Q --> P[Slot Scheduler]
@@ -105,7 +105,7 @@ flowchart TB
 
 | 组件 | 核心职责 |
 |---|---|
-| Gateway | 请求校验、鉴权、限流、选择 Worker、传播取消与期限 |
+| Gateway | 请求校验、鉴权、入口并发限制、固定单 Worker、传播取消与期限；多节点路由留待后续 |
 | Admission | 判断队列、执行槽位、内存预算是否允许接单 |
 | Scheduler | 将任务绑定到唯一沙箱，处理排队和超时 |
 | Pool Manager | 维护预热库存，限制创建并发和沙箱总数 |
@@ -265,16 +265,11 @@ HTTP 语义：
 - Worker 无可用容量：503。
 - 已完成的代码执行：200，具体执行结果放在 `status` 中。
 
-### 7.2 内部 RPC
+### 7.2 本机内部通信
 
-内部 RPC 至少包含：
+当前采用 HTTP over Unix socket，复用 Execute/Status 协议。普通用户 Gateway 负责入口鉴权、校验与有界转发；root daemon 负责准入、执行与资源回收。独立 token、socket 权限、期限传播与部署方式见 [Gateway 说明](docs/gateway.md)。
 
-- `Execute`
-- `Cancel`
-- `GetExecution`
-- `GetNodeStatus`
-
-单机先通过 Unix socket 通信，多机再增加网络身份认证。
+取消通过请求上下文与连接断开传播，执行请求不自动重放。独立 Cancel/GetExecution RPC、持久化结果查询与多节点身份认证仍属后续能力。
 
 ### 7.3 去重与不确定结果
 
@@ -673,7 +668,7 @@ QoS 阶段按“采集与 Mock Core → 静态保护对照 → 独立 CPU 控制
 
 项目优先形成三项可验证成果：
 
-当前实施顺序见 [实现计划](docs/implementation-plan.md)：动态库存已交付，后续继续实现 Gateway 和 MCP，配套必要功能验证。以下是长期性能目标，长时间供给与 QoS 对照实验按需开展，不作为继续开发的前置条件。
+当前实施顺序见 [实现计划](docs/implementation-plan.md)：动态库存和普通用户 Gateway 已交付，后续继续实现 MCP，配套必要功能验证。以下是长期性能目标，长时间供给与 QoS 对照实验按需开展，不作为继续开发的前置条件。
 
 1. 一次性预热沙箱的低延迟执行。
 2. 包含补池成本的持续供给能力。

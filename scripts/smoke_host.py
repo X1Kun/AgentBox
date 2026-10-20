@@ -5,6 +5,8 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
+import http.client
+import socket
 import os
 from pathlib import Path
 import subprocess
@@ -85,6 +87,14 @@ class Smoke:
         if self.manifest.get("format") != 1:
             raise ValueError("unrecognized deployment manifest")
         self.config = load_config(config_path)
+        backend_path = Path("/etc/agentbox-gateway-daemon.env")
+        if backend_path.exists():
+            if backend_path.is_symlink() or not backend_path.is_file() or backend_path.stat().st_uid != 0 or backend_path.stat().st_mode & 0o077:
+                raise ValueError("Gateway daemon override must be private and root-owned")
+            effective = load_config(backend_path)
+            for key in ("AGENTBOX_LISTEN", "AGENTBOX_API_TOKEN"):
+                self.config[key] = effective[key]
+        self.unix_socket = self.config["AGENTBOX_LISTEN"][5:] if self.config["AGENTBOX_LISTEN"].startswith("unix:") else None
         self.url = "http://"+self.config["AGENTBOX_LISTEN"]
         self.client = build_opener(ProxyHandler({}), NoRedirects())
         self.results = []
@@ -94,6 +104,20 @@ class Smoke:
 
     def http(self, path, body=None, authenticate=True):
         data = json.dumps(body).encode() if body is not None else None
+        if getattr(self, "unix_socket", None):
+            connection = http.client.HTTPConnection("agentbox", timeout=50)
+            connection.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            connection.sock.settimeout(50)
+            headers = {"Content-Type": "application/json"} if data is not None else {}
+            if authenticate:
+                headers["Authorization"] = "Bearer "+self.config["AGENTBOX_API_TOKEN"]
+            try:
+                connection.sock.connect(self.unix_socket)
+                connection.request("POST" if data is not None else "GET", path, body=data, headers=headers)
+                response = connection.getresponse()
+                return response.status, json.loads(response.read(8 << 20))
+            finally:
+                connection.close()
         request = Request(self.url+path, data=data)
         if authenticate:
             request.add_header("Authorization", "Bearer "+self.config["AGENTBOX_API_TOKEN"])

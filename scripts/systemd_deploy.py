@@ -108,6 +108,11 @@ class Deployment:
             raise ValueError("unsupported deployment manifest")
         return manifest
 
+    def require_no_gateway(self):
+        marker = self.app / "GATEWAY_INSTALL.json"
+        if marker.exists() or marker.is_symlink():
+            raise ValueError("remove the managed Gateway component before updating, rolling back, or uninstalling the base daemon")
+
     def require_stopped(self):
         if not self.live:
             return
@@ -226,6 +231,7 @@ class Deployment:
         print("AgentBox installed. Configuration is private; service is not started or enabled.")
 
     def update(self):
+        self.require_no_gateway()
         previous = self.existing()
         self.require_stopped()
         self.require_reconciled()
@@ -260,6 +266,7 @@ class Deployment:
         self.reload()
 
     def rollback(self):
+        self.require_no_gateway()
         current = self.existing()
         self.require_stopped()
         self.require_reconciled()
@@ -275,6 +282,7 @@ class Deployment:
         print("Previous binary and unit restored. Configuration and state were preserved.")
 
     def uninstall(self):
+        self.require_no_gateway()
         self.existing()
         if self.live:
             run("systemctl", "disable", UNIT)
@@ -307,6 +315,8 @@ def main():
         deployment.validate_paths()
         # Stop before taking the state lock, allowing daemon cleanup to finish.
         with deployment.deployment_lock():
+            if args.update or args.rollback or args.uninstall:
+                deployment.require_no_gateway()
             if args.uninstall and deployment.live:
                 run("systemctl", "stop", UNIT)
             with deployment.state_lock():

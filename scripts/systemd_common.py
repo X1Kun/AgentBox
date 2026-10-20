@@ -6,14 +6,38 @@ from pathlib import PurePosixPath
 from urllib.parse import urlsplit
 
 
-def load_config(path):
-    values = {"AGENTBOX_PLATFORM": "kvm", "AGENTBOX_LISTEN": "127.0.0.1:8080", "AGENTBOX_CONCURRENCY": "1", "AGENTBOX_MODE": "cold",
-              "AGENTBOX_WARM_SIZE": "3", "AGENTBOX_MAX_SANDBOXES": "6", "AGENTBOX_CREATE_CONCURRENCY": "1",
-              "AGENTBOX_WARM_DYNAMIC": "false", "AGENTBOX_WARM_MIN_SIZE": "1", "AGENTBOX_WARM_MAX_SIZE": "0",
-              "AGENTBOX_WARM_ADJUST_INTERVAL": "1s", "AGENTBOX_WARM_DOWNSCALE_WINDOW": "30s",
-              "AGENTBOX_QUEUE_SIZE": "16", "AGENTBOX_QUEUE_BYTES": "8388608", "AGENTBOX_QUEUE_TIMEOUT": "100ms", "AGENTBOX_QOS": "off", "AGENTBOX_QOS_INTERVAL": "100ms",
-              "AGENTBOX_QOS_PROTECTED_CGROUP": "none", "AGENTBOX_QOS_CPU_CONTROL": "false", "AGENTBOX_QOS_SCHEDULING": "false"}
-    allowed = {*values, "AGENTBOX_API_TOKEN"}
+def validate_loopback(value):
+    url = urlsplit("http://" + value)
+    try:
+        valid = ipaddress.ip_address(url.hostname).is_loopback and 1 <= url.port <= 65535
+    except (ValueError, TypeError):
+        valid = False
+    if not valid or url.username or url.password or url.path or url.query or url.fragment:
+        raise ValueError("listen must contain an explicit loopback IP and port")
+
+
+def load_gateway_config(path):
+    values = read_environment(path, {"AGENTBOX_GATEWAY_LISTEN": "127.0.0.1:8080",
+        "AGENTBOX_GATEWAY_MAX_INFLIGHT": "8", "AGENTBOX_GATEWAY_TIMEOUT": "50s",
+        "AGENTBOX_GATEWAY_TOKEN": "", "AGENTBOX_DAEMON_TOKEN": ""})
+    for key in ("AGENTBOX_GATEWAY_TOKEN", "AGENTBOX_DAEMON_TOKEN"):
+        if not 32 <= len(values[key]) <= 4096 or any(not 33 <= ord(char) <= 126 for char in values[key]):
+            raise ValueError("Gateway tokens must contain 32..4096 visible ASCII characters")
+    if values["AGENTBOX_GATEWAY_TOKEN"] == values["AGENTBOX_DAEMON_TOKEN"]:
+        raise ValueError("Gateway and daemon tokens must differ")
+    validate_loopback(values["AGENTBOX_GATEWAY_LISTEN"])
+    count = values["AGENTBOX_GATEWAY_MAX_INFLIGHT"]
+    if not re.fullmatch(r"[0-9]+", count) or not 1 <= int(count) <= 64:
+        raise ValueError("Gateway max-inflight must be 1..64")
+    duration = re.fullmatch(r"([0-9]+)(ms|s)", values["AGENTBOX_GATEWAY_TIMEOUT"])
+    if not duration or not 1 <= int(duration[1])*(1000 if duration[2] == "s" else 1) <= 60000:
+        raise ValueError("Gateway timeout must be 1ms..60s")
+    return values
+
+
+def read_environment(path, defaults):
+    values = dict(defaults)
+    allowed = set(values)
     seen = set()
     for line in path.read_text().splitlines():
         line = line.strip()
@@ -26,6 +50,18 @@ def load_config(path):
             raise ValueError("configuration values must be unquoted and contain no whitespace or escapes")
         seen.add(key)
         values[key] = value
+    return values
+
+
+def load_config(path):
+    values = {"AGENTBOX_PLATFORM": "kvm", "AGENTBOX_LISTEN": "127.0.0.1:8080", "AGENTBOX_CONCURRENCY": "1", "AGENTBOX_MODE": "cold",
+              "AGENTBOX_WARM_SIZE": "3", "AGENTBOX_MAX_SANDBOXES": "6", "AGENTBOX_CREATE_CONCURRENCY": "1",
+              "AGENTBOX_WARM_DYNAMIC": "false", "AGENTBOX_WARM_MIN_SIZE": "1", "AGENTBOX_WARM_MAX_SIZE": "0",
+              "AGENTBOX_WARM_ADJUST_INTERVAL": "1s", "AGENTBOX_WARM_DOWNSCALE_WINDOW": "30s",
+              "AGENTBOX_QUEUE_SIZE": "16", "AGENTBOX_QUEUE_BYTES": "8388608", "AGENTBOX_QUEUE_TIMEOUT": "100ms", "AGENTBOX_QOS": "off", "AGENTBOX_QOS_INTERVAL": "100ms",
+              "AGENTBOX_QOS_PROTECTED_CGROUP": "none", "AGENTBOX_QOS_CPU_CONTROL": "false", "AGENTBOX_QOS_SCHEDULING": "false"}
+    values["AGENTBOX_API_TOKEN"] = ""
+    values = read_environment(path, values)
     if not 32 <= len(values.get("AGENTBOX_API_TOKEN", "")) <= 4096:
         raise ValueError("configuration requires an API token of 32 to 4096 characters")
     if values["AGENTBOX_PLATFORM"] not in ("kvm", "systrap"):
@@ -82,11 +118,11 @@ def load_config(path):
         protected = PurePosixPath(values["AGENTBOX_QOS_PROTECTED_CGROUP"])
         if ".." in protected.parts or not str(protected).startswith("/sys/fs/cgroup/"):
             raise ValueError("observe requires a protected cgroup below /sys/fs/cgroup")
-    url = urlsplit("http://" + values["AGENTBOX_LISTEN"])
-    try:
-        valid = ipaddress.ip_address(url.hostname).is_loopback and 1 <= url.port <= 65535
-    except (ValueError, TypeError):
-        valid = False
-    if not valid or url.username or url.password or url.path or url.query or url.fragment:
-        raise ValueError("listen must contain an explicit loopback IP and port")
+    address = values["AGENTBOX_LISTEN"]
+    if address.startswith("unix:"):
+        socket = address[5:]
+        if not socket.startswith("/") or str(PurePosixPath(socket)) != socket or ".." in PurePosixPath(socket).parts or len(socket.encode()) > 100:
+            raise ValueError("listen requires a clean absolute Unix socket path of at most 100 bytes")
+    else:
+        validate_loopback(address)
     return values
