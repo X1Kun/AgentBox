@@ -1,6 +1,6 @@
 # 固定 systemd 部署与验收
 
-固定 `agentbox.service` 支持 cold 和一次性 warm 模式，默认 cold。预热池配置与调度语义见 [预热池文档](warm-pool.md)，CPU 配额与压力准入/补池门控见 [QoS 调度](qos-scheduling.md)。动态库存和多节点仍待实现。
+固定 `agentbox.service` 支持 cold 和一次性 warm 模式，默认 cold。预热池配置与调度语义见 [预热池文档](warm-pool.md)，CPU 配额与压力准入/补池门控见 [QoS 调度](qos-scheduling.md)。可显式开启[有界动态库存](dynamic-inventory.md)；多节点仍待实现。
 
 ## 部署前提
 
@@ -44,6 +44,7 @@ sudo bash scripts/smoke-host.sh
 - `AGENTBOX_LISTEN`：显式 loopback IP 与端口，默认 `127.0.0.1:8080`。
 - `AGENTBOX_CONCURRENCY`：1～4，默认 1。
 - `AGENTBOX_MODE`：cold 或 warm，默认 cold；其余池容量与队列参数见 [配置表](warm-pool.md#配置)。
+- `AGENTBOX_WARM_DYNAMIC=true`：启用有界动态 READY 库存，默认 false；上下界与时间配置见[动态库存](dynamic-inventory.md)。
 - `AGENTBOX_QOS`：off、observe 或 enforce，默认 off。`AGENTBOX_QOS_CPU_CONTROL=true` 可在 observe 下预演，enforce 自动开启真实控制。两者均需显式受保护 cgroup 路径；采样与执行器失败行为见 [CPU QoS](cpu-qos.md)。
 - `AGENTBOX_QOS_SCHEDULING=true`：启用压力准入与补池门控，默认 false；observe 只报告建议，enforce 实际执行。当前是否接单应同时查看 `qos.scheduling.admission_open`。
 

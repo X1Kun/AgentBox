@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -62,6 +63,86 @@ func assertRuntimeEmpty(t *testing.T, c sandbox.Config) {
 			t.Fatalf("cgroup residue: %s", entry.Name())
 		}
 	}
+}
+
+func TestDynamicInventoryRuntime(t *testing.T) {
+	if os.Getenv("AGENTBOX_INTEGRATION") != "1" {
+		t.Skip("requires isolated runsc and delegated cgroups")
+	}
+	// Hold replacement creation, making a real inventory wait rather than
+	// expanding merely because a task consumed one normal READY instance.
+	dir := t.TempDir()
+	marker, release, wrapper := filepath.Join(dir, "first-create"), filepath.Join(dir, "release-create"), filepath.Join(dir, "runsc-wrapper")
+	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+	script := "#!/bin/sh\nfor arg do\n if [ \"$arg\" = create ]; then\n  if [ -f " + quote(marker) + " ]; then\n   while [ ! -f " + quote(release) + " ]; do sleep 0.01; done\n  else : > " + quote(marker) + "; fi\n fi\ndone\nexec " + quote(os.Getenv("AGENTBOX_RUNSC")) + " \"$@\"\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := sandbox.Config{Runsc: wrapper, Rootfs: os.Getenv("AGENTBOX_ROOTFS"),
+		StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"),
+		Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: "warm", Concurrency: 1, MaxSandboxes: 4,
+		DynamicWarmPool: true, WarmMinSize: 1, WarmMaxSize: 2,
+		WarmAdjustInterval: 100 * time.Millisecond, WarmDownscaleWindow: 300 * time.Millisecond, QueueTimeout: 3 * time.Second}
+	e, err := sandbox.New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := e.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	// Unblock a reserved create before cleanup joins the background workers.
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0600) })
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := e.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s := e.Status(); s.Target != 1 || s.Inventory == nil || !s.Inventory.Enabled {
+		t.Fatalf("dynamic startup: %+v", s)
+	}
+	first, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "print('normal-consumption')", TimeoutMS: 5000})
+	if err != nil || first.Status != "succeeded" || !first.CleanupComplete {
+		t.Fatalf("initial execution: %+v %v", first, err)
+	}
+	if s := e.Status(); s.Target != 1 || s.Inventory.InventoryStalls != 0 {
+		t.Fatal("normal consumption triggered expansion")
+	}
+	type outcome struct {
+		result api.Result
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		r, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "print('dynamic-ok')", TimeoutMS: 5000})
+		done <- outcome{r, err}
+	}()
+	waitRuntime(t, func() bool { return e.Status().Target == 2 })
+	if err := os.WriteFile(release, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.err != nil || r.result.Status != "succeeded" || r.result.Stdout != "dynamic-ok\n" || !r.result.CleanupComplete {
+			t.Fatalf("dynamic execution: %+v", r)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("dynamic task did not finish")
+	}
+	waitRuntime(t, func() bool {
+		s := e.Status()
+		return s.Target == 1 && s.Idle == 1 && s.Total == 1 && s.Inventory.ShrinkSucceeded == 1
+	})
+	s := e.Status()
+	if s.Total > s.MaxSandboxes || s.Inventory.ScaleUps != 1 || s.Inventory.ScaleDowns != 1 || s.Inventory.ShrinkFailures != 0 || s.Inventory.InventoryStalls != 1 {
+		t.Fatalf("dynamic accounting: %+v", s)
+	}
+	t.Logf("inventory: %+v", *s.Inventory)
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertRuntimeEmpty(t, c)
 }
 
 func TestWarmRuntime(t *testing.T) {

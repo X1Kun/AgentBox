@@ -27,14 +27,15 @@ AgentBox 支持显式 `cold` 和 `warm` 两种模式，默认保持 `cold`，不
 |---|---|---|---|
 | `-mode` | `AGENTBOX_MODE` | `cold` | cold 或 warm |
 | `-concurrency` | `AGENTBOX_CONCURRENCY` | 1 | 任务并发，1～4，直到清理完成才释放 |
-| `-warm-size` | `AGENTBOX_WARM_SIZE` | 3 | READY 库存目标 |
+| `-warm-size` | `AGENTBOX_WARM_SIZE` | 3 | 固定 READY 目标；也作为动态最大值的默认来源 |
+| `-warm-dynamic` | `AGENTBOX_WARM_DYNAMIC` | false | 按需求在上下界间调整 READY 目标，参数见[动态库存](dynamic-inventory.md) |
 | `-max-sandboxes` | `AGENTBOX_MAX_SANDBOXES` | 6 | 所有创建、空闲、领取、运行、销毁实例的总上限，最多 8 |
-| `-create-concurrency` | `AGENTBOX_CREATE_CONCURRENCY` | 1 | 后台创建并发，1～2，不能超过库存目标 |
+| `-create-concurrency` | `AGENTBOX_CREATE_CONCURRENCY` | 1 | 后台创建并发，1～2，不能超过 READY 目标上界 |
 | `-queue-size` | `AGENTBOX_QUEUE_SIZE` | 16 | 最多排队请求数，1～128 |
 | `-queue-bytes` | `AGENTBOX_QUEUE_BYTES` | 8388608 | 排队请求的解码后文本字节预算，最多 64 MiB |
 | `-queue-timeout` | `AGENTBOX_QUEUE_TIMEOUT` | `100ms` | 最大排队时间，1ms～5s |
 
-库存目标和执行并发分别不得超过总实例上限。CLI 接受 Go duration；固定服务配置解析器接受整数 `ms` 或 `s`。以上池与队列参数只影响 warm 模式，cold 保持满载立即拒绝。
+库存目标和执行并发分别不得超过总实例上限。CLI 接受 Go duration；固定服务配置解析器接受整数 `ms` 或 `s`。以上池与队列参数只影响 warm 模式，cold 保持满载立即拒绝；cold 显式启用动态库存会被拒绝。
 
 字节预算计算 code、stdin、request_id、runtime 和 env 键值的字节长度，不是对 Go 堆内存的精确计量。HTTP 原始 body 另有既有上限。
 
@@ -74,7 +75,7 @@ HTTP drain 预算为 20 秒；创建者/运行任务并行收尾按约 18 秒预
 
 ## 观测与时延口径
 
-鉴权的 `GET /v1/status` 返回模式、readiness、库存目标、总上限，以及 creating/idle/leased/running/destroying、队列数量与字节数、创建次数/失败次数/累计耗时和清理失败次数。cold 模式仅提供模式和 readiness。
+鉴权的 `GET /v1/status` 返回模式、readiness、库存目标、总上限，以及 creating/idle/leased/running/destroying、队列数量与字节数、创建次数/失败次数/累计耗时和清理失败次数。启用[动态库存](dynamic-inventory.md)时增加目标边界与动作统计，target 为实时目标。cold 不提供池统计。
 
 执行结果新增 `queue_ms`，原有字段保持：
 

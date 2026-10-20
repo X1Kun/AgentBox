@@ -39,6 +39,11 @@ func (p *warmPool) setPressureLocked(paused bool) {
 		return
 	}
 	p.pressurePaused = paused
+	// Break recommendation continuity; recovery needs fresh valid history.
+	p.resetInventoryLocked("pressure_recovery")
+	if paused {
+		p.inventory.Reason, p.inventory.LimitedBy = "qos_pressure", "qos_pressure"
+	}
 	if paused {
 		p.pressureEpoch++
 	}

@@ -28,23 +28,28 @@ var (
 )
 
 type Config struct {
-	Logger            *slog.Logger
-	QoS               qos.Config
-	Runsc             string
-	Rootfs            string
-	StateDir          string
-	CgroupRoot        string
-	MoveSelf          bool
-	Platform          string
-	Concurrency       int
-	OutputLimit       int
-	Mode              string
-	WarmPoolSize      int
-	MaxSandboxes      int
-	CreateConcurrency int
-	QueueSize         int
-	QueueBytes        int
-	QueueTimeout      time.Duration
+	Logger              *slog.Logger
+	QoS                 qos.Config
+	Runsc               string
+	Rootfs              string
+	StateDir            string
+	CgroupRoot          string
+	MoveSelf            bool
+	Platform            string
+	Concurrency         int
+	OutputLimit         int
+	Mode                string
+	WarmPoolSize        int
+	DynamicWarmPool     bool
+	WarmMinSize         int
+	WarmMaxSize         int
+	WarmAdjustInterval  time.Duration
+	WarmDownscaleWindow time.Duration
+	MaxSandboxes        int
+	CreateConcurrency   int
+	QueueSize           int
+	QueueBytes          int
+	QueueTimeout        time.Duration
 }
 
 type Engine struct {
@@ -282,7 +287,7 @@ func (e *Engine) Status() api.StatusReport {
 	}
 	snapshot := e.pool.status()
 	return api.StatusReport{
-		Scheduling: schedulingReport(snapshot), Cleanup: e.cleanup.report(),
+		Scheduling: schedulingReport(snapshot), Cleanup: e.cleanup.report(), Inventory: inventoryReport(snapshot),
 		QoS:  e.observationReport(),
 		Mode: "warm", Ready: snapshot.Ready && !e.broken.Load() && !e.closed.Load(),
 		Target: snapshot.Target, MaxSandboxes: snapshot.MaxSandboxes,
@@ -615,6 +620,9 @@ func (e *Engine) runAndCollectResult(parent context.Context, timeoutMS int, exec
 			result.Status = "failed"
 		}
 	}
+	// Sample before runtime deletion, which may remove the cgroup. This
+	// includes startup and warm idle, but is not final lifetime accounting:
+	// background tasks or a pending kill may still consume resources afterwards.
 	usage, usageErr := group.Usage()
 	result.Usage = usage
 	if usageErr != nil {

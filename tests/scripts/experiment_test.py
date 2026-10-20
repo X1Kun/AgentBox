@@ -3,13 +3,16 @@
 import importlib.util
 from contextlib import redirect_stdout
 import io
+import json
 import math
 from pathlib import Path
 import sys
+import tempfile
+import threading
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"scripts"))
-from observe import core_metrics, sandbox_workload, summarize_sandboxes
+from observe import core_metrics, run_phase, sandbox_workload, summarize_sandboxes
 from static_experiment import GROUPS, check_phase, experiment_plan
 from observation_analysis import distribution, matched_task_timings, observed_counter_rate, pool_series, usable_resource_frame
 
@@ -19,6 +22,45 @@ spec.loader.exec_module(plot)
 
 
 class MeasurementTests(unittest.TestCase):
+    def test_recorder_modes_preserve_raw_frames_and_quality(self):
+        for mode in ("observe", "enforce", "off", None):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                sampled = threading.Event()
+                status = {"ready": True, "qos": {
+                    "mode": mode, "stale": False,
+                    "sources": [dict(name=name, available=True, interval_ms=100)
+                                for name in ("host", "sandboxes", "protected")],
+                }}
+
+                class Agent:
+                    def request(self, path):
+                        if path != "/v1/status":
+                            raise AssertionError("unexpected workload request")
+                        sampled.set()
+                        return 200, status
+
+                class Core:
+                    def request(self, path):
+                        if path != "/work" or not sampled.wait(2):
+                            raise AssertionError("sampler did not run")
+                        return 200, {"iterations": 1, "checksum": "a"*64, "work_ms": .1}
+
+                output = Path(directory)
+                report = run_phase("mode-check", 1, 1, 0, Core(), Agent(), output)
+                frames = [json.loads(line) for line in
+                          (output/"mode-check-observations.jsonl").read_text().splitlines()]
+                self.assertGreaterEqual(len(frames), 1)
+                self.assertTrue(all(frame["http_status"] == 200 and frame["status"] == status
+                                    for frame in frames))
+                self.assertEqual(report["core_succeeded"], 1)
+                valid = mode in ("observe", "enforce")
+                self.assertEqual(report["observation_errors"], 0 if valid else len(frames))
+                self.assertEqual(report["sample_quality"], {
+                    "frames": len(frames) if valid else 0,
+                    "usable_frames": len(frames) if valid else 0,
+                    "stale_frames": 0, "unavailable_frames": 0, "baseline_frames": 0,
+                })
+
     def test_analysis_rechecks_raw_resource_validity(self):
         sources = [dict(name=name, available=True, interval_ms=100) for name in ("host", "sandboxes", "protected", "manager")]
         frame = {"http_status": 200, "status": {"qos": {"stale": False, "sources": sources}}}

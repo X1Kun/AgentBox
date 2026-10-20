@@ -98,3 +98,16 @@ func schedulingReport(s poolSnapshot) *api.SchedulingReport {
 		QueueCountFull:        t.QueueCountFull, QueueBytesFull: t.QueueBytesFull,
 	}
 }
+
+func inventoryReport(s poolSnapshot) *api.InventoryReport {
+	if !s.Config.DynamicWarmPool {
+		return nil
+	}
+	i, c := s.Inventory, s.Config
+	return &api.InventoryReport{Enabled: true, Target: s.Target, MinTarget: c.WarmMinSize, MaxTarget: c.WarmMaxSize,
+		RawTarget: i.RawTarget, StabilizedTarget: i.StabilizedTarget,
+		AdjustIntervalMS: ms(c.WarmAdjustInterval), ObservationIntervalMS: ms(inventoryObservationInterval), DownscaleWindowMS: ms(c.WarmDownscaleWindow), Reason: i.Reason,
+		LimitedBy: i.LimitedBy, HeadWaitReason: i.HeadWaitReason, InventoryStalls: i.InventoryStalls, SlotWaitRequests: i.SlotWaitRequests, BothWaitRequests: i.BothWaitRequests,
+		LastChangedAt: i.LastChange.UTC().Format(time.RFC3339Nano), ScaleUps: i.ScaleUps, ScaleDowns: i.ScaleDowns,
+		ShrinkAttempts: i.ShrinkAttempts, ShrinkSucceeded: i.ShrinkSucceeded, ShrinkFailures: i.ShrinkFailures}
+}
