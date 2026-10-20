@@ -11,7 +11,7 @@ import sys
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, ProxyHandler, build_opener
 
-sys.path.insert(0, "/workspace/scripts")
+sys.path.insert(0, "/workspace/scripts/lib")
 from smoke_host import Smoke, wait_until
 from systemd_common import load_gateway_config
 
@@ -24,8 +24,8 @@ def run(*args, success=True):
 
 
 def deploy(gateway=False, *args):
-    script = "install-gateway-systemd.sh" if gateway else "install-systemd.sh"
-    return run("bash", "/workspace/scripts/"+script, "--source", "/workspace", *args)
+    component = "gateway" if gateway else "base"
+    return run("python3", "/workspace/scripts/deploy.py", component, "--source", "/workspace", *args)
 
 
 def main():

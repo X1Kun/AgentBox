@@ -1,6 +1,6 @@
 # 静态 CPU 配额对照与实验图
 
-本阶段比较固定 CPU 配额的保护效果与执行成本，为后续动态控制提供基准。AgentBox 继续处于 observe 模式，配额由隔离测试控制器在每组测量前设置，测量期间不调整。真实执行结果与示例图见 [验收记录](static-cpu-validation.md)。
+本阶段比较固定 CPU 配额的保护效果与执行成本，为后续动态控制提供基准。AgentBox 继续处于 observe 模式，配额由隔离测试控制器在每组测量前设置，测量期间不调整。真实执行结果与示例图见 [验收记录](validation.md#static)。
 
 ## 三组实验
 
@@ -48,10 +48,10 @@ protected → baseline → default
 python3 -m venv .local/plot-venv
 .local/plot-venv/bin/python -m pip install -r scripts/plot-requirements.txt
 make build
-bash scripts/static-experiment-container.sh kvm 60 3
+python3 scripts/container.py static --platform kvm --duration 60 --repetitions 3
 ```
 
-也可以执行 `make static-experiment` 使用默认参数。没有 KVM 的环境显式选择 `systrap`；测试不会自动更换平台。参数依次为平台、比较窗口秒数（5～300）、重复轮数（1～9）。`kvm 5 1` 只用于快速检查流程。已有 Matplotlib 环境可通过 `AGENTBOX_PLOT_PYTHON` 指定 Python 可执行文件。
+也可以执行 `make static-experiment` 使用默认参数。没有 KVM 的环境显式选择 `systrap`；测试不会自动更换平台。参数分别为 --platform、--duration（5～300 秒）、--repetitions（1～9）。`--platform kvm --duration 5 --repetitions 1` 只用于快速检查流程。已有 Matplotlib 环境可通过 `AGENTBOX_PLOT_PYTHON` 指定 Python 可执行文件。
 
 实验入口只使用 Docker 的私有 PID、cgroup 和网络命名空间，项目只读挂载，只有本次宿主结果目录可写；不挂载宿主 cgroup 或 Docker socket 到容器。privileged 的用途与现有集成验收一致。正常或 Python 异常退出时，停止组件后导出已写记录，再删除容器；只有整轮通过检查才生成 `experiment.json` 并自动绘图。外部 SIGKILL 或容器 OOM 可能丢失尚未导出的内存记录。
 
@@ -73,7 +73,7 @@ bash scripts/static-experiment-container.sh kvm 60 3
 可对已有结果单独重画，绘图脚本不连接服务或修改资源限制：
 
 ```bash
-.local/plot-venv/bin/python scripts/plot-static.py artifacts/static-kvm-实际目录
+.local/plot-venv/bin/python scripts/experiment.py plot artifacts/static-kvm-实际目录
 ```
 
 ## 统计与图表口径

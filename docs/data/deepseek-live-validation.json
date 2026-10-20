@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-20",
+  "environment": {
+    "platform": "systrap",
+    "dependencies": "container tmpfs and pinned Python image rootfs",
+    "control_network": "Docker bridge for live API egress; task sandbox runsc network=none",
+    "isolated_test_container": true
+  },
+  "result": {
+    "agent_uid": 1000,
+    "answer": "Both calls behaved as specified:\n\n1. **First execution** (exit code 1, status `failed`, cleanup confirmed): the assertions that `DEEPSEEK_API_KEY`, `AGENTBOX_GATEWAY_TOKEN`, `AGENTBOX_DAEMON_TOKEN`, and `AGENTBOX_API_TOKEN` were absent from `os.environ` all passed — stdout was `env assertions passed` — and the following `print(1/0)` raised `ZeroDivisionError: division by zero`. No credential values were requested or displayed.\n2. **Second execution** (exit code 0, status `succeeded`, cleanup confirmed): `print(6*7)` produced stdout `42` with empty stderr.\n\n**The numeric result is 42.**\n\nNo other tools were used, and no `get_status` call was made.",
+    "cleanup_complete": true,
+    "execution_statuses": [
+      "failed",
+      "succeeded"
+    ],
+    "model": "deepseek-flash",
+    "provider": "DeepSeek live API",
+    "tool_calls": 2,
+    "turns": 3
+  },
+  "limits": {
+    "max_model_requests": 4,
+    "max_tool_calls": 3,
+    "conversation_timeout_seconds": 100
+  },
+  "evidence": {
+    "log": "artifacts/deepseek-live-runtime.log",
+    "sha256": "f91b7928eb75c4867928942e11a2e02165e4ed4ec34d1d7daa9d84f8011b2f9d"
+  },
+  "scope": "Single local host, real Agent/MCP/Gateway binaries and runsc; not a multi-host or performance validation."
+}

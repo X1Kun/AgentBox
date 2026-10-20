@@ -74,10 +74,10 @@ enforce 压力调度关闭时，暂停新创建、目标调整和回收预留；
 
 ```bash
 AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
-  bash scripts/qos-container.sh systrap '^TestDynamicInventoryRuntime$'
+  python3 scripts/container.py qos --platform systrap --pattern '^TestDynamicInventoryRuntime$'
 ```
 
-该方式使用 tmpfs 测试依赖，不能替代正常磁盘路径验收。开源来源与适配思路见[设计与学习路线](inventory-open-source-design.md)；修正前的问题保留在[理论复核](dynamic-inventory-theory.md)，其代码哈希和反例记录对应旧 v1 diff。
+该方式使用 tmpfs 测试依赖，不能替代正常磁盘路径验收。开源来源与适配思路见[设计与学习路线](dynamic-inventory.md#upstream)；修正前的问题保留在[理论复核](dynamic-inventory.md#theory)，其代码哈希和反例记录对应旧 v1 diff。
 
 ## 本轮验证记录
 
@@ -87,8 +87,30 @@ AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
 
 本轮没有更新宿主服务或开展长时间性能实验，不将功能回归解释为延迟/吞吐收益，也不将 tmpfs 通过解释为历史磁盘问题已修复。
 
-## v1 历史验证记录（策略已替换）
+<a id="theory"></a>
+## 库存理论与历史误判
 
-2026-10-20，`cc2d381` 加本轮修改。`make check` 与程序构建通过。仅运行一个真实 systrap 短用例，使用上述 tmpfs 运行时与固定 Python 镜像提取的测试 rootfs；用例耗时 1.33 秒。目标从 1 增至 2，任务输出 `dynamic-ok`，空闲后回到 1；`scale_ups=1`、`scale_downs=1`、`shrink_attempts=1`、`shrink_succeeded=1`、`shrink_failures=0`，关闭后 bundle 与任务 cgroup 无残留。
+READY 是缓冲库存，创建 worker 是补货产能，执行名额是服务能力；调整 READY 目标不会直接提高后两者。对稳定且每任务消耗一个实例的简化区间，成功率受 `min(k/E[T_create], C/E[T_slot], 其他约束)` 限制；Little 定律的在途人口不能直接当作最优 READY 公式。
 
-这次验证覆盖功能通路，不代表修复了历史磁盘路径问题或取得性能收益。没有更新宿主服务，也未开展长时间压测或参数寻优。
+旧 v1 有两个确定性反例，现已转为生产方法回归：已有 READY、仅执行名额不足时不能扩库存；稀疏请求总能及时补货时不能仅凭一次正常消费把目标推到最大。旧源码哈希与反例保存在 [理论证据 JSON](data/performance-theory-evidence.json)的 inventory_v1_review 字段；当前行为以本页 v2 为准。
+
+书中依据支持预先准备、分别识别软件资源饱和、空闲回收和滞回，不证明默认 30 秒/1 秒最优，也不证明当前动态策略优于固定库存。对应引用见 [B07](performance-theory-references.md#b07)、[B28–B30](performance-theory-references.md#b28)，更完整模型见 [性能理论](performance-theory.md)。
+
+<a id="upstream"></a>
+## 开源机制与单调队列
+
+以下借鉴的是源码机制，未运行这些上游项目，也不复用其性能数字。服务副本、可复用容器与一次性 READY 库存的语义不同。
+
+| 项目与入口 | 实际机制 | 适合借鉴的部分与边界 |
+| --- | --- | --- |
+| [Apache OpenWhisk · ContainerPool.scala](https://github.com/apache/openwhisk/blob/master/core/invoker/src/main/scala/org/apache/openwhisk/core/containerpool/ContainerPool.scala) | `adjustPrewarmedContainer` 区分普通补货与周期调整；`increasePrewarms` 计入已预热和启动中实例；`getReactiveCold` 根据窗口内 cold-start 计数、threshold/increment 和 min/max 给出需求。预热实例还可按 TTL 回收。 | 重点是把正常消费补货和缺货反馈分开。AgentBox warm 不回退冷启动，应以真实库存阻塞替代 cold-start 信号；不能照搬其任务容器复用语义。 |
+| [Knative Serving · autoscaler.go](https://github.com/knative/serving/blob/main/pkg/autoscaler/scaling/autoscaler.go) | `Scale` 读取 stable/panic 两个窗口，分别计算期望服务副本数；panic 状态只增加规模，延后降低；可配置延迟窗口，数据不可用时返回无有效建议。 | 学习快响应与慢回收、缺测不作低需求判断。它调服务副本，AgentBox 调 READY，不能把其并发量除以目标值的副本公式直接当库存公式。 |
+| [Kubernetes HPA · horizontal.go，v1.36.0](https://github.com/kubernetes/kubernetes/blob/v1.36.0/pkg/controller/podautoscaler/horizontal.go) | `stabilizeRecommendationWithBehaviors` 从历史原始推荐值求稳定范围；下行取窗口内最大值。之后 `convertDesiredReplicasWithBehaviorRate` 另行施加动作速率及 min/max。 | 将原始建议、稳定化和执行限制分层。窗口应记录未经动作限速的推荐，避免把“当前仍保持较高目标”反复写回，导致永不缩容。 |
+| [kubernetes-sigs/agent-sandbox · sandboxwarmpool_controller.go](https://github.com/kubernetes-sigs/agent-sandbox/blob/main/extensions/controllers/sandboxwarmpool_controller.go) | `reconcilePool` 按声明目标与实际池成员对账，区分 Ready、未 Ready、终止中；创建会计入仍存在的终止成员。`takeRefillTokens` 用每池令牌桶控制替代创建的发起速率；还存在批处理与缓存变更确认机制。 | 最接近沙箱供给层。借鉴目标与供给分离、在途容量和限速补池。AgentBox 没有 Kubernetes informer，不需要照搬缓存 expectations；最多 8 实例也无需引入其大批量并行创建。 |
+
+
+当前实现将实际阻塞归因、原始建议、稳定建议和动作限制分层。缺测或压力暂停不解释为低需求，恢复时重建有效窗口；普通补货不推动目标上调。可选令牌桶尚未接入，不把创建并发上限误称为精确创建速率限制。
+
+下行稳定窗口采用滑动最大推荐，internal/sandbox/inventory_policy.go 的 recommendationMax 使用单调队列：过期记录从队首移除，不高于新建议的旧记录从队尾移除，再追加新记录；队首即窗口最大值。每条记录最多进入/离开一次，更新摊还 O(1)。写入历史的是原始建议，不能把暂时保持的高目标反复写回，否则可能一直无法缩容。
+
+完整旧调研、反例过程与逐轮流水账已放入整理备份；当前页保留操作、算法与验证边界。

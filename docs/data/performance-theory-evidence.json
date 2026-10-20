@@ -738,5 +738,119 @@
       "send_lag_p99_ms": 0.32578999889665283,
       "sandbox_completions_per_second": 0.36666666666666664
     }
+  },
+  "inventory_v1_review": {
+    "analysis_date": "2026-10-20",
+    "scope": "Local book reading, deterministic checks against a copy of current production sources, and read-only historical CSV recomputation. No new runtime or pressure workload; no Git mutation.",
+    "head": "cc2d381 (working tree includes dynamic inventory implementation)",
+    "book": {
+      "file": "/data/zhengxikun/ResumeProject/Systems.Performance.Enterprise.and.the.Cloud.2nd.Edition.2020.12.pdf",
+      "sha256": "18bc406ccb9c71ac3fedb016df8b0c85ccf55d7d86f724c3abb3ddb05a823e17",
+      "pdf_pages": 929,
+      "pdf_page_offset": 39,
+      "additional_cited_printed_pages": [
+        72,
+        73,
+        317,
+        318,
+        321,
+        322,
+        582,
+        583
+      ]
+    },
+    "source_sha256": {
+      "internal/sandbox/inventory.go": "7f454560bc1eea38cce1b66ddf81349069ad27f1c4e056bf52ae67ff463ce039",
+      "internal/sandbox/scheduler.go": "60e3f77055e1dbcd30d3c72149982d0abdf1cdb1f1642a6785c9174a784f2711",
+      "internal/sandbox/pool.go": "d1aa0ad110ee2b19e8c0c0d1209a15d4a83003af8aa9167a0c7c37e56e230940",
+      "internal/sandbox/config.go": "9ab64cacb51a79ad0335086610adc41fc8df030059fc03635daf9b6b657c63fa",
+      "internal/sandbox/engine.go": "fb1326d788606f38f6e467ab393e9499e0c5f5afbbbabfdc0a5ab122678eeced"
+    },
+    "counterexample_check": {
+      "kind": "Reachable-state checks using production pool/scheduler/inventory methods; replacement completion is supplied by the fixture; logical time, not a measured workload.",
+      "command": "GOCACHE=/tmp/agentbox-review-go-cache go test -run ^TestInventoryTheoryCounterexamples$ -count=1 -v ./internal/sandbox",
+      "working_copy": "/tmp/agentbox-inventory-theory-970c39xe",
+      "exit_code": 0,
+      "package_seconds": 0.004,
+      "cases": [
+        {
+          "name": "queue_waiting_for_execution_slot",
+          "ready": 2,
+          "executing": 1,
+          "execution_limit": 1,
+          "queued": 1,
+          "target_before": 2,
+          "target_after": 3,
+          "interpretation": "An execution-slot queue triggers inventory expansion despite available READY instances."
+        },
+        {
+          "name": "sparse_requests_without_inventory_wait",
+          "logical_interarrival_seconds": 10,
+          "idle_for_seconds": 30,
+          "adjust_interval_seconds": 1,
+          "requests": 3,
+          "queue_entered": 0,
+          "targets_after_requests": [
+            2,
+            3,
+            3
+          ],
+          "ready_before_decisions": [
+            1,
+            2,
+            3
+          ],
+          "interpretation": "Remembered consumption signals raise inventory even when replacement has completed and no request queues. Recurring activity prevents the full idle timeout."
+        }
+      ],
+      "fixture_go": "package sandbox\nimport (\n \"context\"\n \"fmt\"\n \"testing\"\n \"time\"\n)\nfunc TestInventoryTheoryCounterexamples(t *testing.T) {\n config := func() Config { return Config{Mode:\"warm\", Concurrency:1, WarmPoolSize:3, DynamicWarmPool:true, WarmMinSize:1, WarmMaxSize:3, MaxSandboxes:4, CreateConcurrency:1, QueueSize:16, QueueBytes:1024, QueueTimeout:time.Second, WarmAdjustInterval:time.Second, WarmIdleFor:30*time.Second} }\n t.Run(\"queue_waiting_for_execution_slot\",func(t *testing.T) {\n  c:=config();c.WarmMinSize=2\n  p:=newWarmPool(c,nil,nil);defer p.cancel();p.initialized=true\n  a,b,active:=&executionState{id:\"ready-a\"},&executionState{id:\"ready-b\"},&executionState{id:\"leased\"}\n  p.ready=[]*executionState{a,b};p.items[a]=poolReady;p.items[b]=poolReady;p.items[active]=poolRunning;p.executing=1\n  p.waiters=[]*poolWaiter{{enteredAt:time.Now(),bytes:1}};p.queuedBytes=1\n  p.inventory.LastChange=time.Now().Add(-2*time.Second)\n  p.adjustInventoryLocked(time.Now())\n  if p.inventory.Target!=3 {t.Fatalf(\"unexpected target: %d\",p.inventory.Target)}\n  t.Logf(\"ready=%d executing=%d execution_limit=%d queued=%d target_before=2 target_after=%d\",len(p.ready),p.executing,c.Concurrency,len(p.waiters),p.inventory.Target)\n })\n t.Run(\"sparse_requests_without_inventory_wait\",func(t *testing.T) {\n  c:=config();p:=newWarmPool(c,nil,nil);defer p.cancel();p.initialized=true\n  origin:=time.Now();p.inventory.LastChange=origin\n  id:=0\n  refill:=func(){for len(p.ready)<p.inventory.Target {id++;x:=&executionState{id:fmt.Sprint(id)};p.ready=append(p.ready,x);p.items[x]=poolReady}}\n  refill()\n  for request:=1;request<=3;request++ {\n   at:=origin.Add(time.Duration(request)*10*time.Second)\n   before:=p.inventory.Target\n   x,err:=p.acquire(context.Background(),1);if err!=nil {t.Fatal(err)}\n   p.mark(x,poolDestroying);p.release(x,true)\n   refill() // successful replacement before decision; no queue or active work remains\n   readyBefore:=len(p.ready)\n   p.adjustInventoryLocked(at)\n   refill()\n   p.adjustInventoryLocked(at.Add(time.Millisecond)) // establish idle baseline\n   t.Logf(\"request=%d logical_gap=10s ready_before_decision=%d queued=%d executing=%d target_before=%d target_after=%d\",request,readyBefore,len(p.waiters),p.executing,before,p.inventory.Target)\n  }\n  if p.inventory.Target!=3 || p.telemetry.QueueEntered!=0 || p.inventory.ScaleUps!=2 {t.Fatalf(\"unexpected state: %+v\",p.inventory)}\n })\n}\n",
+      "fixture_sha256": "611a7a0355cc513da4dfb346fc03567192afea761e47d51b23619473215c4341"
+    },
+    "historical_benchmark": {
+      "recorded_at": "2026-10-15T05:09:24Z",
+      "kind": "Historical cold vs fixed warm, not current dynamic vs fixed comparison",
+      "csv": "artifacts/benchmark-kvm-jXmIUnDF/requests.csv",
+      "csv_sha256": "e17d4457e9118bb0d95e36a4f5aa0fb1ed238e7fdfb1eb08f536186e4a519abc",
+      "summary_sha256": "6e47caf9b2bfc451cd4ac5cc3b0e0b63b4ac8d268ea241b1b3571d7268948364",
+      "p50_method": "nearest rank over successful HTTP 200 requests with confirmed cleanup, using rounded CSV milliseconds",
+      "results": [
+        {
+          "mode": "cold",
+          "scenario": "inventory",
+          "offered": 60,
+          "completed": 60,
+          "rejected": 0,
+          "wall_p50_ms": 287.776,
+          "setup_p50_ms": 72.567
+        },
+        {
+          "mode": "cold",
+          "scenario": "steady",
+          "offered": 60,
+          "completed": 49,
+          "rejected": 11,
+          "wall_p50_ms": 405.675,
+          "setup_p50_ms": 96.978
+        },
+        {
+          "mode": "warm",
+          "scenario": "inventory",
+          "offered": 60,
+          "completed": 60,
+          "rejected": 0,
+          "wall_p50_ms": 156.398,
+          "setup_p50_ms": 10.241
+        },
+        {
+          "mode": "warm",
+          "scenario": "steady",
+          "offered": 60,
+          "completed": 34,
+          "rejected": 26,
+          "wall_p50_ms": 247.292,
+          "setup_p50_ms": 10.684
+        }
+      ]
+    }
   }
 }

@@ -10,7 +10,7 @@ import (
 )
 
 func TestPrepareRootfsPreservesPermissions(t *testing.T) {
-	script, err := os.ReadFile(filepath.Join("..", "..", "scripts", "prepare-rootfs.sh"))
+	script, err := os.ReadFile(filepath.Join("..", "..", "scripts", "setup.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func TestPrepareRootfsPreservesPermissions(t *testing.T) {
 		t.Run(mask, func(t *testing.T) {
 			dir := t.TempDir()
 			projectDir := filepath.Join(dir, "project")
-			scriptPath := filepath.Join(projectDir, "scripts", "prepare-rootfs.sh")
+			scriptPath := filepath.Join(projectDir, "scripts", "setup.sh")
 			if err := os.MkdirAll(filepath.Dir(scriptPath), 0755); err != nil {
 				t.Fatal(err)
 			}
@@ -49,7 +49,7 @@ esac
 				t.Fatal(err)
 			}
 			logPath := filepath.Join(dir, "docker.log")
-			cmd := exec.Command("bash", "-c", `umask "$1"; exec bash "$2"`, "rootfs-permissions-test", mask, scriptPath)
+			cmd := exec.Command("bash", "-c", `umask "$1"; exec bash "$2" rootfs`, "rootfs-permissions-test", mask, scriptPath)
 			cmd.Env = append(os.Environ(), "PATH="+toolDir+":"+os.Getenv("PATH"), "AGENTBOX_ROOTFS_TEST_ARCHIVE="+archive, "AGENTBOX_ROOTFS_TEST_LOG="+logPath)
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("prepare rootfs under umask %s: %v\n%s", mask, err, output)

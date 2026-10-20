@@ -1,9 +1,13 @@
 .PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration
 
+PLATFORM ?= kvm
+
 build:
 	mkdir -p bin
 	go build -trimpath -o bin/agentboxd ./cmd/agentboxd
 	go build -trimpath -o bin/agentbox-gateway ./cmd/agentbox-gateway
+	go build -trimpath -o bin/agentbox-mcp ./cmd/agentbox-mcp
+	go build -trimpath -o bin/agentbox-agent ./cmd/agentbox-agent
 	go build -trimpath -o bin/mockcore ./cmd/mockcore
 
 test:
@@ -14,7 +18,7 @@ check: test
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal tests)"
 	git diff --check
-	bash -n scripts/*.sh
+	bash -n scripts/setup.sh scripts/lib/container-entrypoint.sh
 	python3 -c 'import ast,pathlib; [ast.parse(p.read_text(), filename=str(p)) for base in ("scripts", "tests") for p in pathlib.Path(base).rglob("*.py")]'
 
 doctor: build
@@ -24,16 +28,16 @@ integration:
 	go test -tags=integration -count=1 -v ./tests/integration
 
 systemd-integration: build
-	bash scripts/integration-systemd-container.sh
+	python3 scripts/container.py systemd --platform $(PLATFORM)
 
 benchmark:
-	bash scripts/benchmark-container.sh kvm
+	python3 scripts/container.py benchmark --platform $(PLATFORM)
 
 observe: build
-	bash scripts/observe-container.sh kvm
+	python3 scripts/container.py observe --platform $(PLATFORM)
 
 static-experiment: build
-	bash scripts/static-experiment-container.sh kvm
+	python3 scripts/container.py static --platform $(PLATFORM)
 
 qos-integration: build
-	bash scripts/qos-container.sh kvm
+	python3 scripts/container.py qos --platform $(PLATFORM)

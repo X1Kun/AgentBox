@@ -93,11 +93,11 @@ Usage 覆盖该实例整个 cgroup 生命周期，包括运行时创建及 warm 
 ```bash
 make build
 sudo systemctl stop agentbox.service
-sudo bash scripts/install-systemd.sh --update
+sudo python3 scripts/deploy.py base --update
 sudoedit /etc/agentbox.env
 sudo systemctl start agentbox.service
 mkdir -p artifacts
-sudo bash scripts/smoke-host.sh --lifecycle --output "$PWD/artifacts/host-warm-systemd.json"
+sudo python3 scripts/deploy.py smoke --lifecycle --output "$PWD/artifacts/host-warm-systemd.json"
 ```
 
 证据路径必须不存在。切回 cold 时只需修改模式并重启。预热实例是正常库存，smoke 只要求已完成任务的 ID 无残留，并检查总容量；停止服务后仍要求进程完全回收。功能用例先等待可领取库存，满载拒绝用例直接发送且不重试；不会把库存耗尽时合法的 503 当成用户代码执行错误。
@@ -106,12 +106,12 @@ sudo bash scripts/smoke-host.sh --lifecycle --output "$PWD/artifacts/host-warm-s
 
 ```bash
 make check
-bash scripts/integration-container.sh kvm
-bash scripts/integration-container.sh systrap
+python3 scripts/container.py runtime --platform kvm
+python3 scripts/container.py runtime --platform systrap
 make build
-bash scripts/integration-systemd-container.sh kvm warm
-bash scripts/integration-systemd-container.sh systrap warm
-bash scripts/benchmark-container.sh kvm 60 10
+python3 scripts/container.py systemd --platform kvm --mode warm
+python3 scripts/container.py systemd --platform systrap --mode warm
+python3 scripts/container.py benchmark --platform kvm --samples 60 --rate 10
 ```
 
 运行时脚本依次跑 cold/warm 原有执行套件，warm 另测创建过程中关闭、并发独占与新工作目录、排队取消、引擎关闭取消及空闲实例死亡后的回收补池。systemd 脚本的第二参数为 cold/warm，默认 cold。warm 生命周期额外填满 8 个实例，将每次 runsc delete 延迟 2 秒，要求正常停止在 12 秒内完成且无记录残留，直接覆盖串行清理需要至少 16 秒的回归场景。
@@ -132,6 +132,6 @@ bash scripts/benchmark-container.sh kvm 60 10
 
 systemd mixed 的终止顺序依据 [systemd 249 官方说明](https://github.com/systemd/systemd/blob/v249/man/systemd.kill.xml)。真实服务测试要求正常停止结果为 success 且无执行记录残留；主进程崩溃时仍验证整个服务进程集合被回收。测试容器将 `/opt` 放在可执行 tmpfs 内，安装、更新和卸载仍执行完整文件复制和校验。
 
-实际功能验收与冷暖数据见 [本阶段验收记录](warm-pool-validation.md)。
+实际功能验收与冷暖数据见 [本阶段验收记录](validation.md#warm)。
 
 本阶段未加入 PSI/AIMD、解释器常驻注入、自动伸缩、快照恢复或多节点调度，也不承诺固定时延。

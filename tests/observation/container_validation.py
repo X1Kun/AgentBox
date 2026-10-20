@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, "/workspace/scripts")
+sys.path.insert(0, "/workspace/scripts/lib")
 from observe import Client, record
 
 

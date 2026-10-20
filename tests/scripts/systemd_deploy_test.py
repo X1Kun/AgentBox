@@ -1,4 +1,5 @@
 import fcntl
+import importlib.util
 from concurrent.futures import Future
 import json
 import os
@@ -13,11 +14,60 @@ from unittest.mock import patch
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
-SCRIPT = REPOSITORY / "scripts/systemd_deploy.py"
-sys.path.insert(0, str(REPOSITORY / "scripts"))
+SCRIPT = REPOSITORY / "scripts/deploy.py"
+sys.path.insert(0, str(REPOSITORY / "scripts/lib"))
 from systemd_deploy import Deployment
 from systemd_common import load_config
 from smoke_host import Smoke
+
+launcher_spec = importlib.util.spec_from_file_location("container_launcher", REPOSITORY / "scripts/container.py")
+launcher = importlib.util.module_from_spec(launcher_spec)
+launcher_spec.loader.exec_module(launcher)
+
+
+class ContainerLauncherTests(unittest.TestCase):
+    def test_profiles_keep_namespace_limits_and_readonly_sources(self):
+        for suite in ("runtime", "qos", "mcp", "gateway", "benchmark", "observe", "static", "systemd"):
+            args = launcher.arguments([suite, "--platform", "systrap"], {})
+            command = launcher.docker_command(args, "test-image", Path("/results"), environment={})
+            self.assertIn("--privileged", command)
+            self.assertIn("--cgroupns=private", command)
+            self.assertIn("--network=none", command)
+            self.assertIn("--memory=5g", command)
+            self.assertIn("--pids-limit=2304", command)
+            self.assertNotIn("--pid=host", command)
+            self.assertFalse(any("docker.sock" in value or "source=/sys/fs/cgroup" in value for value in command))
+            if suite != "systemd":
+                self.assertIn("--rm", command)
+
+    def test_live_api_is_explicit_and_never_places_key_in_docker_arguments(self):
+        with patch("sys.stderr"):
+            for argv, env in ((["live"], {}), (["mcp"], {"AGENTBOX_LIVE_DEEPSEEK": "1"}),
+                              (["live", "--pattern", ".*"], {"AGENTBOX_LIVE_DEEPSEEK": "1"})):
+                with self.assertRaises(SystemExit): launcher.arguments(argv, env)
+        env = {"AGENTBOX_LIVE_DEEPSEEK": "1", "DEEPSEEK_API_KEY": "must-not-be-in-argv"}
+        args = launcher.arguments(["live"], env)
+        command = launcher.docker_command(args, "test-image", environment=env)
+        self.assertIn("--network=bridge", command)
+        self.assertNotIn("must-not-be-in-argv", " ".join(command))
+        self.assertIn("AGENTBOX_TEST_RUN=^TestDeepSeekLiveRuntime$", command)
+        self.assertTrue(any("target=/run/agentbox-live/deepseek.env,readonly" in part for part in command))
+
+    def test_tmpfs_image_rootfs_does_not_mount_disk_rootfs(self):
+        env = {"AGENTBOX_TEST_DEPENDENCIES_TMPFS": "1", "AGENTBOX_TEST_IMAGE_ROOTFS": "1"}
+        args = launcher.arguments(["mcp"], env)
+        command = launcher.docker_command(args, "test-image", environment=env)
+        self.assertTrue(any("target=/runtime-source,readonly" in part for part in command))
+        self.assertFalse(any("source=" in part and "/.local/rootfs," in part for part in command))
+        self.assertIn("/rootfs:rw,exec,nosuid,nodev,mode=755,size=536870912", command)
+
+    def test_public_help_and_dry_run_have_no_external_side_effects(self):
+        for args in (("deploy.py", "base", "--help"), ("deploy.py", "gateway", "--help"),
+                     ("deploy.py", "smoke", "--help"), ("experiment.py", "analyze", "--help"),
+                     ("container.py", "mcp", "--dry-run")):
+            result = subprocess.run([sys.executable, str(REPOSITORY / "scripts" / args[0]), *args[1:]],
+                                    env=dict(os.environ, AGENTBOX_LIVE_DEEPSEEK="0"), capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class DeploymentTests(unittest.TestCase):
@@ -44,7 +94,7 @@ class DeploymentTests(unittest.TestCase):
 
     def deploy(self, *arguments, success=True):
         environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-        result = subprocess.run(["bash", "-c", 'umask 0077; exec python3 "$@"', "deploy-test", str(SCRIPT), "--source", str(self.source), "--destdir", str(self.destination), *arguments], env=environment, text=True, capture_output=True)
+        result = subprocess.run(["bash", "-c", 'umask 0077; exec python3 "$@"', "deploy-test", str(SCRIPT), "base", "--source", str(self.source), "--destdir", str(self.destination), *arguments], env=environment, text=True, capture_output=True)
         if success:
             self.assertEqual(result.returncode, 0, result.stderr)
         else:
@@ -140,7 +190,7 @@ class DeploymentTests(unittest.TestCase):
             (self.source/"deploy/systemd"/name).write_bytes((REPOSITORY/"deploy/systemd"/name).read_bytes())
 
     def gateway(self,*arguments,success=True):
-        result=subprocess.run([sys.executable,str(REPOSITORY/"scripts/gateway_deploy.py"),"--source",str(self.source),"--destdir",str(self.destination),*arguments],
+        result=subprocess.run([sys.executable,str(SCRIPT),"gateway","--source",str(self.source),"--destdir",str(self.destination),*arguments],
                               env=dict(os.environ,PYTHONDONTWRITEBYTECODE="1"),text=True,capture_output=True)
         self.assertEqual(result.returncode==0,success,result.stderr)
         return result

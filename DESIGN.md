@@ -6,8 +6,8 @@
 
 - 文档版本：V1.1 设计草案（补充 QoS 开源调研与设计演进）
 - 日期：2026-10-12；实现说明更新于 2026-10-17；QoS 调研更新于 2026-10-16
-- 项目状态：单次执行、systemd 部署、一次性预热池、有界 FIFO 和单机压力 QoS 初版已实现，支持 CPU AIMD、压力准入、补池暂停/恢复与[有界动态库存](docs/dynamic-inventory.md)；动态执行并发和多租户公平性仍待实现。调度边界与功能验收见 [QoS 调度](docs/qos-scheduling.md)，预热池基准见 [预热池文档](docs/warm-pool.md)
-- 范围：本机 Linux 上的单机执行引擎；多节点、eBPF 和模型接入作为后续扩展
+- 项目状态：单次执行、systemd 部署、一次性预热池、有界 FIFO 和单机压力 QoS 初版已实现，支持 CPU AIMD、压力准入、补池暂停/恢复与[有界动态库存](docs/dynamic-inventory.md)；动态执行并发和多租户公平性仍待实现。调度边界与功能验收见 [QoS 调度](docs/qos.md#scheduling)，预热池基准见 [预热池文档](docs/warm-pool.md)
+- 范围：本机 Linux 上的单机执行引擎；MCP/DeepSeek 示例已接入；多节点、eBPF 和其他模型适配作为后续扩展
 
 ## 1. 项目定位与本机条件
 
@@ -23,7 +23,7 @@ AgentBox 面向不可信 Agent 代码执行，通过预热供给降低请求等�
 
 以下为设计讨论期间、2026-10-12 在当前工具执行环境中观察到的结果，不代表已经完成运行时能力验证。
 
-后续在宿主环境确认 `/dev/kvm` 可用，并完成项目本地 runsc 和 Python rootfs 准备。实际实现范围与最新验收结果见 [README](README.md) 和 [第一阶段验收记录](docs/phase1-validation.md)。下表保留初次检查的环境快照。
+后续在宿主环境确认 `/dev/kvm` 可用，并完成项目本地 runsc 和 Python rootfs 准备。实际实现范围与最新验收结果见 [README](README.md) 和 [第一阶段验收记录](docs/validation.md#runtime)。下表保留初次检查的环境快照。
 
 | 项目 | 检查结果 | 对项目的意义 |
 |---|---|---|
@@ -68,9 +68,9 @@ gVisor 官方建议裸机优先评估 KVM，无虚拟化支持或虚拟机环境
 | 调度 | 有界队列、并发上限、后台补池 | 多租户公平调度 |
 | 资源控制 | 静态上限＋PSI 动态 CPU 控制 | 更复杂的资源预测 |
 | 网络 | 默认无外网 | 受控代理、TC eBPF |
-| 接入 | loopback HTTP Gateway＋Unix HTTP daemon | MCP 适配层 |
+| 接入 | MCP stdio、loopback HTTP Gateway＋Unix HTTP daemon | 远程 MCP HTTP、多 Worker |
 | 部署 | 本机 systemd | 多 Worker、Kubernetes |
-| 演示 | Mock Agent、Mock 核心服务 | 本地模型工具调用 |
+| 演示 | DeepSeek Tool Calls 示例、模拟 API 回归、Mock 核心服务 | 本地模型、多 Worker 演示 |
 
 第一版的核心交付物是：能安全执行、能可靠结束、能恢复容量、能解释性能。
 
@@ -337,7 +337,7 @@ gVisor 内部进程不直接对应宿主进程，因此不能用宿主 `pids.cur
 
 ## 10. PSI 反馈 QoS 控制
 
-CPU 配额、压力准入与补池门控初版现已实现，实际规则见 [QoS 调度](docs/qos-scheduling.md)，CPU 参数见 [CPU QoS](docs/cpu-qos.md)。下文保留设计推导与历史调研，内存压力联动仍为后续工作，动态库存已通过独立开关接入；不将功能实现等同于性能收益验证。
+CPU 配额、压力准入与补池门控初版现已实现，实际规则见 [QoS 调度](docs/qos.md#scheduling)，CPU 参数见 [CPU QoS](docs/qos.md#cpu)。下文保留设计推导与历史调研，内存压力联动仍为后续工作，动态库存已通过独立开关接入；不将功能实现等同于性能收益验证。
 
 当前支持 `off / observe / enforce`，默认 `off`；CPU 控制和压力调度分别启用，后者通过 `-qos-scheduling` 接入请求与补池。观察模式读取宿主、沙箱、受保护服务、manager 和可见祖先，计算实际间隔上的累计值差分，并暴露原始数据与有效性。另以低频采集 I/O/PID，按结果区分创建与排队耗时，记录拒绝原因及清理阶段，详见 [观测说明](docs/observability.md)。静态 CPU 对照与离线图表见 [实验说明](docs/static-cpu-experiment.md)。内存压力准入仍属后续设计；动态 READY 库存见[实现说明](docs/dynamic-inventory.md)。
 
@@ -376,7 +376,7 @@ $$
 
 ### 10.3 初始控制参数
 
-以下为 2026-10-16 调研后修订的候选实验参数，不表示各组均已实现和验证；当前实现默认值见 [CPU QoS](docs/cpu-qos.md)。原先的 50 ms 采样、100 ms 决策和 0.5 倍下降保留为候选对照，不作为已验证的默认策略；修订依据见 10.5 节。
+以下为 2026-10-16 调研后修订的候选实验参数，不表示各组均已实现和验证；当前实现默认值见 [CPU QoS](docs/qos.md#cpu)。原先的 50 ms 采样、100 ms 决策和 0.5 倍下降保留为候选对照，不作为已验证的默认策略；修订依据见 10.5 节。
 
 | 项目 | 待验证方案 |
 |---|---|
@@ -572,51 +572,21 @@ CPU 范围、上级 cgroup 限制、负载、CPU bandwidth 周期及其他资源
 
 这些用例证明已测试策略的效果，不能包装成“证明不存在逃逸漏洞”。
 
-## 15. 代码组织与测试边界
+## 15. 代码与操作入口
 
-后续仓库按以下边界组织。本节是计划，不代表这些目录或代码已经创建。
+当前主要结构如下，内部模块按职责拆分，操作脚本只暴露四个入口：
 
 ```text
-AgentBox/
-├── cmd/
-│   ├── gateway/
-│   ├── daemon/
-│   ├── mock-core/
-│   └── bench/
-├── api/
-│   └── proto/
-├── internal/
-│   ├── gateway/
-│   ├── admission/
-│   ├── scheduler/
-│   ├── pool/
-│   ├── sandbox/
-│   ├── cgroup/
-│   ├── pressure/
-│   ├── qos/
-│   ├── reconcile/
-│   ├── telemetry/
-│   └── config/
-├── guest/
-│   └── python-bootstrap/
-├── images/
-├── deploy/
-│   └── systemd/
-├── scripts/
-├── tests/
-│   ├── integration/
-│   └── isolation/
-├── benchmarks/
-│   ├── workloads/
-│   └── analysis/
-├── docs/
-│   ├── threat-model.md
-│   ├── benchmark-methodology.md
-│   └── adr/
-└── DESIGN.md
+cmd/          agentboxd、agentbox-gateway、agentbox-mcp、agentbox-agent、mockcore
+internal/     sandbox、cgroup、qos、httpapi、gateway、mcpserver、agent 等
+scripts/      setup.sh、deploy.py、container.py、experiment.py
+scripts/lib/  部署、观测、实验模块与容器引导
+tests/        integration、systemd、observation、scripts、benchmarks
+docs/         当前配置、机制、理论与统一验收
+artifacts/    近期关键证据及压缩原始数据（Git 忽略）
 ```
 
-eBPF、Kubernetes 和 MCP 等组件在相应阶段再加入。
+MCP 使用官方 Go SDK；eBPF 和多节点调度仍为后续能力。脚本迁移没有修改运行时策略或历史实验数值。
 
 单元测试重点覆盖状态机竞争、队列取消、配额边界、滞回和故障恢复。真实 runsc 集成测试单独运行；没有运行时能力的测试环境明确跳过，不能用 mock 的通过结果代替隔离验证。
 
@@ -644,13 +614,13 @@ Gateway 根据以下信息筛选节点：
 
 kind 可以验证注册、路由和故障处理，但多个容器节点仍共享宿主机的 CPU、内存和 PSI，不能替代独立物理节点的资源隔离实验。runsc 安装、KVM 设备暴露和 cgroup 委派也需要分别配置。
 
-### 16.2 本地模型接入
+### 16.2 模型工具接入
 
-本地模型作为外部客户端：
+本地模型或云端 API 模型通过 Agent/MCP 客户端访问执行工具，由 Agent 程序负责实际调用与结果回传：
 
 > 模型生成代码 → 调用执行接口 → 获取结果 → 继续推理。
 
-模型服务不进入任务沙箱，GPU 不暴露给任务。先用 Mock Agent 验证协议，再加入实际模型，执行性能实验与模型演示分别记录。
+模型服务不进入任务沙箱，GPU 不暴露给任务。当前已提供 stdio MCP 与 DeepSeek 普通工具调用示例，详见 [MCP 与 DeepSeek](docs/mcp-deepseek.md)。自动回归使用模拟模型 API，真实 runsc 负责执行；真实模型联调需配置 API key 后单独记录。执行性能实验与模型演示分别记录。
 
 ## 17. 开发阶段、验收门槛与工期
 
@@ -668,7 +638,7 @@ QoS 阶段按“采集与 Mock Core → 静态保护对照 → 独立 CPU 控制
 
 项目优先形成三项可验证成果：
 
-当前实施顺序见 [实现计划](docs/implementation-plan.md)：动态库存和普通用户 Gateway 已交付，后续继续实现 MCP，配套必要功能验证。以下是长期性能目标，长时间供给与 QoS 对照实验按需开展，不作为继续开发的前置条件。
+当前实施顺序见 [实现计划](docs/implementation-plan.md)：动态库存、普通用户 Gateway 和 MCP/DeepSeek 示例已交付，后续以独立 kind 环境模拟跨节点接入和故障，配套必要功能验证。以下是长期性能目标，长时间供给与 QoS 对照实验按需开展，不作为继续开发的前置条件。
 
 1. 一次性预热沙箱的低延迟执行。
 2. 包含补池成本的持续供给能力。
