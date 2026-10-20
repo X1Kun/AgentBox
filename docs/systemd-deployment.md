@@ -1,6 +1,6 @@
 # 固定 systemd 部署与验收
 
-固定 `agentbox.service` 支持 cold 和一次性 warm 模式，默认 cold。预热池配置与调度语义见 [预热池文档](warm-pool.md)，CPU 配额与压力准入/补池门控见 [QoS 调度](qos-scheduling.md)。可显式开启[有界动态库存](dynamic-inventory.md)；多节点仍待实现。
+固定 `agentbox.service` 支持 cold 和一次性 warm 模式，默认 cold。预热池配置与调度语义见 [预热池文档](warm-pool.md)，CPU 配额与压力准入/补池门控见 [QoS 调度](qos.md#scheduling)。可显式开启[有界动态库存](dynamic-inventory.md)；多节点仍待实现。
 
 独立模式沿用本页；普通用户 Gateway 的可选配对安装、独立凭据和 Unix socket 配置见 [Gateway 部署](gateway.md)。配对期间 base 更新/回退/卸载会拒绝操作，应先按该文档移除组件，保留凭据后再更新和重新配对。
 
@@ -32,9 +32,9 @@
 
 ```bash
 make build
-sudo bash scripts/install-systemd.sh
+sudo python3 scripts/deploy.py base
 sudo systemctl start agentbox.service
-sudo bash scripts/smoke-host.sh
+sudo python3 scripts/deploy.py smoke
 ```
 
 首次使用 systrap 时给安装脚本传入 `--platform systrap`。安装脚本不会自动启动服务或设置开机自启；需要开机自启时单独执行 `sudo systemctl enable agentbox.service`。
@@ -42,12 +42,12 @@ sudo bash scripts/smoke-host.sh
 `/etc/agentbox.env` 采用简单、无引号的 `KEY=VALUE` 格式，支持：
 
 - `AGENTBOX_API_TOKEN`：首次生成随机 token，再次安装保留；至少 32 字符。
-- `AGENTBOX_PLATFORM`：`kvm` 或 `systrap`。
+- `AGENTBOX_PLATFORM`：`kvm` 或将 --platform 改为 systrap。
 - `AGENTBOX_LISTEN`：显式 loopback IP 与端口，默认 `127.0.0.1:8080`。
 - `AGENTBOX_CONCURRENCY`：1～4，默认 1。
 - `AGENTBOX_MODE`：cold 或 warm，默认 cold；其余池容量与队列参数见 [配置表](warm-pool.md#配置)。
 - `AGENTBOX_WARM_DYNAMIC=true`：启用有界动态 READY 库存，默认 false；上下界与时间配置见[动态库存](dynamic-inventory.md)。
-- `AGENTBOX_QOS`：off、observe 或 enforce，默认 off。`AGENTBOX_QOS_CPU_CONTROL=true` 可在 observe 下预演，enforce 自动开启真实控制。两者均需显式受保护 cgroup 路径；采样与执行器失败行为见 [CPU QoS](cpu-qos.md)。
+- `AGENTBOX_QOS`：off、observe 或 enforce，默认 off。`AGENTBOX_QOS_CPU_CONTROL=true` 可在 observe 下预演，enforce 自动开启真实控制。两者均需显式受保护 cgroup 路径；采样与执行器失败行为见 [CPU QoS](qos.md#cpu)。
 - `AGENTBOX_QOS_SCHEDULING=true`：启用压力准入与补池门控，默认 false；observe 只报告建议，enforce 实际执行。当前是否接单应同时查看 `qos.scheduling.admission_open`。
 
 平台已经写入状态所有权，不能直接修改平台后复用旧状态。配置解析不执行 shell，不输出 token；smoke 脚本读取私有配置后在进程内构造 HTTP 请求，不通过命令行参数传递 token。
@@ -83,9 +83,9 @@ systemd 会回收退出的孤儿进程，真实服务验收暴露了原 `start �
 
 ```bash
 sudo systemctl stop agentbox.service
-sudo bash scripts/install-systemd.sh --update
+sudo python3 scripts/deploy.py base --update
 sudo systemctl start agentbox.service
-sudo bash scripts/smoke-host.sh
+sudo python3 scripts/deploy.py smoke
 ```
 
 更新会检查服务已停止、状态锁已释放、执行记录已回收，以及依赖信息未改变。存在残留时先用原服务启动恢复，再停止更新；不会自动删除 owner.json 或执行记录。
@@ -94,9 +94,9 @@ sudo bash scripts/smoke-host.sh
 
 ```bash
 sudo systemctl stop agentbox.service
-sudo bash scripts/install-systemd.sh --rollback
+sudo python3 scripts/deploy.py base --rollback
 sudo systemctl start agentbox.service
-sudo bash scripts/smoke-host.sh
+sudo python3 scripts/deploy.py smoke
 ```
 
 本阶段不提供 runsc、镜像或平台的自动迁移。此类变化需要先确认实例完全回收，再明确决定状态归档或清除。
@@ -104,7 +104,7 @@ sudo bash scripts/smoke-host.sh
 ## 卸载与重装
 
 ```bash
-sudo bash scripts/uninstall-systemd.sh
+sudo python3 scripts/deploy.py base --uninstall
 ```
 
 默认停止并禁用服务，删除程序和 unit，保留配置与状态。相同固定配置可重新安装；如果状态所有权不匹配或执行记录未回收，则拒绝安装。
@@ -112,20 +112,20 @@ sudo bash scripts/uninstall-systemd.sh
 需要一次性完整移除配置和状态时显式选择：
 
 ```bash
-sudo bash scripts/uninstall-systemd.sh --purge
+sudo python3 scripts/deploy.py base --uninstall --purge
 ```
 
 该操作仅对仍具有有效 INSTALL.json 的托管部署执行，且要求没有未回收记录。已默认卸载后，不能对缺少托管标记的目录盲目执行 purge。
 
 ## 验收方式
 
-`smoke-host.sh` 默认检查实际服务的就绪、鉴权、manager 归属、父级配额、Python 模块语义、用户退出、超时、输出限额、后台进程和工作目录隔离。
+`python3 scripts/deploy.py smoke` 默认检查实际服务的就绪、鉴权、manager 归属、父级配额、Python 模块语义、用户退出、超时、输出限额、后台进程和工作目录隔离。
 
 显式生命周期检查会启停服务、注入一次主进程 SIGKILL，并在结束后恢复服务：
 
 ```bash
 mkdir -p artifacts
-sudo bash scripts/smoke-host.sh --lifecycle --output "$PWD/artifacts/host-systemd.json"
+sudo python3 scripts/deploy.py smoke --lifecycle --output "$PWD/artifacts/host-systemd.json"
 ```
 
 它额外检查单实例配额、Sentry/Gofer 归属、满载拒绝、三轮重启、执行中停止、进程回收和崩溃后的状态恢复。输出包含结果和 cgroup 路径，不包含 token；证据文件要求不存在，避免覆盖旧记录。
@@ -135,23 +135,20 @@ sudo bash scripts/smoke-host.sh --lifecycle --output "$PWD/artifacts/host-system
 无管理员权限时可以先进行文件部署 staging，不管理宿主服务：
 
 ```bash
-bash scripts/install-systemd.sh --destdir /tmp/agentbox-stage
+python3 scripts/deploy.py base --destdir /tmp/agentbox-stage
 ```
 
 staging 是文件验证，不代表 systemd、KVM 或宿主验收通过。再次测试需使用新的目录或通过该 staging 部署的卸载流程清理。
 
 ## 已执行验证与宿主状态
 
-- `make check` 和 `make build` 通过；包含 Unix 文件及 abstract socket 通知测试、12 项部署与工具测试，以及脚本语法检查。测试禁用 Go 结果缓存，确保子进程中的 Python 脚本修改也会重新验证。
-- KVM 与 systrap 的执行集成套件分别通过 17 项测试，包括新增的用户退出码 128 用例。OOM 用例在任务创建确认之后设置测试软水位，避免被运行时初始化覆盖。
-- 已在一次性、禁网、私有 PID/cgroup 的 systemd 252 容器中完成 KVM 与 systrap 的真实服务验收：非法配置启动失败、执行、重启、执行中停止、主进程崩溃恢复、更新、回退、保留数据卸载、重装和显式 purge。
-- 该容器使用已缓存的 `kindest/node:v1.29.2` 镜像，没有操作现有 kind 节点，没有挂载宿主 cgroup 树或 Docker socket。复现命令为 `bash scripts/integration-systemd-container.sh kvm` 或 `systrap`。
-- 2026-10-15 已在本机 systemd 249 上完成固定服务安装和 KVM 生命周期验收，记录见下文。systemd 252 容器与 systemd 249 宿主结果分别记录。
-- 以上为 systemd 接入阶段的验证记录。后续预热池实现、验收和基准口径见 [预热池文档](warm-pool.md)，动态 QoS 尚未实现。
+部署、通知、配置、生命周期和跨平台验证统一见 [验收汇总](validation.md#runtime)，Gateway 配对结果见 [配对验收](validation.md#gateway)。隔离 systemd 252 容器与宿主 systemd 249 的记录分别陈述；历史单机基准不代表后续重构重新测量了性能。
+
+复现使用 `python3 scripts/container.py systemd --platform kvm`，可选择 --mode warm、--gateway 或 --platform systrap。容器复用已有本地镜像并使用私有 PID/cgroup，不操作现有 kind 节点，不挂载宿主 cgroup 树或 Docker socket。
 
 ## 2026-10-15 宿主 KVM 验收
 
-用户在本机终端完成管理员安装、启动和 `smoke-host.sh --lifecycle`，原始证据保存在本机被 Git 忽略的 `artifacts/host-systemd.json`。本节保留可提交的验收摘要。
+用户在本机终端完成管理员安装、启动和 `python3 scripts/deploy.py smoke --lifecycle`，原始证据保存在本机被 Git 忽略的 `artifacts/host-systemd.json`。本节保留可提交的验收摘要。
 
 | 项目 | 实际结果 |
 |---|---|

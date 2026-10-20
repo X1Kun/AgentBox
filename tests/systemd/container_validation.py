@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, "/workspace/scripts")
+sys.path.insert(0, "/workspace/scripts/lib")
 from smoke_host import Smoke, wait_until
 
 
@@ -22,7 +22,7 @@ def run(*arguments, success=True):
 
 
 def deploy(*arguments):
-    return run("bash", "/workspace/scripts/install-systemd.sh", "--source", "/workspace", *arguments)
+    return run("python3", "/workspace/scripts/deploy.py", "base", "--source", "/workspace", *arguments)
 
 
 def check_parallel_inventory_shutdown(smoke, token_path, configuration):
@@ -130,13 +130,13 @@ def main():
     deploy("--rollback")
     smoke.start()
     smoke.execute("after-rollback", "print('rolled back')", "succeeded")
-    run("bash", "/workspace/scripts/uninstall-systemd.sh")
+    run("python3", "/workspace/scripts/deploy.py", "base", "--uninstall")
     if not token_path.exists() or Path("/var/lib/agentbox/owner.json").read_bytes() != owner:
         raise RuntimeError("uninstall removed retained data")
     deploy()
     smoke.start()
     smoke.execute("after-reinstall", "print('reinstalled')", "succeeded")
-    run("bash", "/workspace/scripts/uninstall-systemd.sh", "--purge")
+    run("python3", "/workspace/scripts/deploy.py", "base", "--uninstall", "--purge")
     if token_path.exists() or Path("/var/lib/agentbox").exists():
         raise RuntimeError("explicit purge did not remove deployment data")
     report["deployment_checks"] = ["invalid-config-rejected", "update", "rollback", "uninstall-retains-data", "reinstall", "explicit-purge"]

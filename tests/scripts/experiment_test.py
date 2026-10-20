@@ -11,52 +11,18 @@ import tempfile
 import threading
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"scripts/lib"))
 from observe import core_metrics, run_phase, sandbox_workload, summarize_sandboxes
 from static_experiment import GROUPS, check_phase, experiment_plan
 from observation_analysis import distribution, matched_task_timings, observed_counter_rate, pool_series, usable_resource_frame
 
-spec = importlib.util.spec_from_file_location("plot_static", Path(__file__).resolve().parents[2]/"scripts/plot-static.py")
+spec = importlib.util.spec_from_file_location("plot_static", Path(__file__).resolve().parents[2]/"scripts/lib/plot_static.py")
 plot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plot)
 
-gateway_spec = importlib.util.spec_from_file_location("gateway_summary", Path(__file__).resolve().parents[2]/"scripts/summarize-gateway.py")
-gateway_summary = importlib.util.module_from_spec(gateway_spec)
-gateway_spec.loader.exec_module(gateway_summary)
 
 
 class MeasurementTests(unittest.TestCase):
-    def test_gateway_report_retains_pairs_and_rejects_invalid_runs(self):
-        with tempfile.TemporaryDirectory() as directory:
-            latency, recovery, deployment = [Path(directory)/name for name in ("latency", "recovery", "systemd")]
-            recovery.write_text("--- PASS: TestGatewayValidationRuntime (1.0s)\n")
-            deployment.write_text(json.dumps({"gateway_systemd": "passed"}, indent=2))
-            rows = [{"pair": i, "route": route, "http": 200, "status": "succeeded", "cleanup_complete": True,
-                     "wall_ms": i+1+int(route == "gateway"), "outside_engine_ms": .75 if route == "gateway" else .5}
-                    for i in range(30) for route in ("unix-direct", "gateway")]
-            def write_rows(values):
-                latency.write_text("\n".join("GATEWAY_SAMPLE "+json.dumps(row) for row in values)+
-                                   "\n--- PASS: TestGatewayLatencyRuntime (12.0s)\n")
-            write_rows(rows)
-            report = gateway_summary.summarize(latency, recovery, deployment)
-            self.assertEqual(len(report["samples"]), 60)
-            self.assertEqual(report["summary"]["unix-direct"]["wall_ms"]["p90_nearest_rank"], 27)
-            self.assertEqual(report["paired_outside_engine_delta_ms"]["median"], .25)
-            for invalid in (rows[:-1], rows+[rows[0]], [{**rows[0], "cleanup_complete": False}]+rows[1:]):
-                write_rows(invalid)
-                with self.assertRaises(ValueError):
-                    gateway_summary.summarize(latency, recovery, deployment)
-            write_rows(rows)
-            deployment.write_text("Failed to create control group inotify object: Too many open files")
-            with self.assertRaises(ValueError):
-                gateway_summary.summarize(latency, recovery, deployment)
-            report = gateway_summary.summarize(latency, recovery, deployment, allow_blocked_systemd=True)
-            self.assertEqual(report["systemd"]["gateway_systemd"], "blocked")
-            self.assertEqual(report["systemd"]["tests_executed"], 0)
-            deployment.write_text("unexpected failure")
-            with self.assertRaises(ValueError):
-                gateway_summary.summarize(latency, recovery, deployment, allow_blocked_systemd=True)
-
     def test_recorder_modes_preserve_raw_frames_and_quality(self):
         for mode in ("observe", "enforce", "off", None):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:

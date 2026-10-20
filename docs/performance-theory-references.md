@@ -14,7 +14,7 @@ Brendan Gregg, *Systems Performance: Enterprise and the Cloud*, 2nd edition, Add
 
 选读印刷页：23–24、33–35、44–45、47–54、56–57、64–69、74–77、167、173、177–180、189–194、225–227、309–310、324、330–331、585、613–624、631–633、643–650、657–659、662–666。
 
-2026-10-20 新增引用页：72–73、317–318、321–322、582–583；用于[动态库存理论复核](dynamic-inventory-theory.md)。本轮重核 PDF SHA-256 与原记录一致。
+2026-10-20 新增引用页：72–73、317–318、321–322、582–583；用于[动态库存理论复核](dynamic-inventory.md#theory)。本轮重核 PDF SHA-256 与原记录一致。
 
 ## 书中依据
 
@@ -418,27 +418,27 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 
 ### C09 · 负载生成和逐请求统计
 
-- [scripts/observe.py:51](../scripts/observe.py#L51)：`def sandbox_workload`。
-- [scripts/observe.py:64](../scripts/observe.py#L64)：`def core_metrics`。
-- [scripts/observe.py:77](../scripts/observe.py#L77)：`def summarize_sandboxes`。
-- [scripts/observe.py:91](../scripts/observe.py#L91)：`def run_phase`。
+- [scripts/lib/observe.py:51](../scripts/lib/observe.py#L51)：`def sandbox_workload`。
+- [scripts/lib/observe.py:64](../scripts/lib/observe.py#L64)：`def core_metrics`。
+- [scripts/lib/observe.py:77](../scripts/lib/observe.py#L77)：`def summarize_sandboxes`。
+- [scripts/lib/observe.py:91](../scripts/lib/observe.py#L91)：`def run_phase`。
 
 <a id="c10"></a>
 
 ### C10 · 静态实验环境、分组与质量检查
 
 - [tests/observation/static_container.py:38](../tests/observation/static_container.py#L38)：`def main`。
-- [scripts/static_experiment.py:6](../scripts/static_experiment.py#L6)：`def experiment_plan`。
-- [scripts/static_experiment.py:13](../scripts/static_experiment.py#L13)：`def check_phase`。
+- [scripts/lib/static_experiment.py:6](../scripts/lib/static_experiment.py#L6)：`def experiment_plan`。
+- [scripts/lib/static_experiment.py:13](../scripts/lib/static_experiment.py#L13)：`def check_phase`。
 
 <a id="c11"></a>
 
 ### C11 · 图表口径与拒绝错误实验
 
-- [scripts/plot-static.py:24](../scripts/plot-static.py#L24)：`def window_latencies`。
-- [scripts/plot-static.py:30](../scripts/plot-static.py#L30)：`def observation_series`。
-- [scripts/plot-static.py:49](../scripts/plot-static.py#L49)：`def validate_readiness`。
-- [scripts/plot-static.py:102](../scripts/plot-static.py#L102)：`def comparison`。
+- [scripts/lib/plot_static.py:24](../scripts/lib/plot_static.py#L24)：`def window_latencies`。
+- [scripts/lib/plot_static.py:30](../scripts/lib/plot_static.py#L30)：`def observation_series`。
+- [scripts/lib/plot_static.py:49](../scripts/lib/plot_static.py#L49)：`def validate_readiness`。
+- [scripts/lib/plot_static.py:102](../scripts/lib/plot_static.py#L102)：`def comparison`。
 
 <a id="c12"></a>
 
@@ -461,15 +461,15 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 
 ### E01 · 静态 CPU 三轮对照
 
-- [实验设计](static-cpu-experiment.md)、[验收说明](static-cpu-validation.md)。
-- [九组逐轮汇总](data/static-cpu-summary.csv)、[完整实验元数据](data/static-cpu-experiment.json)。
+- [实验设计](static-cpu-experiment.md)、[验收说明](validation.md#static)。
+- [九组逐轮汇总](data/static-cpu-experiment.json)、[完整实验元数据](data/static-cpu-experiment.json)。
 - 这批是 2026-10-17 已存在的 KVM 实验；本次没有重跑负载、更新服务或修改资源配置。
 
 <a id="e02"></a>
 
 ### E02 · 历史预热池基准
 
-- [warm-pool-validation.md](warm-pool-validation.md) 的“初版冷暖 HTTP 对比（关闭修复前）”。
+- [冷暖历史对比](validation.md#warm)。
 - 内核、版本、工作负载和外层预算与 E01 不同；只能用来提出补池假设，不能混成一组当前性能成绩。
 
 <a id="e03"></a>
@@ -485,7 +485,7 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 
 ### E04 · 2026-10-20 动态库存理论复核
 
-- [分析正文](dynamic-inventory-theory.md)、[来源哈希、历史数据重算与反例检查源码](data/dynamic-inventory-theory-evidence.json)。
+- [分析正文](dynamic-inventory.md#theory)、[来源哈希、历史数据重算与反例检查源码](data/performance-theory-evidence.json)的 inventory_v1_review 字段。
 - 在 `/tmp` 源码副本调用实际生产方法，构造“已有 READY、仅缺执行名额”和“每 10 秒请求、补池已完成、从未排队”两种状态。记录到目标仍增加；该检查是逻辑时间状态分析，不是真实负载或性能对照。
 - 历史冷暖数据从原 `requests.csv` 只读重算，没有更新运行时、启动压力负载或执行 Git 写操作。
 

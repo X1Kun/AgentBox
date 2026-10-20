@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, "/workspace/scripts")
+sys.path.insert(0, "/workspace/scripts/lib")
 from observe import Client, run_phase, sandbox_workload
 from static_experiment import check_phase, experiment_plan, write_json
 
@@ -112,7 +112,7 @@ def main():
               "source_revision": os.environ.get("AGENTBOX_SOURCE_REVISION", "unknown"),
               "source_dirty": os.environ.get("AGENTBOX_SOURCE_DIRTY") == "true",
               "measurement_sha256": {path: hashlib.sha256((Path("/workspace")/path).read_bytes()).hexdigest()
-                                     for path in ("scripts/observe.py", "scripts/static_experiment.py", "tests/observation/static_container.py")},
+                                     for path in ("scripts/lib/observe.py", "scripts/lib/static_experiment.py", "tests/observation/static_container.py")},
               "binary_sha256": hashlib.sha256(Path("/lab/bin/agentboxd").read_bytes()).hexdigest(),
               "mockcore_sha256": hashlib.sha256(Path("/lab/bin/mockcore").read_bytes()).hexdigest(),
               "runsc_sha256": hashlib.sha256(Path("/lab/gvisor/runsc").read_bytes()).hexdigest(),

@@ -48,13 +48,13 @@ daemon 的 `-listen` 接受显式 loopback IP，或 `unix:/绝对路径`。Unix 
 ```bash
 make build
 sudo systemctl stop agentbox.service
-sudo bash scripts/install-systemd.sh --update
-sudo bash scripts/install-gateway-systemd.sh
+sudo python3 scripts/deploy.py base --update
+sudo python3 scripts/deploy.py gateway
 sudo systemctl start agentbox-gateway.service
-sudo bash scripts/smoke-host.sh
+sudo python3 scripts/deploy.py smoke
 ```
 
-首次安装 base daemon 使用 `install-systemd.sh`，不传 `--update`。启动 Gateway 会通过 Requires/After 启动并等待 daemon。安装前两个服务必须停止、状态锁释放且无未回收任务记录；首次创建专用系统账号，不删除或修改其他账号。
+首次安装 base daemon 使用 `python3 scripts/deploy.py base`，不传 `--update`。启动 Gateway 会通过 Requires/After 启动并等待 daemon。安装前两个服务必须停止、状态锁释放且无未回收任务记录；首次创建专用系统账号，不删除或修改其他账号。
 
 附加安装文件：
 
@@ -87,7 +87,7 @@ unit 默认无 capabilities、NoNewPrivileges、只读系统路径、512MiB Memo
 
 ```bash
 sudo systemctl stop agentbox-gateway.service agentbox.service
-sudo bash scripts/install-gateway-systemd.sh --update
+sudo python3 scripts/deploy.py gateway --update
 sudo systemctl start agentbox-gateway.service
 ```
 
@@ -97,9 +97,9 @@ base 更新/回退/卸载会拒绝仍装有 Gateway 的部署，避免旧 daemon
 
 ```bash
 sudo systemctl stop agentbox-gateway.service agentbox.service
-sudo bash scripts/install-gateway-systemd.sh --uninstall
-sudo bash scripts/install-systemd.sh --update
-sudo bash scripts/install-gateway-systemd.sh
+sudo python3 scripts/deploy.py gateway --uninstall
+sudo python3 scripts/deploy.py base --update
+sudo python3 scripts/deploy.py gateway
 sudo systemctl start agentbox-gateway.service
 ```
 
@@ -113,7 +113,7 @@ sudo systemctl start agentbox-gateway.service
 
 ```bash
 AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
-  bash scripts/qos-container.sh systrap '^TestGatewayRuntime$'
+  python3 scripts/container.py gateway --platform systrap
 ```
 
 该用例使用 tmpfs 测试依赖，验证普通用户权限、未鉴权拒绝、Python 输出、token 隔离与任务清理；不验证宿主配对服务的完整 systemd 生命周期或正常磁盘路径性能。没有要求长时间实验或更新宿主服务。
@@ -127,4 +127,4 @@ AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
 - 一次真实 systrap 短流程通过：实际 Gateway 以 UID/GID 1000 运行，经 Unix HTTP 调用 root Engine 和 runsc；Python 返回 `gateway-ok`，任务环境不含服务 token，`cleanup_complete=true`，关闭后无任务 bundle/cgroup 残留。
 - 完整配对生命周期已在隔离 systemd 252 / systrap 容器通过，覆盖权限、依赖启停/重启、更新、卸载恢复独立模式、重新配对与 purge；未执行宿主安装、账号创建或服务切换。
 
-随后完成的真实取消/过载、大输出和 30 对延迟采样，以及解除 inotify 环境限制后的 systemd 配对验收与改进判断，见[有限验收记录](gateway-validation.md)。其中已验证行为与未验证项分别列出，原始样本可供复核。
+随后完成的真实取消/过载、大输出和 30 对延迟采样，以及解除 inotify 环境限制后的 systemd 配对验收与改进判断，见[有限验收记录](validation.md#gateway)。其中已验证行为与未验证项分别列出，原始样本可供复核。
