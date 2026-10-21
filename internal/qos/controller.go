@@ -57,14 +57,22 @@ func NewCPUController(mode string, config CPUConfig, actuator CPUActuator, logge
 	if b.Quota < minQuota {
 		return nil, fmt.Errorf("initial CPU budget is below configured minimum")
 	}
-	if actual > p.config.MaxCPU && mode == "enforce" {
-		b, err = actuator.SetCPUQuota(b, maxQuota)
+	initialCPU := p.config.MaxCPU
+	if p.config.BaseCPU > 0 {
+		initialCPU = p.config.BaseCPU
+	}
+	initialQuota := uint64(math.Floor(initialCPU * float64(b.Period)))
+	if initialQuota < minQuota {
+		return nil, fmt.Errorf("base CPU has no representable quota")
+	}
+	if actual > initialCPU && mode == "enforce" {
+		b, err = actuator.SetCPUQuota(b, initialQuota)
 		if err != nil {
 			return nil, fmt.Errorf("initialize CPU maximum: %w", err)
 		}
 		c.bandwidth, actual = b, float64(b.Quota)/float64(b.Period)
 	}
-	c.virtualCPU = math.Min(actual, float64(maxQuota)/float64(b.Period))
+	c.virtualCPU = math.Min(actual, float64(initialQuota)/float64(b.Period))
 	c.report = ControlReport{State: "starting", Reason: "awaiting_cpu_samples", ActualCPU: &actual, SuggestedCPU: c.virtualCPU, Config: p.config}
 	return c, nil
 }
@@ -107,7 +115,7 @@ func (c *CPUController) Update(snapshot Snapshot, now time.Time) ControlReport {
 	// The shared pressure classification governs all live actuators. AIMD
 	// still owns budget demand, bounds and cooldown, not scheduling health.
 	if p := snapshot.Pressure; p != nil {
-		if d.CPU < current && p.EffectiveState != "pressured" {
+		if d.CPU < current && p.EffectiveState != "pressured" && c.policy.config.BaseCPU == 0 {
 			d.CPU, d.Reason = current, "pressure_pending"
 		}
 		if d.CPU > current && p.EffectiveState == "pressured" {
@@ -177,6 +185,10 @@ func policySample(s Snapshot) PolicySample {
 
 func policySampleAt(s Snapshot, now time.Time) PolicySample {
 	sample := policySample(s)
+	if b := s.Business; b != nil {
+		sample.BusinessValid = b.Available && businessFresh(*b, now)
+		sample.BusinessHealthy = b.Healthy
+	}
 	if s.Interval <= 0 || now.Sub(s.CollectedAt) > 3*s.Interval || now.Before(s.CollectedAt) || math.IsNaN(sample.ProtectedPressure) || math.IsInf(sample.ProtectedPressure, 0) || sample.ProtectedPressure < 0 || math.IsNaN(sample.SandboxCPU) || math.IsInf(sample.SandboxCPU, 0) || sample.SandboxCPU < 0 {
 		sample.Valid = false
 	}

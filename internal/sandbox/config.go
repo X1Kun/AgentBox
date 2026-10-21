@@ -12,13 +12,10 @@ func normalizePoolConfig(c *Config) error {
 	if c.Mode != "cold" && c.Mode != "warm" {
 		return errors.New("mode must be cold or warm")
 	}
-	if c.Mode == "cold" {
-		if c.DynamicWarmPool {
-			return errors.New("dynamic inventory requires warm mode")
-		}
-		return nil
+	if c.Mode == "cold" && c.DynamicWarmPool {
+		return errors.New("dynamic inventory requires warm mode")
 	}
-	if c.WarmPoolSize == 0 {
+	if c.WarmPoolSize == 0 && c.Mode == "warm" {
 		c.WarmPoolSize = 3
 	}
 	if c.MaxSandboxes == 0 {
@@ -36,10 +33,12 @@ func normalizePoolConfig(c *Config) error {
 	if c.QueueTimeout == 0 {
 		c.QueueTimeout = 100 * time.Millisecond
 	}
-	if c.WarmPoolSize < 1 || c.WarmPoolSize > 8 || c.MaxSandboxes > 8 || c.MaxSandboxes < c.Concurrency || c.MaxSandboxes < 1 || (!c.DynamicWarmPool && c.WarmPoolSize > c.MaxSandboxes) {
+	if c.Mode == "cold" {
+		c.WarmPoolSize = 0
+	}
+	if (c.Mode == "warm" && c.WarmPoolSize < 1) || c.WarmPoolSize > 8 || c.MaxSandboxes > 8 || c.MaxSandboxes < c.Concurrency || c.MaxSandboxes < 1 || (!c.DynamicWarmPool && c.WarmPoolSize > c.MaxSandboxes) {
 		return errors.New("warm pool requires 1 <= warm-size <= max-sandboxes <= 8 and max-sandboxes >= concurrency")
 	}
-	maxInventory := c.WarmPoolSize
 	if c.DynamicWarmPool {
 		if c.WarmMinSize == 0 {
 			c.WarmMinSize = 1
@@ -59,10 +58,9 @@ func normalizePoolConfig(c *Config) error {
 		if c.WarmAdjustInterval < 100*time.Millisecond || c.WarmAdjustInterval > time.Minute || c.WarmDownscaleWindow < c.WarmAdjustInterval || c.WarmDownscaleWindow > time.Hour {
 			return errors.New("warm-adjust-interval must be 100ms..1m and warm-downscale-window must be between that interval and 1h")
 		}
-		maxInventory = c.WarmMaxSize
 	}
-	if c.CreateConcurrency < 1 || c.CreateConcurrency > 2 || c.CreateConcurrency > maxInventory {
-		return errors.New("create-concurrency must be 1 or 2 and not exceed the READY target upper bound")
+	if c.CreateConcurrency < 1 || c.CreateConcurrency > 2 {
+		return errors.New("create-concurrency must be 1 or 2")
 	}
 	if c.QueueSize < 1 || c.QueueSize > 128 || c.QueueBytes < 1 || c.QueueBytes > 64<<20 {
 		return errors.New("queue-size must be 1..128 and queue-bytes must be 1..64 MiB")

@@ -174,9 +174,8 @@ func TestWarmPoolCleanupFailureStopsAdmissionAndRefill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Wait for refill to finish. Total also includes in-flight creation, which
-	// is correctly destroyed if the pool becomes unhealthy before publication.
-	waitPool(t, p, func(s poolSnapshot) bool { return s.Total == 3 && s.Idle == 2 && s.Creating == 0 })
+	// Saturated foreground work keeps background refill paused.
+	waitPool(t, p, func(s poolSnapshot) bool { return s.Total == 2 && s.Idle == 1 && s.Creating == 0 })
 	p.mark(first, poolDestroying)
 	p.release(first, false)
 	if p.healthy() {
@@ -186,7 +185,7 @@ func TestWarmPoolCleanupFailureStopsAdmissionAndRefill(t *testing.T) {
 		t.Fatalf("admission: %v", err)
 	}
 	s := p.status()
-	if s.Total != 3 || s.Destroying != 1 || s.CleanupFailures != 1 {
+	if s.Total != 2 || s.Destroying != 1 || s.CleanupFailures != 1 {
 		t.Fatalf("failed destruction lost ownership: %+v", s)
 	}
 	p.stop()

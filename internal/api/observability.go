@@ -13,6 +13,7 @@ type DurationReport struct {
 }
 
 type SchedulingReport struct {
+	RefillBlockedBy       string         `json:"refill_blocked_by,omitempty"`
 	ExecutionInFlight     int            `json:"execution_in_flight"`
 	ExecutionLimit        int            `json:"execution_limit"`
 	CreationLimit         int            `json:"creation_limit"`

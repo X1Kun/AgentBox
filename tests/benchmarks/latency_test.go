@@ -206,7 +206,7 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 			Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"),
 			StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"),
 			Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: mode,
-			Concurrency: 4, WarmPoolSize: 3, MaxSandboxes: 6, CreateConcurrency: 1,
+			Concurrency: 4, WarmPoolSize: 3, MaxSandboxes: 6, CreateConcurrency: number(t, "AGENTBOX_BENCH_CREATE_CONCURRENCY", 1, 1, 2),
 			QueueSize: 16, QueueBytes: 8 << 20, QueueTimeout: 100 * time.Millisecond, OutputLimit: 1 << 20,
 		}
 		configurations = append(configurations, config)

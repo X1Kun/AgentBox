@@ -392,9 +392,9 @@ finally:
 		if !errors.Is(err, sandbox.ErrUnhealthy) {
 			t.Fatalf("broken executor admitted work: %v", err)
 		}
-		// Warm mode also reports failed destruction of unused inventory on Close.
-		if err := e.Close(); err != nil && c.Mode != "warm" {
-			t.Fatal(err)
+		// Both modes retain and report uncertain cleanup through Close.
+		if err := e.Close(); err == nil {
+			t.Fatal("close hid failed cleanup")
 		}
 		replacement, err = newEngine(c)
 		if err != nil {

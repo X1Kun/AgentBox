@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/X1Kun/AgentBox/internal/api"
+	"github.com/X1Kun/AgentBox/internal/cgroup"
 	"github.com/X1Kun/AgentBox/internal/sandbox"
 )
 
@@ -74,7 +75,7 @@ func TestDynamicInventoryRuntime(t *testing.T) {
 	dir := t.TempDir()
 	marker, release, wrapper := filepath.Join(dir, "first-create"), filepath.Join(dir, "release-create"), filepath.Join(dir, "runsc-wrapper")
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
-	script := "#!/bin/sh\nfor arg do\n if [ \"$arg\" = create ]; then\n  if [ -f " + quote(marker) + " ]; then\n   while [ ! -f " + quote(release) + " ]; do sleep 0.01; done\n  else : > " + quote(marker) + "; fi\n fi\ndone\nexec " + quote(os.Getenv("AGENTBOX_RUNSC")) + " \"$@\"\n"
+	script := "#!/bin/sh\nfor arg do\n if [ \"$arg\" = create ] && [ -f " + quote(marker) + " ]; then\n  while [ ! -f " + quote(release) + " ]; do sleep 0.01; done\n fi\ndone\nexec " + quote(os.Getenv("AGENTBOX_RUNSC")) + " \"$@\"\n"
 	if err := os.WriteFile(wrapper, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -102,6 +103,9 @@ func TestDynamicInventoryRuntime(t *testing.T) {
 	if s := e.Status(); s.Target != 1 || s.Inventory == nil || !s.Inventory.Enabled {
 		t.Fatalf("dynamic startup: %+v", s)
 	}
+	if err := os.WriteFile(marker, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	first, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "print('normal-consumption')", TimeoutMS: 5000})
 	if err != nil || first.Status != "succeeded" || !first.CleanupComplete {
 		t.Fatalf("initial execution: %+v %v", first, err)
@@ -109,6 +113,7 @@ func TestDynamicInventoryRuntime(t *testing.T) {
 	if s := e.Status(); s.Target != 1 || s.Inventory.InventoryStalls != 0 {
 		t.Fatal("normal consumption triggered expansion")
 	}
+	waitRuntime(t, func() bool { return e.Status().Creating > 0 })
 	type outcome struct {
 		result api.Result
 		err    error
@@ -286,4 +291,208 @@ func TestWarmRuntime(t *testing.T) {
 		}
 		assertRuntimeEmpty(t, c)
 	})
+}
+
+// Same resource policy in both modes, including on-demand misses and teardown.
+func TestSharedAdmissionRuntime(t *testing.T) {
+	if os.Getenv("AGENTBOX_INTEGRATION") != "1" {
+		t.Skip("requires isolated runtime")
+	}
+	for _, mode := range []string{"cold", "warm"} {
+		t.Run(mode, func(t *testing.T) {
+			c := sandbox.Config{Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"), Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: mode, Concurrency: 2, CreateConcurrency: 2, WarmPoolSize: 1, MaxSandboxes: 4, QueueTimeout: 5 * time.Second}
+			e, err := sandbox.New(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer e.Close()
+			if err := e.Start(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			status := e.Status()
+			if status.Mode != mode || status.Scheduling.CreationLimit != 2 || status.Memory == nil || status.Memory.ParentBytes+status.Memory.ReserveBytes > status.Memory.CapacityBytes {
+				t.Fatalf("invalid budget: %+v", status)
+			}
+			var workers sync.WaitGroup
+			results := make(chan api.Result, 6)
+			for i := 0; i < 6; i++ {
+				workers.Add(1)
+				go func() {
+					defer workers.Done()
+					result, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "import os\nassert not os.path.exists('/workspace/marker')\nopen('/workspace/marker','w').write('private')\nprint(42)", TimeoutMS: 5000})
+					if err != nil {
+						t.Error(err)
+					}
+					results <- result
+				}()
+			}
+			workers.Wait()
+			close(results)
+			ids := map[string]bool{}
+			for result := range results {
+				if result.Status != "succeeded" || result.Stdout != "42\n" || !result.CleanupComplete || ids[result.ExecutionID] {
+					t.Fatalf("invalid fresh execution: %+v", result)
+				}
+				ids[result.ExecutionID] = true
+			}
+			if e.Status().Total > 4 {
+				t.Fatal("capacity exceeded")
+			}
+			if err := e.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertRuntimeEmpty(t, c)
+		})
+	}
+}
+
+func TestMemoryBudgetRuntime(t *testing.T) {
+	if os.Getenv("AGENTBOX_INTEGRATION") != "1" {
+		t.Skip("requires isolated runtime")
+	}
+	root := os.Getenv("AGENTBOX_CGROUP_ROOT")
+	limitPath := filepath.Join(root, "memory.max")
+	previous, err := os.ReadFile(limitPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(limitPath, []byte("2147483648"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.WriteFile(limitPath, previous, 0600); err != nil {
+			t.Error(err)
+		}
+	}()
+	c := sandbox.Config{Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: root, Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: "warm", Concurrency: 2, WarmPoolSize: 1, MaxSandboxes: 4}
+	if e, err := sandbox.New(c); err == nil {
+		e.Close()
+		t.Fatal("overcommitted default memory budget was accepted")
+	}
+	c.Memory = cgroup.MemoryBudget{ParentBytes: 1 << 30, SandboxBytes: 256 << 20, ReserveBytes: 768 << 20}
+	e, err := sandbox.New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := e.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s := e.Status(); s.Memory.CapacityBytes != 2<<30 || s.Memory.ParentBytes != 1<<30 {
+		t.Fatalf("ancestor ceiling ignored: %+v", s.Memory)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "sandboxes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := false
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(root, "sandboxes", entry.Name(), "memory.max"))
+		if err != nil || strings.TrimSpace(string(b)) != "268435456" {
+			t.Fatalf("wrong instance memory limit: %s %v", b, err)
+		}
+		checked = true
+	}
+	if !checked {
+		t.Fatal("no READY sandbox to inspect")
+	}
+	result, err := e.Execute(ctx, api.Request{Runtime: "python", Code: "print(42)"})
+	if err != nil || result.Status != "succeeded" || !result.CleanupComplete {
+		t.Fatalf("small-budget execution: %+v %v", result, err)
+	}
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertRuntimeEmpty(t, c)
+}
+
+func TestStartupProbeRuntime(t *testing.T) {
+	if os.Getenv("AGENTBOX_INTEGRATION") != "1" {
+		t.Skip("requires isolated runtime")
+	}
+	c := sandbox.Config{Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"), Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: "cold", Concurrency: 1, OutputLimit: 1}
+	e, err := sandbox.New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if e.Ready() || e.Status().Ready {
+		t.Fatal("ready before startup probe")
+	}
+	if _, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "print(1)"}); !errors.Is(err, sandbox.ErrUnhealthy) {
+		t.Fatalf("admitted before probe: %v", err)
+	}
+	if err := e.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !e.Ready() {
+		t.Fatal("not ready after successful probe")
+	}
+	if s := e.Status(); s.Total != 0 || s.CreationCount != 0 {
+		t.Fatalf("probe polluted request inventory: %+v", s)
+	}
+	if err := e.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertRuntimeEmpty(t, c)
+	// Fail exec while allowing create/delete; startup must remain closed and clean.
+	wrapper := filepath.Join(t.TempDir(), "runsc-fail-exec")
+	script := "#!/bin/sh\nfor arg do if [ \"$arg\" = exec ]; then exit 77; fi; done\nexec '" + strings.ReplaceAll(c.Runsc, "'", "'\\''") + "' \"$@\"\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c.Runsc = wrapper
+	c.StateDir = filepath.Join(t.TempDir(), "state")
+	bad, err := sandbox.New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bad.Close()
+	if err := bad.Start(context.Background()); err == nil {
+		t.Fatal("startup accepted broken exec")
+	}
+	if bad.Ready() {
+		t.Fatal("failed probe opened admission")
+	}
+	if err := bad.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertRuntimeEmpty(t, c)
+
+	// Shutdown must join an already-started metadata transaction and its cleanup.
+	marker := filepath.Join(t.TempDir(), "probe-create-started")
+	cancelWrapper := filepath.Join(t.TempDir(), "runsc-slow-create")
+	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
+	script = "#!/bin/sh\nfor arg do if [ \"$arg\" = create ]; then : > " + quote(marker) + "; sleep 0.2; fi; done\nexec " + quote(os.Getenv("AGENTBOX_RUNSC")) + " \"$@\"\n"
+	if err := os.WriteFile(cancelWrapper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c.Runsc = cancelWrapper
+	c.StateDir = filepath.Join(t.TempDir(), "state")
+	stopping, err := sandbox.New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stopping.Close()
+	started := make(chan error, 1)
+	go func() { started <- stopping.Start(context.Background()) }()
+	waitRuntime(t, func() bool { _, err := os.Stat(marker); return err == nil })
+	if err := stopping.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-started; err == nil {
+		t.Fatal("shutdown did not cancel startup")
+	}
+	if stopping.Ready() {
+		t.Fatal("shutdown probe opened readiness")
+	}
+	assertRuntimeEmpty(t, c)
 }

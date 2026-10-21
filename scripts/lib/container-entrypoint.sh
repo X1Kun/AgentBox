@@ -30,7 +30,7 @@ if [[ "${AGENTBOX_TEST_IMAGE_ROOTFS:-0}" == 1 ]]; then
 fi
 mkdir /sys/fs/cgroup/test-manager
 echo "$$" > /sys/fs/cgroup/test-manager/cgroup.procs
-if [[ "${AGENTBOX_TEST_SINGLE_RUN:-0}" == 1 ]]; then
+if [[ "${AGENTBOX_TEST_SINGLE_RUN:-0}" == 1 || "${AGENTBOX_BENCHMARK:-0}" == 1 ]]; then
     case "$(cat /proc/1/comm)" in docker-init|tini) ;; *) echo 'requires Docker --init' >&2; exit 1;; esac
     echo 1 > /sys/fs/cgroup/test-manager/cgroup.procs
 fi

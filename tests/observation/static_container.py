@@ -15,7 +15,7 @@ import time
 
 sys.path.insert(0, "/workspace/scripts/lib")
 from observe import Client, run_phase, sandbox_workload
-from static_experiment import check_phase, experiment_plan, write_json
+from static_experiment import check_phase, experiment_plan, write_json, dynamic_summary
 
 
 def wait_until(predicate, description, timeout=40):
@@ -51,7 +51,18 @@ def main():
     output.mkdir()
     shutil.copytree("/workspace/.local/gvisor", "/lab/gvisor", symlinks=True,
                     ignore=shutil.ignore_patterns("containerd-shim-runsc-v1"))
-    shutil.copytree("/workspace/.local/rootfs", "/lab/rootfs", symlinks=True)
+    if os.environ.get("AGENTBOX_TEST_IMAGE_ROOTFS", "0") == "1":
+        Path("/lab/rootfs").mkdir()
+        for name in ("bin", "etc", "lib", "lib64", "sbin", "usr", "var"):
+            source = Path("/")/name
+            if source.is_symlink():
+                (Path("/lab/rootfs")/name).symlink_to(os.readlink(source))
+            elif source.exists():
+                shutil.copytree(source, Path("/lab/rootfs")/name, symlinks=True)
+        for name in ("dev", "proc", "sys", "tmp", "workspace", "agentbox"):
+            (Path("/lab/rootfs")/name).mkdir(exist_ok=True)
+    else:
+        shutil.copytree("/workspace/.local/rootfs", "/lab/rootfs", symlinks=True)
     Path("/lab/bin").mkdir()
     for binary in ("agentboxd", "mockcore"):
         shutil.copy2("/workspace/bin/"+binary, "/lab/bin/"+binary)
@@ -61,9 +72,15 @@ def main():
     runtime_wrapper.chmod(0o755)
     preparation_seconds = time.monotonic()-preparation_started
     print(f"Memory snapshot ready after {preparation_seconds:.1f}s (outside measurement)", flush=True)
-    plan = experiment_plan(repetitions)
+    comparison = os.environ.get("AGENTBOX_EXPERIMENT_COMPARISON", "static")
+    dynamic = comparison in ("dynamic", "baseline")
+    groups = ("core-baseline",) if comparison == "baseline" else ("protected-quota", "default-quota", "dynamic")
+    plan = ([(r+1, g) for r in range(repetitions) for g in groups[r % len(groups):]+groups[:r % len(groups)]]
+            if dynamic else experiment_plan(repetitions))
     platform = os.environ.get("AGENTBOX_PLATFORM", "kvm")
-    rate, edge_seconds = 20, 5
+    rate, edge_seconds = 20, (0 if dynamic else 5)
+    schedule = [(0, 5), (duration, 60), (2*duration, 5)] if dynamic else None
+    measured_duration = 3*duration if dynamic else duration
     manager = root / "experiment-controller"
     manager.mkdir()
     # Both the init reaper and controller must leave the namespace root before
@@ -119,14 +136,21 @@ def main():
               "host_io_pressure_at_setup": Path("/proc/pressure/io").read_text().strip(),
               "tmpfs_used_bytes_at_setup": shutil.disk_usage("/lab").used,
               "snapshot_preparation_seconds": preparation_seconds,
+              "rootfs_source": "pinned_image" if os.environ.get("AGENTBOX_TEST_IMAGE_ROOTFS", "0") == "1" else "prepared_host_rootfs",
               "runtime_debug_command": "delete",
               "outer_limits": limits(root), "core_limits": limits(core_group),
-              "config": {"duration_seconds": duration, "repetitions": repetitions, "edge_seconds": edge_seconds,
-                         "core_rate": rate, "core_iterations": 50000, "core_concurrency": 4,
+              "config": {"duration_seconds": measured_duration, "repetitions": repetitions, "edge_seconds": edge_seconds,
+                         "core_rate": None if dynamic else rate, "core_iterations": 50000, "core_concurrency": 4,
                          "sandbox_workers": 2, "sandbox_workload": workload, "qos_interval_ms": 100,
-                         "default_cpu_max": "80000 20000", "protected_cpu_max": "20000 20000"},
+                         "default_cpu_max": "40000 20000" if dynamic else "80000 20000", "protected_cpu_max": "20000 20000"},
+              "comparison": comparison,
+              "dynamic_design": {"rates": schedule, "phase_seconds": duration, "core_slo_ms": 50, "cpu_min": 1, "cpu_max": 2, "scheduling_gate": False, "inventory_dynamic": False},
               "scope": "isolated Docker; runtime, rootfs, binaries, state and recordings on 1GiB tmpfs; host-side /tmp on 256MiB tmpfs; exported after shutdown; baseline includes idle cold daemon and observer; static quota only; host PSI is system-wide",
               "runs": []}
+    if dynamic:
+        report["scope"] = "isolated 2-CPU Docker; tmpfs dependencies; fixed 1 CPU / fixed 2 CPU / AIMD 1..2 CPU; 5/60/5 core requests per second; continuous two-client sandbox load; one run is exploratory, not a production guarantee"
+    if comparison == "baseline":
+        report["scope"] = "isolated 2-CPU Docker; same 5/60/5 core schedule; no sandbox load or inventory during measurement; idle daemon/observer remain; startup probe excluded; single-run baseline"
     write_json(output/"plan.json", {**report, "order": plan})
     try:
         core = launch(["/lab/bin/mockcore", "-iterations=50000", "-concurrency=4"], core_group, "mockcore", environment)
@@ -141,10 +165,10 @@ def main():
             # its pre-exec placement happens before New creates the leaves.
             engine_group = lab/name
             engine_group.mkdir()
-            print(f"Starting {name}: {duration}s measurement, {edge_seconds}s edges", flush=True)
+            print(f"Starting {name}: {measured_duration}s measurement, {edge_seconds}s edges", flush=True)
             daemon = launch(["/lab/bin/agentboxd", "-runsc="+str(runtime_wrapper), "-rootfs=/lab/rootfs",
                              "-state-dir=/lab/state/"+name, "-cgroup-root=auto", "-platform="+platform, "-mode="+mode, "-concurrency=2",
-                             "-qos=observe", "-qos-interval=100ms", "-qos-protected-cgroup="+str(core_group)],
+                             "-qos="+("enforce" if group == "dynamic" else "observe"), "-qos-min-cpu=1", "-qos-max-cpu=2", "-qos-interval=100ms", "-qos-protected-cgroup="+str(core_group)],
                             engine_group, name, dict(environment, AGENTBOX_API_TOKEN=token))
             parent = engine_group/"sandboxes"
 
@@ -157,10 +181,11 @@ def main():
             wait_until(ready, name+" readiness")
             if baseline and any(p.is_dir() for p in parent.iterdir()):
                 raise RuntimeError("baseline has sandbox inventory")
-            quota = report["config"]["protected_cpu_max" if group == "protected-quota" else "default_cpu_max"]
+            quota = ("20000 20000" if group == "protected-quota" else "40000 20000") if dynamic else report["config"]["protected_cpu_max" if group == "protected-quota" else "default_cpu_max"]
             # Only this isolated experiment controller writes the test quota.
             # Do not introduce request-controlled or production quota changes.
-            (parent/"cpu.max").write_text(quota)
+            if group != "dynamic":
+                (parent/"cpu.max").write_text(quota)
             before = {"sandboxes": limits(parent), "protected": limits(core_group), "outer": limits(root)}
             # Warm up the core and let observation baselines settle after setup.
             for _ in range(20):
@@ -178,13 +203,22 @@ def main():
                     list(executor.map(warm_sandbox, range(2)))
                 wait_until(ready, name+" inventory after warmup")
             time.sleep(1)
-            result = run_phase(name, duration+2*edge_seconds, rate, 0 if baseline else 2, core_client, client, output,
-                               workload=workload, load_start=edge_seconds, load_end=edge_seconds+duration)
+            result = run_phase(name, measured_duration+2*edge_seconds, rate, 0 if baseline else 2, core_client, client, output,
+                               workload=workload, load_start=edge_seconds, load_end=edge_seconds+measured_duration, rate_schedule=schedule)
             after = {"sandboxes": limits(parent), "protected": limits(core_group), "outer": limits(root)}
             result.update(group=group, repeat=repeat, limits_before=before, limits_after=after)
             write_json(output/(name+"-summary.json"), result)
-            check_phase(result, baseline, rate, duration+2*edge_seconds)
-            if before != after:
+            if dynamic:
+                check_phase(result, baseline, 1, duration*70)
+                result["dynamic_outcome"] = dynamic_summary(output, name, duration, 50)
+                write_json(output/(name+"-dynamic.json"), result["dynamic_outcome"])
+            else:
+                check_phase(result, baseline, rate, duration+2*edge_seconds)
+            comparison_before, comparison_after = json.loads(json.dumps(before)), json.loads(json.dumps(after))
+            if group == "dynamic":
+                del comparison_before["sandboxes"]["cpu.max"]
+                del comparison_after["sandboxes"]["cpu.max"]
+            if comparison_before != comparison_after:
                 raise RuntimeError("limits changed during measurement")
             if report["runs"] and result["workload_checksums"] != report["runs"][0]["workload_checksums"]:
                 raise RuntimeError("core workload changed between groups")
@@ -199,7 +233,7 @@ def main():
                   f"sandbox={result['sandbox_completions_per_second']:.3f}/s", flush=True)
             time.sleep(1)
         stop(core)
-        report["checks"] = ["rotating-order", "fixed-workloads", "three-observation-sources", "fixed-limits-per-run", "clean-shutdown"]
+        report["checks"] = ["low-high-low fixed arrival schedule", "50ms core SLO declared before measurement", "static inventory and no scheduling gate"] if dynamic else ["rotating-order", "fixed-workloads", "three-observation-sources", "fixed-limits-per-run", "clean-shutdown"]
         write_json(output/"experiment.json", report)
         print("Static comparison complete", flush=True)
     finally:

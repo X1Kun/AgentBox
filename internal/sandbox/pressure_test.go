@@ -20,7 +20,7 @@ func schedulingEngine(t *testing.T, p *warmPool, mode string) *Engine {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &Engine{config: Config{QoS: qos.Config{Mode: mode, Scheduling: true}}, ctx: ctx, cancel: cancel, lock: lock, pool: p, slots: make(chan struct{}, 1)}
+	e := &Engine{config: Config{QoS: qos.Config{Mode: mode, Scheduling: true}}, ctx: ctx, cancel: cancel, lock: lock, pool: p}
 	t.Cleanup(func() {
 		if err := e.Close(); err != nil {
 			t.Error(err)
@@ -51,23 +51,23 @@ func TestColdPressureAdmissionAndObserveHasNoSideEffects(t *testing.T) {
 				if !errors.Is(err, ErrPressure) || !errors.Is(err, ErrBusy) || !errors.As(err, &admission) || admission.Reason != "qos_pressure" {
 					t.Fatalf("pressure rejection: %v", err)
 				}
-				if e.qosSchedulingReport().PressureRejections != 1 || len(e.slots) != 0 {
+				if e.qosSchedulingReport().PressureRejections != 1 {
 					t.Fatal("rejection leaked a slot or counter")
 				}
 			} else {
-				if err := e.acquireExecutionSlot(); err != nil {
+				if err := e.beginAdmission(); err != nil {
 					t.Fatal(err)
 				}
-				e.releaseExecutionSlot()
+				e.active.Done()
 				if !e.qosSchedulingReport().AdmissionOpen {
 					t.Fatal("observe closed actual admission")
 				}
 			}
 			e.applyPressure(gateDecision(false))
-			if err := e.acquireExecutionSlot(); err != nil {
+			if err := e.beginAdmission(); err != nil {
 				t.Fatalf("recovery: %v", err)
 			}
-			e.releaseExecutionSlot()
+			e.active.Done()
 		})
 	}
 }
@@ -190,7 +190,7 @@ func TestRefillPauseLetsReservedCreationFinishAndResumes(t *testing.T) {
 
 func TestShutdownWinsOverPressureRecovery(t *testing.T) {
 	e := schedulingEngine(t, nil, "enforce")
-	if err := e.acquireExecutionSlot(); err != nil {
+	if err := e.beginAdmission(); err != nil {
 		t.Fatal(err)
 	}
 	e.applyPressure(gateDecision(true))
@@ -207,10 +207,10 @@ func TestShutdownWinsOverPressureRecovery(t *testing.T) {
 		t.Fatal("shutdown did not close admission")
 	}
 	e.applyPressure(gateDecision(false))
-	if err := e.acquireExecutionSlot(); !errors.Is(err, ErrUnhealthy) {
+	if err := e.beginAdmission(); !errors.Is(err, ErrUnhealthy) {
 		t.Fatalf("shutdown admission: %v", err)
 	}
-	e.releaseExecutionSlot()
+	e.active.Done()
 	select {
 	case err := <-done:
 		if err != nil {

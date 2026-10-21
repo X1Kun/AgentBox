@@ -33,11 +33,15 @@ func run() (retErr error) {
 	var c sandbox.Config
 	var address string
 	var inspect bool
+	var parentMemory, sandboxMemory, reserveMemory int64
 	flag.StringVar(&c.Runsc, "runsc", "runsc", "path to runsc")
 	flag.StringVar(&c.Rootfs, "rootfs", ".local/rootfs", "trusted Python rootfs")
 	flag.StringVar(&c.StateDir, "state-dir", ".state", "private runtime state directory")
 	flag.StringVar(&c.CgroupRoot, "cgroup-root", "auto", "delegated cgroup v2 subtree; auto uses current unit and moves daemon to manager leaf")
 	flag.StringVar(&c.Platform, "platform", "kvm", "explicit gVisor platform: kvm or systrap; no automatic fallback")
+	flag.Int64Var(&parentMemory, "parent-memory-mib", 0, "sandbox parent memory budget; 0 fits host/ancestor capacity, up to 4096 MiB")
+	flag.Int64Var(&sandboxMemory, "sandbox-memory-mib", 512, "per-sandbox hard memory limit, at least 128 MiB")
+	flag.Int64Var(&reserveMemory, "memory-reserve-mib", 512, "memory reserved outside sandboxes, at least 128 MiB")
 	flag.IntVar(&c.Concurrency, "concurrency", 1, "concurrent executions, 1 to 4")
 	flag.StringVar(&c.Mode, "mode", "cold", "execution mode: cold or once-only warm pool")
 	flag.IntVar(&c.WarmPoolSize, "warm-size", 3, "target READY sandbox inventory")
@@ -47,13 +51,15 @@ func run() (retErr error) {
 	flag.DurationVar(&c.WarmAdjustInterval, "warm-adjust-interval", time.Second, "minimum inventory action interval, 100ms to 1m")
 	flag.DurationVar(&c.WarmDownscaleWindow, "warm-downscale-window", 30*time.Second, "downscale recommendation stabilization window, up to 1h")
 	flag.IntVar(&c.MaxSandboxes, "max-sandboxes", 6, "total sandbox cap, including creation and destruction")
-	flag.IntVar(&c.CreateConcurrency, "create-concurrency", 1, "background sandbox creation concurrency, 1 or 2")
-	flag.IntVar(&c.QueueSize, "queue-size", 16, "maximum waiting warm requests")
+	flag.IntVar(&c.CreateConcurrency, "create-concurrency", 1, "shared on-demand/background creation concurrency, 1 or 2")
+	flag.IntVar(&c.QueueSize, "queue-size", 16, "maximum waiting requests")
 	flag.IntVar(&c.QueueBytes, "queue-bytes", 8<<20, "maximum queued request payload bytes")
-	flag.DurationVar(&c.QueueTimeout, "queue-timeout", 100*time.Millisecond, "maximum warm queue wait, 1ms to 5s")
+	flag.DurationVar(&c.QueueTimeout, "queue-timeout", 100*time.Millisecond, "maximum admission queue wait, 1ms to 5s")
 	flag.StringVar(&c.QoS.Mode, "qos", "off", "QoS mode: off, observe or enforce")
 	flag.BoolVar(&c.QoS.CPUControl, "qos-cpu-control", false, "preview AIMD in observe mode; automatic in enforce mode")
 	flag.BoolVar(&c.QoS.Scheduling, "qos-scheduling", false, "preview or enforce pressure admission and refill gates")
+	flag.Float64Var(&c.QoS.CPU.BaseCPU, "qos-base-cpu", 0, "optional conservative startup/loan-revocation budget; requires a business health file")
+	flag.StringVar(&c.QoS.BusinessFile, "qos-business-file", "", "trusted local collector's atomic JSON health window; never supplied by tasks")
 	flag.Float64Var(&c.QoS.CPU.MinCPU, "qos-min-cpu", .5, "minimum sandbox CPU bandwidth")
 	flag.Float64Var(&c.QoS.CPU.MaxCPU, "qos-max-cpu", 4, "maximum sandbox CPU bandwidth, at most 4")
 	flag.Float64Var(&c.QoS.CPU.LowPressure, "qos-cpu-low", 10, "CPU PSI recovery threshold in percent")
@@ -67,6 +73,18 @@ func run() (retErr error) {
 	flag.StringVar(&address, "listen", "127.0.0.1:8080", "loopback HTTP address or unix:/absolute/socket")
 	flag.BoolVar(&inspect, "doctor", false, "print read-only environment report and exit")
 	flag.Parse()
+	if c.QoS.BusinessFile == "none" {
+		c.QoS.BusinessFile = ""
+	}
+	for _, value := range []int64{parentMemory, sandboxMemory, reserveMemory} {
+		if value < 0 || value > 1<<30 {
+			return fmt.Errorf("memory budgets must be 0..1073741824 MiB")
+		}
+	}
+	if sandboxMemory < 128 || reserveMemory < 128 {
+		return fmt.Errorf("sandbox-memory-mib and memory-reserve-mib must each be at least 128")
+	}
+	c.Memory.ParentBytes, c.Memory.SandboxBytes, c.Memory.ReserveBytes = parentMemory<<20, sandboxMemory<<20, reserveMemory<<20
 	if inspect {
 		r := doctor.Inspect(c.Runsc, c.Platform, c.Rootfs, c.CgroupRoot)
 		e := json.NewEncoder(os.Stdout)

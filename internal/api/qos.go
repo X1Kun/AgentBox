@@ -3,6 +3,7 @@ package api
 // QoSReport contains observations and optional bounded CPU control decisions.
 // Invalid rates remain null. Sampling errors do not by themselves stop tasks.
 type QoSReport struct {
+	Business                *BusinessHealthReport `json:"business,omitempty"`
 	Pressure                *PressureStateReport  `json:"pressure,omitempty"`
 	Scheduling              *QoSSchedulingReport  `json:"scheduling,omitempty"`
 	CPUControl              *CPUControlReport     `json:"cpu_control,omitempty"`
@@ -80,4 +81,15 @@ type CgroupDelta struct {
 	MemoryMaxEvents     uint64  `json:"memory_max_events"`
 	OOMEvents           uint64  `json:"oom_events"`
 	OOMKills            uint64  `json:"oom_kills"`
+}
+
+type BusinessHealthReport struct {
+	Available     bool   `json:"available"`
+	Healthy       bool   `json:"healthy"`
+	SampledAt     string `json:"sampled_at,omitempty"`
+	WindowMS      int    `json:"window_ms"`
+	Requests      uint64 `json:"requests"`
+	Rejected      uint64 `json:"rejected"`
+	SLOViolations uint64 `json:"slo_violations"`
+	Error         string `json:"error,omitempty"`
 }

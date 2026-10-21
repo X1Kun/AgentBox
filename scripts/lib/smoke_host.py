@@ -214,7 +214,18 @@ class Smoke:
         if not membership.strip().endswith("/agentbox.service/manager"):
             raise ValueError("daemon is not in its manager leaf")
         group = self.cgroup_root()
-        for name, expected in {"memory.max": "4294967296", "memory.swap.max": "0"}.items():
+        status, report = self.http("/v1/status")
+        memory = report.get("memory", {})
+        if status != 200 or not all(isinstance(memory.get(k), int) and memory[k] > 0 for k in ("parent_bytes", "sandbox_bytes", "reserve_bytes", "capacity_bytes")):
+            raise ValueError("resolved memory budget missing")
+        configured_parent = int(self.config["AGENTBOX_PARENT_MEMORY_MIB"]) << 20
+        expected_parent = configured_parent or min(4 << 30, memory["capacity_bytes"]-memory["reserve_bytes"])
+        if (memory["parent_bytes"] != expected_parent
+                or memory["sandbox_bytes"] != int(self.config["AGENTBOX_SANDBOX_MEMORY_MIB"]) << 20
+                or memory["reserve_bytes"] != int(self.config["AGENTBOX_MEMORY_RESERVE_MIB"]) << 20
+                or memory["parent_bytes"]+memory["reserve_bytes"] > memory["capacity_bytes"]):
+            raise ValueError("resolved memory budget differs from deployment")
+        for name, expected in {"memory.max": str(expected_parent), "memory.high": str(expected_parent*3//4), "memory.swap.max": "0"}.items():
             if (group / "sandboxes" / name).read_text().strip() != expected:
                 raise ValueError("unexpected parent cgroup setting: "+name)
         cpu = (group/"sandboxes/cpu.max").read_text().split()
@@ -265,7 +276,7 @@ class Smoke:
             with ThreadPoolExecutor(max_workers=1) as workers:
                 pending = workers.submit(self.http, "/v1/execute", {"runtime": "python", "code": "import time; time.sleep(20)", "timeout_ms": 30000})
                 group = self.wait_for_running_task(root, pending)
-                for name, expected in {"cpu.max": "20000 20000", "memory.max": "536870912", "memory.swap.max": "0", "pids.max": "256"}.items():
+                for name, expected in {"cpu.max": "20000 20000", "memory.max": str(int(self.config["AGENTBOX_SANDBOX_MEMORY_MIB"]) << 20), "memory.swap.max": "0", "pids.max": "256"}.items():
                     if (group / name).read_text().strip() != expected:
                         raise ValueError("unexpected task cgroup setting: "+name)
                 self.sandbox_limits = {name: (group / name).read_text().strip() for name in ("cpu.max", "memory.high", "memory.max", "memory.swap.max", "pids.max")}

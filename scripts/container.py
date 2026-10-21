@@ -24,12 +24,14 @@ def arguments(argv=None, environment=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("suite", choices=sorted(RUNTIME | {"systemd", "benchmark", "observe", "static"}))
     parser.add_argument("--platform", choices=("kvm", "systrap"), default="kvm")
-    parser.add_argument("--mode", choices=("cold", "warm"), default="cold", help="systemd deployment mode")
+    parser.add_argument("--mode", choices=("cold", "warm"), default="cold", help="systemd or single-run runtime mode")
     parser.add_argument("--gateway", action="store_true", help="paired Gateway systemd acceptance")
     parser.add_argument("--pattern", help="selected runtime/qos Go tests")
+    parser.add_argument("--create-concurrency", type=int, choices=(1, 2), default=1, help="benchmark shared creation concurrency")
     parser.add_argument("--samples", type=int, default=60, help="benchmark sample count")
     parser.add_argument("--rate", type=int, default=10, help="benchmark offered requests/second")
-    parser.add_argument("--duration", type=int, default=60, help="static comparison seconds per group")
+    parser.add_argument("--comparison", choices=("static", "dynamic", "baseline"), default="static", help="static suite: fixed quotas, low/high/low comparison, or core-only baseline")
+    parser.add_argument("--duration", type=int, default=60, help="seconds per static group; per phase for dynamic/baseline")
     parser.add_argument("--repetitions", type=int, default=3, help="static comparison repetitions")
     parser.add_argument("--dry-run", action="store_true", help="print commands without building, Docker access, or API calls")
     args = parser.parse_args(argv)
@@ -40,6 +42,8 @@ def arguments(argv=None, environment=None):
         parser.error("live API calls require both the live suite and AGENTBOX_LIVE_DEEPSEEK=1")
     if args.pattern and args.suite not in ("runtime", "qos"):
         parser.error("--pattern is restricted to runtime/qos; named suites have fixed selections")
+    if args.comparison != "static" and args.suite != "static":
+        parser.error("--comparison applies only to static suite")
     if args.gateway and args.suite != "systemd":
         parser.error("--gateway applies only to systemd")
     for key in ("AGENTBOX_TEST_DEPENDENCIES_TMPFS", "AGENTBOX_TEST_IMAGE_ROOTFS"):
@@ -64,7 +68,7 @@ def docker_command(args, image, output=None, root=ROOT, environment=None):
         command += ["--detach", "--tty"]
     else:
         command += ["--rm"]
-        if suite not in ("runtime", "benchmark"):
+        if suite != "runtime" or args.pattern:
             command += ["--init"]
     command += ["--privileged", "--cgroupns=private", "--network="+("bridge" if suite == "live" else "none"),
                 "--memory=5g", "--memory-swap=5g", "--cpus="+("2" if suite in ("observe", "static") else "6"), "--pids-limit=2304"]
@@ -84,7 +88,8 @@ def docker_command(args, image, output=None, root=ROOT, environment=None):
             script = "container_validation.py"
         else:
             command += ["--tmpfs", "/lab:rw,exec,nosuid,nodev,mode=755,size=1073741824"]
-            command += envflag("AGENTBOX_EXPERIMENT_DURATION", args.duration) + envflag("AGENTBOX_EXPERIMENT_REPETITIONS", args.repetitions)
+            command += envflag("AGENTBOX_TEST_IMAGE_ROOTFS", environment.get("AGENTBOX_TEST_IMAGE_ROOTFS", "0"))
+            command += envflag("AGENTBOX_EXPERIMENT_DURATION", args.duration) + envflag("AGENTBOX_EXPERIMENT_REPETITIONS", args.repetitions) + envflag("AGENTBOX_EXPERIMENT_COMPARISON", args.comparison)
             for key in ("AGENTBOX_SOURCE_REVISION", "AGENTBOX_SOURCE_DIRTY"):
                 command += envflag(key, environment.get(key, "unknown"))
             script = "static_container.py"
@@ -112,14 +117,14 @@ def docker_command(args, image, output=None, root=ROOT, environment=None):
     if suite == "benchmark":
         command += mounts(output, "/results", False)
         timeout = str(1200+(2*args.samples+args.rate-1)//args.rate)+"s"
-        for key, value in {"AGENTBOX_BENCHMARK": 1, "AGENTBOX_BENCH_SAMPLES": args.samples, "AGENTBOX_BENCH_RATE": args.rate,
+        for key, value in {"AGENTBOX_BENCHMARK": 1, "AGENTBOX_BENCH_CREATE_CONCURRENCY": args.create_concurrency, "AGENTBOX_BENCH_SAMPLES": args.samples, "AGENTBOX_BENCH_RATE": args.rate,
                            "AGENTBOX_BENCH_TEST_TIMEOUT": timeout, "AGENTBOX_BENCH_OUTPUT": "/results",
                            "AGENTBOX_BENCH_ENVIRONMENT": "isolated-docker", "AGENTBOX_ROOTFS_IMAGE": image}.items():
             command += envflag(key, value)
     else:
         pattern = args.pattern or PATTERNS.get(suite)
         if pattern:
-            command += envflag("AGENTBOX_TEST_SINGLE_RUN", "1") + envflag("AGENTBOX_TEST_RUN", pattern)
+            command += envflag("AGENTBOX_TEST_SINGLE_RUN", "1") + envflag("AGENTBOX_TEST_RUN", pattern) + envflag("AGENTBOX_EXECUTION_MODE", args.mode)
         command += envflag("AGENTBOX_GATEWAY_MEASURE", environment.get("AGENTBOX_GATEWAY_MEASURE", "0"))
     return command + ["--entrypoint", "/bin/bash", image, "/entrypoint.sh"]
 
@@ -186,7 +191,8 @@ def main():
     if not Path(plot_python).is_file():
         plot_python = sys.executable
     if args.suite == "static":
-        run([plot_python, "-c", "import matplotlib"])
+        if args.comparison == "static":
+            run([plot_python, "-c", "import matplotlib"])
         environment["AGENTBOX_SOURCE_REVISION"] = run(["git", "rev-parse", "HEAD"], True).stdout.strip()
         environment["AGENTBOX_SOURCE_DIRTY"] = str(bool(run(["git", "status", "--porcelain"], True).stdout.strip())).lower()
     if args.suite in ("benchmark", "observe", "static"):
@@ -198,7 +204,7 @@ def main():
         systemd(command, args)
     else:
         run(command)
-    if args.suite == "static":
+    if args.suite == "static" and args.comparison == "static":
         run([plot_python, ROOT / "scripts/experiment.py", "plot", output])
     return 0
 

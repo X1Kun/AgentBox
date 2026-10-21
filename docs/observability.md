@@ -85,3 +85,11 @@ python3 scripts/experiment.py analyze artifacts/static-kvm-XCmQHtIX \
 ![第一轮默认组的供给时间线](assets/observability-pool-supply.png)
 
 ECDF 只是经验分布，不是置信区间。新增采集净开销、长期告警和持久追踪未独立验证；普通磁盘 KVM 观测短测的失败仍作为已知问题保留。内核定义参见 [PSI](https://docs.kernel.org/6.8/accounting/psi.html)和 [cgroups v2](https://docs.kernel.org/6.8/admin-guide/cgroup-v2.html)。
+
+## 运行时失败现场
+
+create/start/state/delete 控制命令达到上下文截止时，在终止 CLI 前记录 `runtime failure snapshot`：操作名、实例 ID、CLI 与至多三个 cgroup 进程的 status/wchan/stack/io、宿主 PSI、实例内存与 CPU 计数、父组 dying cgroup 数。每个文件最多读取 4KiB，不采集 cmdline、环境、用户代码或任务输出；字段读取失败保留 unavailable，不补成零。现场进入现有结构化日志，不在可能阻塞的运行时磁盘路径额外写诊断文件。
+
+这是截止时的一次采样，不是完整因果追踪；特别是进程空组不代表内核对象已经全部释放。不可中断内核 I/O 仍可能超过用户态超时。
+
+故障快照新增 `storage`，关联 runsc、rootfs 和状态目录的挂载点、文件系统、设备号及设备累计计数。create/delete 开始时采集去重后的设备计数，超时快照保留 `storage_before` 与采样时间，可离线对齐 I/O 增量和命令耗时。设备计数是设备整体活动，不能归因于单个沙箱；tmpfs/overlay 等可能没有可读块设备计数，缺测保留 unavailable。挂载匹配使用路径边界和最长挂载点，不在超时现场遍历或读取可能阻塞的数据目录。
