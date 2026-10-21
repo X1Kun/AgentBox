@@ -13,14 +13,14 @@ import (
 
 func TestDynamicPoolRealStallFIFOAndRecovery(t *testing.T) {
 	c := dynamicConfig()
-	c.WarmMaxSize = 2
+	c.Concurrency, c.WarmMinSize, c.WarmMaxSize = 2, 2, 3
 	var next atomic.Int64
 	began, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	var destroyed sync.Map
 	p := newWarmPool(c, func(ctx context.Context) (*executionState, error) {
 		n := next.Add(1)
-		if n == 2 {
+		if n == 3 {
 			close(began)
 			select {
 			case <-release:
@@ -45,6 +45,7 @@ func TestDynamicPoolRealStallFIFOAndRecovery(t *testing.T) {
 	if err := p.start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	waitPool(t, p, func(s poolSnapshot) bool { return s.Idle == 2 })
 	first, err := p.acquire(context.Background(), 1)
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +54,10 @@ func TestDynamicPoolRealStallFIFOAndRecovery(t *testing.T) {
 	case <-began:
 	case <-time.After(time.Second):
 		t.Fatal("replacement did not start")
+	}
+	held, err := p.acquire(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
 	}
 	type lease struct {
 		x   *executionState
@@ -63,7 +68,7 @@ func TestDynamicPoolRealStallFIFOAndRecovery(t *testing.T) {
 	waitPool(t, p, func(s poolSnapshot) bool { return s.Queued == 1 && s.Inventory.BothWaitRequests == 1 })
 	go func() { x, err := p.acquire(context.Background(), 20); b <- lease{x, err} }()
 	waitPool(t, p, func(s poolSnapshot) bool { return s.Queued == 2 })
-	if s := p.status(); s.Target != 1 || s.Inventory.InventoryStalls != 0 {
+	if s := p.status(); s.Target != 2 || s.Inventory.InventoryStalls != 0 {
 		t.Fatal("expanded while both resources unavailable")
 	}
 	complete := func(x *executionState) {
@@ -75,7 +80,7 @@ func TestDynamicPoolRealStallFIFOAndRecovery(t *testing.T) {
 		p.release(x, true)
 	}
 	complete(first)
-	waitPool(t, p, func(s poolSnapshot) bool { return s.Target == 2 && s.Inventory.InventoryStalls == 1 })
+	waitPool(t, p, func(s poolSnapshot) bool { return s.Target == 3 && s.Inventory.InventoryStalls == 1 })
 	once.Do(func() { close(release) })
 	second := <-a
 	if second.err != nil || second.x == first {
@@ -86,15 +91,15 @@ func TestDynamicPoolRealStallFIFOAndRecovery(t *testing.T) {
 		t.Fatal("FIFO bypass")
 	default:
 	}
-	waitPool(t, p, func(s poolSnapshot) bool { return s.Idle > 0 && s.Creating == 0 })
 	complete(second.x)
 	third := <-b
 	if third.err != nil || third.x == first || third.x == second.x {
 		t.Fatalf("second FIFO waiter: %+v", third)
 	}
 	complete(third.x)
+	complete(held)
 	s := waitPool(t, p, func(s poolSnapshot) bool {
-		return s.Target == 1 && s.Total == 1 && s.Idle == 1 && s.Inventory.ShrinkSucceeded == 1
+		return s.Target == 2 && s.Total == 2 && s.Idle == 2 && s.Inventory.ShrinkSucceeded == 1
 	})
 	if s.QueuedBytes != 0 || s.Telemetry.QueueAssigned.Count != 2 || s.Inventory.ScaleUps != 1 || s.Inventory.ScaleDowns != 1 {
 		t.Fatalf("accounting: %+v", s)

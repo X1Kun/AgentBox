@@ -13,7 +13,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"scripts/lib"))
 from observe import core_metrics, run_phase, sandbox_workload, summarize_sandboxes
-from static_experiment import GROUPS, check_phase, experiment_plan
+from static_experiment import GROUPS, check_phase, experiment_plan, dynamic_summary
 from observation_analysis import distribution, matched_task_timings, observed_counter_rate, pool_series, usable_resource_frame
 
 spec = importlib.util.spec_from_file_location("plot_static", Path(__file__).resolve().parents[2]/"scripts/lib/plot_static.py")
@@ -23,6 +23,25 @@ spec.loader.exec_module(plot)
 
 
 class MeasurementTests(unittest.TestCase):
+    def test_dynamic_summary_counts_failures_and_drain_boundaries(self):
+        import csv
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            core = [dict(http_status="200", error="", client_drop="False", scheduled_ms=n*1000, scheduled_wall_ms=10) for n in range(9)]
+            core[4].update(http_status="503", scheduled_wall_ms=1)
+            tasks = [dict(finished_ms=end, status="succeeded", cleanup_complete="True", error="") for end in (1000, 4000, 8999, 9000)]
+            for suffix, rows in (("core", core), ("sandboxes", tasks)):
+                with (output/("trial-"+suffix+".csv")).open("w") as stream:
+                    writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+                    writer.writeheader(); writer.writerows(rows)
+            frames = [dict(elapsed_ms=n*1000, http_status=200, status=dict(ready=True, qos=dict(stale=False, sources=[]))) for n in range(9)]
+            (output/"trial-observations.jsonl").write_text("".join(json.dumps(f)+"\n" for f in frames))
+            result = dynamic_summary(output, "trial", 3, 50)
+            self.assertEqual([p["sandbox_completed"] for p in result["phases"]], [1, 1, 1])
+            self.assertEqual(result["phases"][1]["slo_violating_seconds"], 1)
+            self.assertEqual(result["phases"][2]["first_three_good_seconds_start"], 0)
+            self.assertIsNone(result["phases"][1]["first_three_good_seconds_start"])
+
     def test_recorder_modes_preserve_raw_frames_and_quality(self):
         for mode in ("observe", "enforce", "off", None):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:

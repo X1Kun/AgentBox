@@ -28,6 +28,7 @@ var (
 )
 
 type Config struct {
+	Memory              cgroup.MemoryBudget
 	Logger              *slog.Logger
 	QoS                 qos.Config
 	Runsc               string
@@ -59,9 +60,12 @@ type Engine struct {
 	runtime            runscCLI
 	groups             *cgroup.Manager
 	lock               *os.File
-	slots              chan struct{}
 	broken             atomic.Bool
 	closed             atomic.Bool
+	startupRequired    bool
+	startupReady       atomic.Bool
+	startOnce          sync.Once
+	startErr           error
 	mu                 sync.Mutex
 	active             sync.WaitGroup
 	closeOnce          sync.Once
@@ -80,6 +84,7 @@ type ownership struct {
 }
 
 type executionState struct {
+	creationTime  time.Duration
 	cleanupPhases []api.CleanupPhase
 	id            string
 	bundlePath    string
@@ -207,7 +212,18 @@ func New(c Config) (_ *Engine, retErr error) {
 			return nil, err
 		}
 	}
-	groups, err := cgroup.New(c.CgroupRoot, c.MoveSelf)
+	c.Memory, err = cgroup.ResolveMemory(c.CgroupRoot, c.Memory)
+	if err != nil {
+		return nil, err
+	}
+	memoryInstances := c.MaxSandboxes
+	if c.Mode == "cold" {
+		memoryInstances = c.Concurrency
+	}
+	if int64(memoryInstances) > c.Memory.ParentBytes/c.Memory.SandboxBytes {
+		return nil, fmt.Errorf("mode requires capacity for %d instances, memory budget fits at most %d; reduce max-sandboxes/concurrency/warm-size or configure memory budgets", memoryInstances, c.Memory.ParentBytes/c.Memory.SandboxBytes)
+	}
+	groups, err := cgroup.NewWithMemory(c.CgroupRoot, c.MoveSelf, c.Memory)
 	if err != nil {
 		return nil, err
 	}
@@ -217,17 +233,20 @@ func New(c Config) (_ *Engine, retErr error) {
 		}
 	}
 	e := &Engine{
-		config: c,
+		config:          c,
+		startupRequired: true,
 		runtime: runscCLI{
-			binaryPath: c.Runsc,
-			stateDir:   filepath.Join(c.StateDir, "runsc"),
-			platform:   c.Platform,
-			logger:     c.Logger,
+			binaryPath:    c.Runsc,
+			stateDir:      filepath.Join(c.StateDir, "runsc"),
+			platform:      c.Platform,
+			sandboxParent: groups.SandboxParentPath,
+			rootfs:        c.Rootfs,
+			logger:        c.Logger,
 		},
 		groups: groups,
 		lock:   lock,
-		slots:  make(chan struct{}, c.Concurrency),
 	}
+	e.runtime.storage = e.runtime.storageLayout()
 	if err = e.reconcile(); err != nil {
 		return nil, fmt.Errorf("reconcile: %w", err)
 	}
@@ -236,9 +255,7 @@ func New(c Config) (_ *Engine, retErr error) {
 		return nil, err
 	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
-	if c.Mode == "warm" {
-		e.pool = newWarmPool(c, e.createSandbox, e.destroyInstanceResources)
-	}
+	e.pool = newWarmPool(c, e.createSandbox, e.destroyInstanceResources)
 	if e.observer != nil && c.QoS.Scheduling {
 		if err := e.observer.SetPressureHandler(e.applyPressure); err != nil {
 			e.cancel()
@@ -259,26 +276,89 @@ func writeJSON(path string, v any, mode os.FileMode) error {
 	return os.WriteFile(path, append(b, '\n'), mode)
 }
 
-// Start waits for the first READY instance in warm mode. Remaining inventory
-// fills in the background. Observation starts after pool readiness and is
-// independent of execution admission in both cold and warm modes.
-func (e *Engine) Start(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
+// Start verifies the real create/exec/delete path before exposing readiness.
+// A failed probe is not retried implicitly; restart after resolving its cause.
+func (e *Engine) Start(parent context.Context) error {
+	if e.closed.Load() {
+		return ErrUnhealthy
+	}
+	e.startOnce.Do(func() {
+		e.mu.Lock()
+		if e.closed.Load() {
+			e.mu.Unlock()
+			e.startErr = ErrUnhealthy
+			return
+		}
+		e.active.Add(1)
+		e.mu.Unlock()
+		defer e.active.Done()
+		ctx, cancel := context.WithTimeout(parent, 20*time.Second)
+		defer cancel()
+		stop := context.AfterFunc(e.ctx, cancel)
+		defer stop()
+		if err := ctx.Err(); err != nil {
+			e.startErr = err
+			return
+		}
+		if e.startupRequired {
+			begin := time.Now()
+			if e.config.Logger != nil {
+				e.config.Logger.Info("startup probe started")
+			}
+			e.startErr = e.probeRuntime(ctx)
+			if e.config.Logger != nil {
+				e.config.Logger.Info("startup probe finished", "elapsed_ms", ms(time.Since(begin)), "error", e.startErr)
+			}
+			if e.startErr != nil {
+				e.broken.Store(true)
+				return
+			}
+		}
+		if e.pool != nil {
+			if e.startErr = e.pool.start(ctx); e.startErr != nil {
+				return
+			}
+		}
+		if e.startErr = ctx.Err(); e.startErr != nil {
+			return
+		}
+		if e.observer != nil {
+			e.observer.Start(e.ctx)
+		}
+		e.startupReady.Store(true)
+	})
+	if e.closed.Load() && e.startErr == nil {
+		return ErrUnhealthy
+	}
+	return e.startErr
+}
+
+func (e *Engine) probeRuntime(ctx context.Context) (retErr error) {
+	instance, err := e.createSandbox(ctx)
+	if instance == nil {
+		return fmt.Errorf("startup probe create: %w", err)
+	}
+	result := api.Result{Status: "infrastructure_error"}
+	defer func() {
+		retErr = errors.Join(retErr, e.finalizeExecution(instance, &result))
+		if retErr == nil && (result.Status != "succeeded" || result.Stdout != "1" || !result.CleanupComplete) {
+			retErr = fmt.Errorf("startup probe failed: status=%s, cleanup=%t", result.Status, result.CleanupComplete)
+		}
+	}()
+	if err != nil {
 		return err
 	}
-	if e.pool != nil {
-		if err := e.pool.start(ctx); err != nil {
-			return err
-		}
+	if err = ctx.Err(); err != nil {
+		return err
 	}
-	if e.observer != nil {
-		e.observer.Start(e.ctx)
+	if err = prepareInput(instance.bundlePath, api.Request{Runtime: "python", Code: "print(1, end='')"}); err != nil {
+		return err
 	}
-	return nil
+	return e.runAndCollectResult(ctx, 2000, instance, &result)
 }
 
 func (e *Engine) Ready() bool {
-	return !e.broken.Load() && !e.closed.Load() && (e.pool == nil || e.pool.healthy())
+	return (!e.startupRequired || e.startupReady.Load()) && !e.broken.Load() && !e.closed.Load() && (e.pool == nil || e.pool.healthy())
 }
 
 func (e *Engine) Status() api.StatusReport {
@@ -286,10 +366,15 @@ func (e *Engine) Status() api.StatusReport {
 		return api.StatusReport{Mode: "cold", Ready: e.Ready(), QoS: e.observationReport(), Cleanup: e.cleanup.report()}
 	}
 	snapshot := e.pool.status()
-	return api.StatusReport{
+	var memory *api.MemoryBudgetReport
+	if e.config.Memory.CapacityBytes > 0 {
+		b := e.config.Memory
+		memory = &api.MemoryBudgetReport{ParentBytes: b.ParentBytes, SandboxBytes: b.SandboxBytes, ReserveBytes: b.ReserveBytes, CapacityBytes: b.CapacityBytes}
+	}
+	return api.StatusReport{Memory: memory,
 		Scheduling: schedulingReport(snapshot), Cleanup: e.cleanup.report(), Inventory: inventoryReport(snapshot),
 		QoS:  e.observationReport(),
-		Mode: "warm", Ready: snapshot.Ready && !e.broken.Load() && !e.closed.Load(),
+		Mode: poolMode(e.config.Mode), Ready: snapshot.Ready && (!e.startupRequired || e.startupReady.Load()) && !e.broken.Load() && !e.closed.Load(),
 		Target: snapshot.Target, MaxSandboxes: snapshot.MaxSandboxes,
 		Creating: snapshot.Creating, Idle: snapshot.Idle, Leased: snapshot.Leased,
 		Running: snapshot.Running, Destroying: snapshot.Destroying, Total: snapshot.Total,
@@ -322,8 +407,14 @@ func (e *Engine) Close() error {
 	return e.closeErr
 }
 
-func (e *Engine) acquireExecutionSlot() error {
-	// Keep admission and active.Add coordinated with Close's shutdown gate.
+func poolMode(mode string) string {
+	if mode == "cold" {
+		return "cold"
+	}
+	return "warm"
+}
+
+func (e *Engine) beginAdmission() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.Ready() {
@@ -333,18 +424,8 @@ func (e *Engine) acquireExecutionSlot() error {
 		e.pressureRejections++
 		return admissionError("qos_pressure", ErrPressure)
 	}
-	select {
-	case e.slots <- struct{}{}:
-	default:
-		return admissionError("execution_slots_full", ErrBusy)
-	}
 	e.active.Add(1)
 	return nil
-}
-
-func (e *Engine) releaseExecutionSlot() {
-	<-e.slots
-	e.active.Done()
 }
 
 func (e *Engine) Execute(parent context.Context, request api.Request) (api.Result, error) {
@@ -356,41 +437,7 @@ func (e *Engine) Execute(parent context.Context, request api.Request) (api.Resul
 	stop := context.AfterFunc(e.ctx, cancel)
 	defer stop()
 	defer cancel()
-	if e.pool != nil {
-		return e.executeWarm(ctx, r)
-	}
-	return e.executeCold(ctx, r)
-}
-
-func (e *Engine) executeCold(ctx context.Context, request api.Request) (result api.Result, retErr error) {
-	if err := e.acquireExecutionSlot(); err != nil {
-		return result, err
-	}
-	defer e.releaseExecutionSlot()
-	if err := ctx.Err(); err != nil {
-		return result, err
-	}
-	begin := time.Now()
-	execution, err := e.createSandbox(ctx)
-	if execution == nil {
-		return result, err
-	}
-	execution.startedAt = begin
-	result = api.Result{ExecutionID: execution.id, RequestID: request.RequestID, Status: "infrastructure_error"}
-	defer func() { retErr = errors.Join(retErr, e.finalizeExecution(execution, &result)) }()
-	if err == nil {
-		err = prepareInput(execution.bundlePath, request)
-	}
-	result.Timings.SetupMS = ms(time.Since(begin))
-	if err != nil {
-		if ctx.Err() != nil {
-			result.Status = "cancelled"
-			return result, nil
-		}
-		return result, err
-	}
-	retErr = e.runAndCollectResult(ctx, request.TimeoutMS, execution, &result)
-	return result, retErr
+	return e.executeLeased(ctx, r)
 }
 
 func requestBytes(request api.Request) int {
@@ -401,25 +448,18 @@ func requestBytes(request api.Request) int {
 	return bytes
 }
 
-func (e *Engine) executeWarm(ctx context.Context, request api.Request) (result api.Result, retErr error) {
-	// Queue admission must participate in the same shutdown gate as cold tasks.
-	e.mu.Lock()
-	if !e.Ready() {
-		e.mu.Unlock()
-		return result, admissionError("executor_unhealthy", ErrUnhealthy)
+func (e *Engine) executeLeased(ctx context.Context, request api.Request) (result api.Result, retErr error) {
+	if err := e.beginAdmission(); err != nil {
+		return result, err
 	}
-	if e.pressurePaused {
-		e.pressureRejections++
-		e.mu.Unlock()
-		return result, admissionError("qos_pressure", ErrPressure)
-	}
-	e.active.Add(1)
-	e.mu.Unlock()
 	defer e.active.Done()
 	begin := time.Now()
 	execution, err := e.pool.acquire(ctx, requestBytes(request))
 	queueMS := ms(time.Since(begin))
-	if err != nil {
+	if execution != nil {
+		queueMS = max(0, queueMS-ms(execution.creationTime))
+	}
+	if execution == nil {
 		if errors.Is(err, ErrPressure) {
 			e.mu.Lock()
 			e.pressureRejections++
@@ -438,14 +478,24 @@ func (e *Engine) executeWarm(ctx context.Context, request api.Request) (result a
 		e.pool.mark(execution, poolDestroying)
 		retErr = errors.Join(retErr, e.finalizeExecution(execution, &result))
 	}()
+	if err != nil {
+		result.Timings.SetupMS = ms(execution.creationTime)
+		if ctx.Err() != nil {
+			result.Status = "cancelled"
+			return result, nil
+		}
+		return result, err
+	}
 	setupStart := time.Now()
 	// A READY instance may have died while idle. Never inject or execute a task
 	// until both runtime state and cgroup membership have been checked.
-	checkCtx, cancel := context.WithTimeout(ctx, time.Second)
-	err = execution.session.checkRunning(checkCtx)
-	cancel()
-	if err == nil {
-		err = execution.group.VerifyPopulated()
+	if execution.creationTime == 0 {
+		checkCtx, cancel := context.WithTimeout(ctx, time.Second)
+		err = execution.session.checkRunning(checkCtx)
+		cancel()
+		if err == nil {
+			err = execution.group.VerifyPopulated()
+		}
 	}
 	if err == nil {
 		err = ctx.Err()
@@ -453,7 +503,7 @@ func (e *Engine) executeWarm(ctx context.Context, request api.Request) (result a
 	if err == nil {
 		err = prepareInput(execution.bundlePath, request)
 	}
-	result.Timings.SetupMS = ms(time.Since(setupStart))
+	result.Timings.SetupMS = ms(time.Since(setupStart) + execution.creationTime)
 	if err != nil {
 		if ctx.Err() != nil {
 			result.Status = "cancelled"
@@ -647,8 +697,12 @@ func (e *Engine) destroyContainerAndCgroup(instance *executionState) error {
 		_, err := e.runtime.control(ctx, "delete", "--force", instance.id)
 		return err
 	})
+	// A stalled delete must not consume the fallback's wait budget. The
+	// runtime command has 5s (+1s pipe drain); fallback has its own bounded 2s.
+	fallbackCtx, fallbackCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer fallbackCancel()
 	killErr := e.cleanupPhase(instance, "cgroup_kill", instance.group.Kill)
-	removeErr := e.cleanupPhase(instance, "cgroup_empty_and_remove", func() error { return instance.group.Remove(ctx) })
+	removeErr := e.cleanupPhase(instance, "cgroup_empty_and_remove", func() error { return instance.group.Remove(fallbackCtx) })
 	// Even after cgroup.kill succeeds, a failed runtime deletion retains the
 	// intent record and stops new admissions until reconciliation succeeds.
 	return errors.Join(deleteErr, killErr, removeErr)

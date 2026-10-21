@@ -56,7 +56,7 @@ AGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/system.slice/mockcore.service
 
 初始 unknown 沿用静态有界行为；warm 先取得最小 READY 再启动观测，避免循环依赖。曾经关闭的门控必须由有效低压解除，沙箱用量归零不等于 protected 已恢复。CPU 执行器故障不阻止压力状态机继续工作。
 
-- cold 在取得执行名额前检查；warm 在入口与最终领取处检查。
+- Cold/Warm 都在入口与最终资源预留处检查，排队期间也响应门控。
 - 压力拒绝返回 `503 reason=qos_pressure`。尚未领取的排队者被唤醒、释放队列数量/字节并记录真实等待；门控关闭的代次避免快速关闭后重开漏掉排队者。
 - 已领取任务继续执行，不由压力门控取消。已预留的 create 事务继续完成，新预留暂停后等待事件，不空转。
 - 压力暂停不销毁现有 READY、不修改库存目标；恢复后按当前目标补池。动态目标由[库存控制器](dynamic-inventory.md)负责。
@@ -81,3 +81,43 @@ AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
 ```
 
 验收使用私有容器、6 CPU/5GiB/2304 tasks，区别于静态对照的外层 2 CPU。覆盖确定性压力下的配额写入/读回，以及真实 CPU PSI 下的准入、排队拒绝、补池暂停、缺测保持、稳定恢复和资源回收。tmpfs 准备不计入请求时延，不能证明普通磁盘冷启动已修复，也不证明动态 QoS 改善业务延迟。
+
+## 动态收益的探索对照
+
+沿用现有实验入口，不新增脚本：
+
+```bash
+make build
+AGENTBOX_TEST_IMAGE_ROOTFS=1 python3 scripts/container.py static --platform kvm --comparison dynamic --duration 15 --repetitions 1
+```
+
+每组包含三个各 15 秒的阶段，固定 1 CPU、固定 2 CPU 与 AIMD 1～2 CPU 使用同一工作量、5/60/5 req/s 核心到达率、两个沙箱客户端。保持静态库存、关闭准入门控，避免把多个策略收益混在一起。预先设定 50ms 核心 SLO，记录拒绝/丢弃、超标秒数、完成量、配额轨迹和恢复；一轮结果不支持显著性推断。2026-10-21 实测动态策略没有守住 SLO，也没有支配固定 1 CPU，默认继续关闭，详见 [验收记录](validation.md)。
+
+## 可选业务健康约束与额度借用
+
+`-qos-base-cpu` 非零并同时配置 `-qos-business-file` 时启用；默认 0/空路径保留原有 PSI-only AIMD。此模式仍默认关闭，基准额度是部署配置，不能当成已证明的 SLO 保证。
+
+```text
+-qos=enforce -qos-min-cpu=0.5 -qos-base-cpu=1 -qos-max-cpu=2
+-qos-protected-cgroup=/sys/fs/cgroup/.../core
+-qos-business-file=/run/core/agentbox-health.json
+```
+
+- 控制器初始化时最多使用 base 额度；仅在业务样本有效健康、PSI 连续低压且沙箱存在带宽需求时逐步增额。
+- 业务窗口出现拒绝或 SLO 超标，即使 PSI 很低也收回超出 base 的额度。持续业务恶化时，可按动作间隔继续乘法降低至 min，避免把 base 错当成保护保证。
+- 业务或 PSI 样本失效时，在下一次可执行的控制周期收回超出 base 的额度；已低于 base 时保持，禁止恢复。恢复需重新积累有效健康与低压窗口。
+- observe 只计算，不写配额。配额执行器故障仍按原有规则报告故障并停止写入，不能保证撤额成功。
+
+由核心服务或可信采集器在 `/run` 的受保护目录中原子替换 JSON 文件；不能由模型、请求参数或任务提供路径。数据格式：
+
+```json
+{"sampled_at":"2026-10-21T01:00:00Z","window_ms":1000,"requests":100,"rejected":2,"slo_violations":3}
+```
+
+这只是格式示例，时间必须由采集器持续更新。五个字段均必需，计数为该窗口内统计；拒绝与超标允许重叠，但各自不能超过请求数。窗口接受 500～5000ms，样本最多保鲜两个窗口；未来时间、缺字段、null、计数错误、缺文件和陈旧样本都不按健康处理。无请求且有新鲜采集窗口可以表示空闲，不能用永久写死的“全零健康”替代实际采集。
+
+文件上限 4KiB，拒绝最终路径符号链接、非普通文件和允许所有用户写入的文件。采集器应覆盖业务关注的请求延迟、拒绝与错误，并据此产生 SLO 超标计数；AgentBox 不自动推断业务 SLO，也不内置生产指标采集服务。建议使用本机 `/run`，避免控制信号依赖慢数据盘。status 增加 `qos.business` 和 `qos.cpu_control.base_cpu`。
+
+固定 systemd 服务增加 `AGENTBOX_QOS_BASE_CPU`（默认 0）与 `AGENTBOX_QOS_BUSINESS_FILE`（默认 none），必须成对配置；其他 CPU 策略参数仍按 CLI 配置。默认 CPU 下界/上界仍为 .5/4，部署应按实际保护需求选定边界。
+
+真实 cgroup 测试已经验证保守启动、健康增额、低 PSI 下业务拒绝触发撤额；真实运行时验证了健康文件的正常/异常/过期接线。它们是机制验证，不是新模式优于静态方案的性能证明。

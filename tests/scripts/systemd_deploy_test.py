@@ -332,10 +332,20 @@ class ToolTests(unittest.TestCase):
     def test_configuration_rejects_unsafe_or_ambiguous_values(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "config"
-            for extra in ("AGENTBOX_LISTEN=0.0.0.0:8080", "AGENTBOX_LISTEN=127.0.0.1:8080/path", "AGENTBOX_LISTEN=127.0.0.1", "AGENTBOX_CONCURRENCY=5", "AGENTBOX_PLATFORM=ptrace", "AGENTBOX_MODE=auto", "AGENTBOX_QOS=enforce", "AGENTBOX_QOS=observe", "AGENTBOX_QOS_INTERVAL=10ms", "AGENTBOX_MAX_SANDBOXES=9", "AGENTBOX_QUEUE_TIMEOUT=6s", "AGENTBOX_WARM_SIZE=7", "AGENTBOX_QUEUE_BYTES=0", "UNKNOWN=value", "AGENTBOX_LISTEN='127.0.0.1:8080'", "AGENTBOX_API_TOKEN="+"y"*32):
+            for extra in ("AGENTBOX_LISTEN=0.0.0.0:8080", "AGENTBOX_LISTEN=127.0.0.1:8080/path", "AGENTBOX_LISTEN=127.0.0.1", "AGENTBOX_CONCURRENCY=5", "AGENTBOX_PLATFORM=ptrace", "AGENTBOX_MODE=auto", "AGENTBOX_QOS=enforce", "AGENTBOX_QOS=observe", "AGENTBOX_QOS_INTERVAL=10ms", "AGENTBOX_MAX_SANDBOXES=9", "AGENTBOX_QUEUE_TIMEOUT=6s", "AGENTBOX_MODE=warm\nAGENTBOX_WARM_SIZE=7", "AGENTBOX_SANDBOX_MEMORY_MIB=64", "AGENTBOX_MEMORY_RESERVE_MIB=1", "AGENTBOX_QUEUE_BYTES=0", "UNKNOWN=value", "AGENTBOX_LISTEN='127.0.0.1:8080'", "AGENTBOX_API_TOKEN="+"y"*32):
                 config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\n"+extra+"\n")
                 with self.subTest(extra=extra), self.assertRaises(ValueError):
                     load_config(config)
+
+    def test_business_guard_configuration_is_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/"config"
+            base = "AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_QOS=enforce\nAGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/core\n"
+            for extra in ("AGENTBOX_QOS_BASE_CPU=1\n", "AGENTBOX_QOS_BUSINESS_FILE=/run/core/health.json\n", "AGENTBOX_QOS_BASE_CPU=nan\n", "AGENTBOX_QOS_BASE_CPU=1\nAGENTBOX_QOS_BUSINESS_FILE=relative\n"):
+                path.write_text(base+extra)
+                with self.assertRaises(ValueError): load_config(path)
+            path.write_text(base+"AGENTBOX_QOS_BASE_CPU=1\nAGENTBOX_QOS_BUSINESS_FILE=/run/core/health.json\n")
+            self.assertEqual(load_config(path)["AGENTBOX_QOS_BASE_CPU"], "1")
 
     def test_cpu_control_configuration(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -19,6 +19,7 @@ const MemoryMax = 512 << 20
 
 type Manager struct {
 	SandboxParentPath string
+	Memory            MemoryBudget
 }
 
 type Group struct {
@@ -41,6 +42,10 @@ func CurrentPath() (string, error) {
 // New requires a private, delegated subtree. It never edits the host root.
 // When moveSelf is true, only the daemon process is moved to a manager leaf.
 func New(root string, moveSelf bool) (*Manager, error) {
+	return NewWithMemory(root, moveSelf, MemoryBudget{})
+}
+
+func NewWithMemory(root string, moveSelf bool, budget MemoryBudget) (*Manager, error) {
 	root, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return nil, err
@@ -65,6 +70,10 @@ func New(root string, moveSelf bool) (*Manager, error) {
 			return nil, fmt.Errorf("%s controller is not delegated to %s", controller, root)
 		}
 	}
+	budget, err = ResolveMemory(root, budget)
+	if err != nil {
+		return nil, err
+	}
 	if moveSelf {
 		leaf := filepath.Join(root, "manager")
 		if err := os.MkdirAll(leaf, 0755); err != nil {
@@ -82,15 +91,15 @@ func New(root string, moveSelf bool) (*Manager, error) {
 		return nil, err
 	}
 	for _, setting := range [][2]string{
-		{"cpu.max", "80000 20000"}, {"memory.high", "3221225472"},
-		{"memory.max", "4294967296"}, {"memory.swap.max", "0"},
+		{"cpu.max", "80000 20000"}, {"memory.high", strconv.FormatInt(budget.ParentBytes*3/4, 10)},
+		{"memory.max", strconv.FormatInt(budget.ParentBytes, 10)}, {"memory.swap.max", "0"},
 		{"pids.max", "2048"}, {"cgroup.subtree_control", "+cpu +memory +pids"},
 	} {
 		if err := write(parent, setting[0], setting[1]); err != nil {
 			return nil, err
 		}
 	}
-	return &Manager{SandboxParentPath: parent}, nil
+	return &Manager{SandboxParentPath: parent, Memory: budget}, nil
 }
 
 func (m *Manager) NewGroup(id string) (*Group, error) {
@@ -101,9 +110,13 @@ func (m *Manager) NewGroup(id string) (*Group, error) {
 	if err := os.Mkdir(g.CgroupPath, 0755); err != nil {
 		return nil, err
 	}
+	limit := m.Memory.SandboxBytes
+	if limit == 0 {
+		limit = MemoryMax
+	}
 	for _, setting := range [][2]string{
-		{"cpu.max", "20000 20000"}, {"memory.high", "402653184"},
-		{"memory.max", "536870912"}, {"memory.swap.max", "0"},
+		{"cpu.max", "20000 20000"}, {"memory.high", strconv.FormatInt(limit*3/4, 10)},
+		{"memory.max", strconv.FormatInt(limit, 10)}, {"memory.swap.max", "0"},
 		{"memory.oom.group", "1"}, {"pids.max", "256"},
 	} {
 		if err := write(g.CgroupPath, setting[0], setting[1]); err != nil {

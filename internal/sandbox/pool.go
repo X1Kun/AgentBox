@@ -21,7 +21,7 @@ const (
 	poolDestroying poolState = "destroying"
 )
 
-// warmPool owns every instance from creation reservation through confirmed
+// warmPool is the shared Cold/Warm scheduler and owns every instance from creation reservation through confirmed
 // destruction. A lease is never returned to READY, even if its task is cancelled.
 type warmPool struct {
 	config  Config
@@ -67,6 +67,7 @@ type poolSnapshot struct {
 	Telemetry         poolTelemetry
 	ExecutionInFlight int
 	OldestQueueMS     float64
+	RefillBlockedBy   string
 	Config            Config
 	Ready             bool
 	Target            int
@@ -97,11 +98,17 @@ type poolTelemetry struct {
 func newWarmPool(c Config, create func(context.Context) (*executionState, error), destroy func(*executionState) error) *warmPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	target, reason := c.WarmPoolSize, "fixed_inventory"
+	if c.Mode == "cold" {
+		target, reason = 0, "on_demand"
+	}
 	if c.DynamicWarmPool {
 		target, reason = c.WarmMinSize, "minimum_inventory"
 	}
 	p := &warmPool{config: c, create: create, destroy: destroy, changed: make(chan struct{}), items: make(map[*executionState]poolState), ctx: ctx, cancel: cancel, now: time.Now,
 		inventory: inventoryState{Target: target, RawTarget: target, StabilizedTarget: target, Reason: reason, LastChange: time.Now()}}
+	if c.Mode == "cold" {
+		p.initialized = true
+	}
 	if c.DynamicWarmPool {
 		p.policy = &inventoryPolicy{config: c}
 	}
@@ -130,7 +137,7 @@ func (p *warmPool) start(ctx context.Context) error {
 	}
 	for {
 		if p.stopped || p.failed {
-			err := errors.New("warm pool unavailable: " + p.lastError)
+			err := errors.New("sandbox pool unavailable: " + p.lastError)
 			p.mu.Unlock()
 			return err
 		}
@@ -166,7 +173,7 @@ func (p *warmPool) refill() {
 			p.mu.Unlock()
 			return
 		}
-		if p.pressurePaused || len(p.ready)+p.creating >= p.inventory.Target || len(p.items)+p.creating >= p.config.MaxSandboxes {
+		if p.refillBlockerLocked() != "" {
 			changed := p.changed
 			p.mu.Unlock()
 			select {
@@ -277,7 +284,7 @@ func (p *warmPool) drain() error {
 	p.mu.Lock()
 	var result error
 	if p.cleanupFailures > 0 {
-		result = errors.New("warm pool retains failed cleanup records: " + p.lastError)
+		result = errors.New("sandbox pool retains failed cleanup records: " + p.lastError)
 	}
 	remaining := p.ready
 	p.ready = nil
@@ -321,7 +328,7 @@ func (p *warmPool) drain() error {
 func (p *warmPool) status() poolSnapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	s := poolSnapshot{Ready: p.initialized && !p.failed && !p.stopped, Telemetry: p.telemetry, ExecutionInFlight: p.executing, Config: p.config, Inventory: p.inventory,
+	s := poolSnapshot{RefillBlockedBy: p.refillBlockerLocked(), Ready: p.initialized && !p.failed && !p.stopped, Telemetry: p.telemetry, ExecutionInFlight: p.executing, Config: p.config, Inventory: p.inventory,
 		Target: p.inventory.Target, MaxSandboxes: p.config.MaxSandboxes,
 		Creating: p.creating, Total: len(p.items) + p.creating, Queued: len(p.waiters), QueuedBytes: p.queuedBytes,
 		CreationCount: p.creationCount, CreationFailures: p.creationFailures, CleanupFailures: p.cleanupFailures, CreationTotalMS: p.creationTotalMS}
@@ -350,4 +357,29 @@ func (p *warmPool) status() poolSnapshot {
 		}
 	}
 	return s
+}
+
+// Background preparation is opportunistic. Demand creation still uses the
+// shared bounded factory, while idle refill yields whenever foreground work
+// fills execution slots or queues. Already reserved creation is not cancelled.
+func (p *warmPool) refillBlockerLocked() string {
+	if p.pressurePaused {
+		return "qos_pressure"
+	}
+	if len(p.waiters) > 0 {
+		return "foreground_queued"
+	}
+	if p.executing >= p.config.Concurrency {
+		return "execution_saturated"
+	}
+	if len(p.items)+p.creating >= p.config.MaxSandboxes {
+		return "total_capacity"
+	}
+	if len(p.ready)+p.creating >= p.inventory.Target {
+		return "inventory_satisfied"
+	}
+	if p.creating >= p.config.CreateConcurrency {
+		return "creation_capacity"
+	}
+	return ""
 }

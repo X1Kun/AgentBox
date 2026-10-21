@@ -88,11 +88,22 @@ def summarize_sandboxes(rows, workload, load_start, load_end):
             "sandbox_errors": sum(r["http_status"] != 503 and r not in successful for r in rows)}
 
 
-def run_phase(name, duration, rate, sandbox_workers, core, agent, directory, *, workload=None, load_start=0, load_end=None):
+def run_phase(name, duration, rate, sandbox_workers, core, agent, directory, *, workload=None, load_start=0, load_end=None, rate_schedule=None):
     workload = workload or sandbox_workload("hog")
     load_end = duration if load_end is None else load_end
     if not 0 <= load_start < load_end <= duration:
         raise ValueError("load window must be inside the core request window")
+    if rate_schedule is None:
+        arrivals = [sequence/rate for sequence in range(int(duration*rate))]
+    else:
+        if not rate_schedule or rate_schedule[0][0] != 0:
+            raise ValueError("rate schedule must start at zero")
+        arrivals = []
+        for i, (start, offered) in enumerate(rate_schedule):
+            end = rate_schedule[i+1][0] if i+1 < len(rate_schedule) else duration
+            if not 0 <= start < end <= duration or not 1 <= offered <= 100:
+                raise ValueError("invalid rate schedule")
+            arrivals.extend(start+n/offered for n in range(int((end-start)*offered)))
     origin = time.monotonic()
     stop_sampling, stop_sandboxes = threading.Event(), threading.Event()
     core_rows, sandbox_rows, observation_errors = [], [], []
@@ -186,8 +197,8 @@ def run_phase(name, duration, rate, sandbox_workers, core, agent, directory, *, 
         worker.start()
     try:
         with ThreadPoolExecutor(max_workers=32) as executor:
-            for sequence in range(int(duration*rate)):
-                scheduled = origin+sequence/rate
+            for sequence, offset in enumerate(arrivals):
+                scheduled = origin+offset
                 delay = scheduled-time.monotonic()
                 if delay > 0:
                     time.sleep(delay)

@@ -20,6 +20,7 @@ type Config struct {
 	Mode            string
 	Interval        time.Duration
 	ProtectedCgroup string
+	BusinessFile    string
 }
 
 func (c *Config) Normalize() error {
@@ -36,7 +37,7 @@ func (c *Config) Normalize() error {
 		return fmt.Errorf("qos interval must be 50ms..1s")
 	}
 	if c.Mode == "off" {
-		if c.CPUControl || c.Scheduling {
+		if c.CPUControl || c.Scheduling || c.CPU.BaseCPU != 0 || c.BusinessFile != "" {
 			return fmt.Errorf("QoS policies require observe or enforce mode")
 		}
 		return nil
@@ -44,12 +45,23 @@ func (c *Config) Normalize() error {
 	if c.Mode == "enforce" {
 		c.CPUControl = true
 	}
+	if c.CPU.BaseCPU != 0 && !c.CPUControl {
+		return fmt.Errorf("base CPU requires CPU control")
+	}
 	if c.CPUControl || c.Scheduling {
 		if err := c.CPU.Normalize(); err != nil {
 			return err
 		}
 		if c.CPU.DecisionInterval < c.Interval {
 			return fmt.Errorf("CPU decision interval must not be shorter than observation interval")
+		}
+	}
+	if (c.CPU.BaseCPU > 0) != (c.BusinessFile != "") {
+		return fmt.Errorf("qos-base-cpu and qos-business-file must be configured together")
+	}
+	if c.BusinessFile != "" {
+		if !c.CPUControl || !filepath.IsAbs(c.BusinessFile) || filepath.Clean(c.BusinessFile) != c.BusinessFile {
+			return fmt.Errorf("business guard requires CPU control and a clean absolute sample path")
 		}
 	}
 	path := filepath.Clean(c.ProtectedCgroup)
@@ -87,6 +99,7 @@ type Observation struct {
 	Delta           Delta
 }
 type Snapshot struct {
+	Business      *BusinessReport
 	Pressure      *PressureReport
 	Control       *ControlReport
 	Sequence      uint64
@@ -237,6 +250,10 @@ func (o *Observer) collect() Snapshot {
 		}
 		snapshot.Sources = append(snapshot.Sources, observation)
 	}
+	if o.config.BusinessFile != "" {
+		business := readBusiness(o.config.BusinessFile, time.Now())
+		snapshot.Business = &business
+	}
 	return snapshot
 }
 
@@ -257,6 +274,15 @@ func (o *Observer) Snapshot() Snapshot {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	snapshot := o.snapshot
+	if snapshot.Business != nil {
+		business := *snapshot.Business
+		snapshot.Business = &business
+		if !businessFresh(business, time.Now()) {
+			snapshot.Business.Available = false
+			snapshot.Business.Healthy = false
+			snapshot.Business.Error = "stale business window"
+		}
+	}
 	if snapshot.Pressure != nil {
 		pressure := *snapshot.Pressure
 		snapshot.Pressure = &pressure

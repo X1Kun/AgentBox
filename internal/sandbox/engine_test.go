@@ -1,8 +1,10 @@
 package sandbox
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -159,5 +161,62 @@ func TestFinalizePreservesOutputLimitAfterStreamsFinish(t *testing.T) {
 	case <-instance.session.outputLimitExceeded():
 	default:
 		t.Fatal("output limit notification missing")
+	}
+}
+
+func TestDeleteTimeoutLeavesFallbackTimeAndFailureEvidence(t *testing.T) {
+	e, instance := cleanupFixture(t, false, false, 0)
+	var log bytes.Buffer
+	e.runtime.logger = slog.New(slog.NewJSONHandler(&log, nil))
+	// The CLI is still blocked when its deadline snapshot is captured.
+	if err := os.WriteFile(e.runtime.binaryPath, []byte("#!/bin/sh\nexec sleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	group := instance.group.CgroupPath
+	if err := os.Mkdir(group, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(group, "cgroup.events"), []byte("populated 1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Wait until fallback kill starts, then emulate asynchronous kernel exit.
+		for i := 0; i < 700; i++ {
+			if _, err := os.Stat(filepath.Join(group, "cgroup.kill")); err == nil {
+				time.Sleep(50 * time.Millisecond)
+				_ = os.RemoveAll(group)
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	err := e.destroyInstanceResources(instance)
+	<-done
+	if err == nil || !e.broken.Load() {
+		t.Fatal("delete timeout must remain a cleanup failure")
+	}
+	var fallbackOK bool
+	for _, phase := range instance.cleanupPhases {
+		if phase.Phase == "cgroup_empty_and_remove" {
+			fallbackOK = phase.Error == ""
+		}
+	}
+	if !fallbackOK {
+		t.Fatalf("fallback had no independent wait budget: %+v", instance.cleanupPhases)
+	}
+	var snapshot map[string]any
+	for _, line := range bytes.Split(log.Bytes(), []byte("\n")) {
+		var event map[string]any
+		if json.Unmarshal(line, &event) == nil && event["msg"] == "runtime failure snapshot" {
+			snapshot, _ = event["snapshot"].(map[string]any)
+		}
+	}
+	if snapshot["operation"] != "delete" || snapshot["processes"] == nil {
+		t.Fatalf("missing timeout evidence: %s", log.String())
+	}
+	if _, err := os.Stat(instance.bundlePath); err != nil {
+		t.Fatal("timeout discarded intent", err)
 	}
 }

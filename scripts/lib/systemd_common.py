@@ -55,10 +55,12 @@ def read_environment(path, defaults):
 
 def load_config(path):
     values = {"AGENTBOX_PLATFORM": "kvm", "AGENTBOX_LISTEN": "127.0.0.1:8080", "AGENTBOX_CONCURRENCY": "1", "AGENTBOX_MODE": "cold",
+              "AGENTBOX_PARENT_MEMORY_MIB": "0", "AGENTBOX_SANDBOX_MEMORY_MIB": "512", "AGENTBOX_MEMORY_RESERVE_MIB": "512",
               "AGENTBOX_WARM_SIZE": "3", "AGENTBOX_MAX_SANDBOXES": "6", "AGENTBOX_CREATE_CONCURRENCY": "1",
               "AGENTBOX_WARM_DYNAMIC": "false", "AGENTBOX_WARM_MIN_SIZE": "1", "AGENTBOX_WARM_MAX_SIZE": "0",
               "AGENTBOX_WARM_ADJUST_INTERVAL": "1s", "AGENTBOX_WARM_DOWNSCALE_WINDOW": "30s",
               "AGENTBOX_QUEUE_SIZE": "16", "AGENTBOX_QUEUE_BYTES": "8388608", "AGENTBOX_QUEUE_TIMEOUT": "100ms", "AGENTBOX_QOS": "off", "AGENTBOX_QOS_INTERVAL": "100ms",
+              "AGENTBOX_QOS_BASE_CPU": "0", "AGENTBOX_QOS_BUSINESS_FILE": "none",
               "AGENTBOX_QOS_PROTECTED_CGROUP": "none", "AGENTBOX_QOS_CPU_CONTROL": "false", "AGENTBOX_QOS_SCHEDULING": "false"}
     values["AGENTBOX_API_TOKEN"] = ""
     values = read_environment(path, values)
@@ -75,7 +77,8 @@ def load_config(path):
     dynamic = values["AGENTBOX_WARM_DYNAMIC"] == "true"
     if dynamic and values["AGENTBOX_MODE"] != "warm":
         raise ValueError("dynamic inventory requires warm mode")
-    bounds = {"AGENTBOX_WARM_SIZE": (1, 8), "AGENTBOX_MAX_SANDBOXES": (1, 8),
+    bounds = {"AGENTBOX_PARENT_MEMORY_MIB": (0, 1<<30), "AGENTBOX_SANDBOX_MEMORY_MIB": (128, 1<<30), "AGENTBOX_MEMORY_RESERVE_MIB": (128, 1<<30),
+              "AGENTBOX_WARM_SIZE": (1, 8), "AGENTBOX_MAX_SANDBOXES": (1, 8),
               "AGENTBOX_CREATE_CONCURRENCY": (1, 2), "AGENTBOX_QUEUE_SIZE": (1, 128),
               "AGENTBOX_QUEUE_BYTES": (1, 64 << 20)}
     for key, (minimum, maximum) in bounds.items():
@@ -98,9 +101,8 @@ def load_config(path):
         interval = durations["AGENTBOX_WARM_ADJUST_INTERVAL"]
         if not 100 <= interval <= 60000 or not interval <= durations["AGENTBOX_WARM_DOWNSCALE_WINDOW"] <= 3600000:
             raise ValueError("invalid dynamic inventory timing")
-    if (max_inventory > int(values["AGENTBOX_MAX_SANDBOXES"])
-            or int(values["AGENTBOX_CONCURRENCY"]) > int(values["AGENTBOX_MAX_SANDBOXES"])
-            or int(values["AGENTBOX_CREATE_CONCURRENCY"]) > max_inventory):
+    if ((values["AGENTBOX_MODE"] == "warm" and max_inventory > int(values["AGENTBOX_MAX_SANDBOXES"]))
+            or int(values["AGENTBOX_CONCURRENCY"]) > int(values["AGENTBOX_MAX_SANDBOXES"])):
         raise ValueError("pool capacity settings are inconsistent")
     duration = re.fullmatch(r"([0-9]+)(ms|s)", values["AGENTBOX_QUEUE_TIMEOUT"])
     if not duration or not 1 <= int(duration[1]) * (1000 if duration[2] == "s" else 1) <= 5000:
@@ -114,6 +116,18 @@ def load_config(path):
     interval = re.fullmatch(r"([0-9]+)(ms|s)", values["AGENTBOX_QOS_INTERVAL"])
     if not interval or not 50 <= int(interval[1]) * (1000 if interval[2] == "s" else 1) <= 1000:
         raise ValueError("qos interval must be 50ms..1s")
+    base = values["AGENTBOX_QOS_BASE_CPU"]
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", base) or not (float(base) == 0 or .5 <= float(base) <= 4):
+        raise ValueError("service base CPU must be 0 or .5..4")
+    health = values["AGENTBOX_QOS_BUSINESS_FILE"]
+    if (float(base) > 0) != (health != "none"):
+        raise ValueError("base CPU and business file must be configured together")
+    if health != "none":
+        path = PurePosixPath(health)
+        if not path.is_absolute() or ".." in path.parts or str(path) != health:
+            raise ValueError("business file must be a clean absolute path")
+        if values["AGENTBOX_QOS"] == "off" or (values["AGENTBOX_QOS"] == "observe" and values["AGENTBOX_QOS_CPU_CONTROL"] != "true"):
+            raise ValueError("business guard requires CPU control")
     if values["AGENTBOX_QOS"] != "off":
         protected = PurePosixPath(values["AGENTBOX_QOS_PROTECTED_CGROUP"])
         if ".." in protected.parts or not str(protected).startswith("/sys/fs/cgroup/"):

@@ -852,5 +852,637 @@
         }
       ]
     }
+  },
+  "implementation_review_20261021": {
+    "scope": "exploratory single-run comparisons; no parameter search, no production guarantee; historical and current results are not a controlled before/after comparison",
+    "archive": "artifacts/implementation-validation-20261021.tar.gz",
+    "warm_comparison": {
+      "platform": "kvm",
+      "kernel": "6.8.0-138-generic",
+      "environment": "isolated-docker",
+      "create_concurrency": 2,
+      "execution_concurrency": 4,
+      "queue_timeout_ms": 100,
+      "max_sandboxes": 6,
+      "warm_target": 3,
+      "dependency_condition": "runsc/rootfs in tmpfs, rootfs from pinned Python image; Docker init enabled; control state not moved to tmpfs by benchmark launcher",
+      "benchmark_binary_sha256": "7fb8b026b1d58af9db9c8153911460d4ea15113bb911fdad1eedb297842949fc",
+      "summaries": [
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 1,
+          "pool_max_queued": 0,
+          "mode": "cold",
+          "scenario": "inventory",
+          "offered": 60,
+          "accepted": 60,
+          "completed": 60,
+          "rejected": 0,
+          "errors": 0,
+          "elapsed_seconds": 16.916845831,
+          "completed_per_second": 3.546760465834028,
+          "success_wall_p50_ms": 265.332041,
+          "success_wall_p95_ms": 381.436443,
+          "success_wall_p99_ms": 411.359503,
+          "success_setup_p50_ms": 71.221115,
+          "success_execution_p50_ms": 182.734653
+        },
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 4,
+          "pool_max_queued": 16,
+          "mode": "cold",
+          "scenario": "burst",
+          "offered": 32,
+          "accepted": 4,
+          "completed": 4,
+          "rejected": 28,
+          "errors": 0,
+          "elapsed_seconds": 0.542753663,
+          "completed_per_second": 7.369825894661902,
+          "success_wall_p50_ms": 450.69138,
+          "success_wall_p95_ms": 542.680345,
+          "success_wall_p99_ms": 542.680345,
+          "success_setup_p50_ms": 92.821461,
+          "success_execution_p50_ms": 313.837382
+        },
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 4,
+          "pool_max_queued": 1,
+          "mode": "cold",
+          "scenario": "steady",
+          "offered": 60,
+          "accepted": 52,
+          "completed": 52,
+          "rejected": 8,
+          "errors": 0,
+          "elapsed_seconds": 6.248624286,
+          "completed_per_second": 8.321831753671868,
+          "success_wall_p50_ms": 461.470802,
+          "success_wall_p95_ms": 671.533086,
+          "success_wall_p99_ms": 854.297788,
+          "success_setup_p50_ms": 98.367004,
+          "success_execution_p50_ms": 309.739991
+        },
+        {
+          "pool_min_idle": 2,
+          "pool_max_total": 4,
+          "pool_max_queued": 0,
+          "mode": "warm",
+          "scenario": "inventory",
+          "offered": 60,
+          "accepted": 60,
+          "completed": 60,
+          "rejected": 0,
+          "errors": 0,
+          "elapsed_seconds": 9.482810485,
+          "completed_per_second": 6.327238121536708,
+          "success_wall_p50_ms": 150.110421,
+          "success_wall_p95_ms": 186.814568,
+          "success_wall_p99_ms": 230.368702,
+          "success_setup_p50_ms": 10.05805,
+          "success_execution_p50_ms": 125.97978
+        },
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 6,
+          "pool_max_queued": 16,
+          "mode": "warm",
+          "scenario": "burst",
+          "offered": 32,
+          "accepted": 4,
+          "completed": 4,
+          "rejected": 28,
+          "errors": 0,
+          "elapsed_seconds": 0.479879036,
+          "completed_per_second": 8.335433932146184,
+          "success_wall_p50_ms": 329.400285,
+          "success_wall_p95_ms": 479.482368,
+          "success_wall_p99_ms": 479.482368,
+          "success_setup_p50_ms": 16.286587,
+          "success_execution_p50_ms": 294.660142
+        },
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 6,
+          "pool_max_queued": 2,
+          "mode": "warm",
+          "scenario": "steady",
+          "offered": 60,
+          "accepted": 49,
+          "completed": 49,
+          "rejected": 11,
+          "errors": 0,
+          "elapsed_seconds": 6.173349681,
+          "completed_per_second": 7.937343991837937,
+          "success_wall_p50_ms": 457.590565,
+          "success_wall_p95_ms": 576.691963,
+          "success_wall_p99_ms": 778.300697,
+          "success_setup_p50_ms": 16.625461,
+          "success_execution_p50_ms": 378.542897
+        }
+      ],
+      "conclusion": "READY-hit latency benefit retained; steady completed cold 52/60, warm 49/60; no evidence of warm throughput superiority; do not attribute difference from old 34/60 solely to code"
+    },
+    "dynamic_cpu_comparison": {
+      "platform": "kvm",
+      "kernel": "6.8.0-138-generic",
+      "outer_limits": {
+        "cpu.max": "200000 100000",
+        "memory.high": "max",
+        "memory.max": "5368709120",
+        "memory.swap.max": "0",
+        "pids.max": "2304"
+      },
+      "binary_sha256": "4a8340080071701b274afc9b3840ea4176586791e7ae9151df3d7a0d87961c28",
+      "design": {
+        "rates": [
+          [
+            0,
+            5
+          ],
+          [
+            15,
+            60
+          ],
+          [
+            30,
+            5
+          ]
+        ],
+        "phase_seconds": 15,
+        "core_slo_ms": 50,
+        "cpu_min": 1,
+        "cpu_max": 2,
+        "scheduling_gate": false,
+        "inventory_dynamic": false
+      },
+      "scope": "isolated 2-CPU Docker; tmpfs dependencies; fixed 1 CPU / fixed 2 CPU / AIMD 1..2 CPU; 5/60/5 core requests per second; continuous two-client sandbox load; one run is exploratory, not a production guarantee",
+      "runs": [
+        {
+          "group": "protected-quota",
+          "outcome": {
+            "slo_ms": 50,
+            "phases": [
+              {
+                "phase": "low-before",
+                "offered": 75,
+                "failed_or_dropped": 0,
+                "core_p99_ms": 18.86810001451522,
+                "slo_violating_seconds": 0,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": 0,
+                "sandbox_completed": 6,
+                "cpu_min": 1.0,
+                "cpu_max": 1.0
+              },
+              {
+                "phase": "high",
+                "offered": 900,
+                "failed_or_dropped": 12,
+                "core_p99_ms": 73.75903066713363,
+                "slo_violating_seconds": 5,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": 0,
+                "sandbox_completed": 4,
+                "cpu_min": 1.0,
+                "cpu_max": 1.0
+              },
+              {
+                "phase": "low-after",
+                "offered": 75,
+                "failed_or_dropped": 0,
+                "core_p99_ms": 23.64782098447904,
+                "slo_violating_seconds": 0,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": 0,
+                "sandbox_completed": 6,
+                "cpu_min": 1.0,
+                "cpu_max": 1.0
+              }
+            ],
+            "interpretation": "one-second P99 uses few samples in low phases; exploratory comparison; no statistical superiority claim"
+          },
+          "sandbox_completed_in_window": 16,
+          "sandbox_rejected": 0,
+          "sandbox_errors": 0,
+          "quality": {
+            "frames": 457,
+            "usable_frames": 457,
+            "stale_frames": 0,
+            "unavailable_frames": 0,
+            "baseline_frames": 0
+          }
+        },
+        {
+          "group": "default-quota",
+          "outcome": {
+            "slo_ms": 50,
+            "phases": [
+              {
+                "phase": "low-before",
+                "offered": 75,
+                "failed_or_dropped": 0,
+                "core_p99_ms": 27.638536994345486,
+                "slo_violating_seconds": 0,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": 0,
+                "sandbox_completed": 10,
+                "cpu_min": 2.0,
+                "cpu_max": 2.0
+              },
+              {
+                "phase": "high",
+                "offered": 900,
+                "failed_or_dropped": 161,
+                "core_p99_ms": 135.4302669642493,
+                "slo_violating_seconds": 15,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": null,
+                "sandbox_completed": 4,
+                "cpu_min": 2.0,
+                "cpu_max": 2.0
+              },
+              {
+                "phase": "low-after",
+                "offered": 75,
+                "failed_or_dropped": 0,
+                "core_p99_ms": 25.157516996841878,
+                "slo_violating_seconds": 0,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": 0,
+                "sandbox_completed": 11,
+                "cpu_min": 2.0,
+                "cpu_max": 2.0
+              }
+            ],
+            "interpretation": "one-second P99 uses few samples in low phases; exploratory comparison; no statistical superiority claim"
+          },
+          "sandbox_completed_in_window": 25,
+          "sandbox_rejected": 0,
+          "sandbox_errors": 0,
+          "quality": {
+            "frames": 432,
+            "usable_frames": 432,
+            "stale_frames": 0,
+            "unavailable_frames": 0,
+            "baseline_frames": 0
+          }
+        },
+        {
+          "group": "dynamic",
+          "outcome": {
+            "slo_ms": 50,
+            "phases": [
+              {
+                "phase": "low-before",
+                "offered": 75,
+                "failed_or_dropped": 0,
+                "core_p99_ms": 27.65872498275712,
+                "slo_violating_seconds": 0,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": 0,
+                "sandbox_completed": 10,
+                "cpu_min": 2.0,
+                "cpu_max": 2.0
+              },
+              {
+                "phase": "high",
+                "offered": 900,
+                "failed_or_dropped": 72,
+                "core_p99_ms": 93.69261132087559,
+                "slo_violating_seconds": 13,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": null,
+                "sandbox_completed": 4,
+                "cpu_min": 1.024,
+                "cpu_max": 2.0
+              },
+              {
+                "phase": "low-after",
+                "offered": 75,
+                "failed_or_dropped": 0,
+                "core_p99_ms": 31.677579041570425,
+                "slo_violating_seconds": 0,
+                "missing_seconds": 0,
+                "first_three_good_seconds_start": 0,
+                "sandbox_completed": 12,
+                "cpu_min": 1.524,
+                "cpu_max": 2.0
+              }
+            ],
+            "interpretation": "one-second P99 uses few samples in low phases; exploratory comparison; no statistical superiority claim"
+          },
+          "sandbox_completed_in_window": 26,
+          "sandbox_rejected": 0,
+          "sandbox_errors": 0,
+          "quality": {
+            "frames": 449,
+            "usable_frames": 449,
+            "stale_frames": 0,
+            "unavailable_frames": 0,
+            "baseline_frames": 0
+          }
+        }
+      ],
+      "conclusion": "AIMD exercised 5 quota changes and an intermediate protection/throughput tradeoff. It did not meet 50ms SLO and did not dominate fixed 1 CPU. Defaults remain off. No unloaded-core baseline or repetition in this exploratory run."
+    },
+    "ordinary_disk_failure": {
+      "filesystem": "ext4 (/dev/sda3)",
+      "snapshot": {
+        "at": "2026-10-20T16:33:08.492042618Z",
+        "host_pressure": {
+          "cpu": "some avg10=1.22 avg60=1.50 avg300=1.47 total=6779502993\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+          "io": "some avg10=57.09 avg60=30.10 avg300=22.05 total=86121695738\nfull avg10=53.09 avg60=27.87 avg300=20.49 total=79090045243\n",
+          "memory": "some avg10=0.05 avg60=0.02 avg300=0.00 total=616564084\nfull avg10=0.05 avg60=0.02 avg300=0.00 total=555306170\n"
+        },
+        "operation": "create",
+        "parent_cgroup_stat": "nr_descendants 1\nnr_dying_descendants 0\n",
+        "pid": 18,
+        "processes": {
+          "18": {
+            "io": "rchar: 3037\nwchar: 0\nsyscr: 16\nsyscw: 0\nread_bytes: 5967872\nwrite_bytes: 0\ncancelled_write_bytes: 0\n",
+            "stack": "[<0>] folio_wait_bit_common+0x136/0x330\n[<0>] filemap_fault+0xf4/0x8d0\n[<0>] __do_fault+0x3a/0x190\n[<0>] do_read_fault+0x133/0x200\n[<0>] do_fault+0xf0/0x260\n[<0>] handle_pte_fault+0x114/0x1d0\n[<0>] __handle_mm_fault+0x64f/0x790\n[<0>] handle_mm_fault+0x18d/0x380\n[<0>] do_user_addr_fault+0x169/0x680\n[<0>] exc_page_fault+0x83/0x1b0\n[<0>] asm_exc_page_fault+0x27/0x30\n",
+            "status": "Name:\trunsc\nUmask:\t0077\nState:\tD (disk sleep)\nTgid:\t18\nNgid:\t0\nPid:\t18\nPPid:\t7\nTracerPid:\t0\nUid:\t0\t0\t0\t0\nGid:\t0\t0\t0\t0\nFDSize:\t64\nGroups:\t0 \nNStgid:\t18\nNSpid:\t18\nNSpgid:\t7\nNSsid:\t1\nKthread:\t0\nVmPeak:\t 1451800 kB\nVmSize:\t 1451800 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t   24672 kB\nVmRSS:\t   24672 kB\nRssAnon:\t    3044 kB\nRssFile:\t   21628 kB\nRssShmem:\t       0 kB\nVmData:\t  232520 kB\nVmStk:\t     132 kB\nVmExe:\t   15116 kB\nVmLib:\t       8 kB\nVmPTE:\t     168 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t5\nSigQ:\t2/127528\nSigPnd:\t0000000000400000\nShdPnd:\t0000000000000000\nSigBlk:\t0000000000000000\nSigIgn:\t0000000000000000\nSigCgt:\tfffffffd7fc1feff\nCapInh:\t0000000000000000\nCapPrm:\t000001ffffffffff\nCapEff:\t000001ffffffffff\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t0\nSeccomp:\t0\nSeccomp_filters:\t0\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\tfff\nCpus_allowed_list:\t0-11\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t206\nnonvoluntary_ctxt_switches:\t2\nx86_Thread_features:\t\nx86_Thread_features_locked:\t\n",
+            "wchan": "folio_wait_bit_common"
+          }
+        },
+        "sandbox": {
+          "cgroup.events": "populated 0\nfrozen 0\n",
+          "cgroup.procs": "",
+          "cpu.stat": "usage_usec 0\nuser_usec 0\nsystem_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 2\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+          "io.pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+          "io.stat": "unavailable: open /sys/fs/cgroup/agentbox/sandboxes/ab-e5b0092d88100c69dd4e0cc53b7f23e6/io.stat: no such file or directory",
+          "memory.current": "0\n",
+          "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+          "memory.stat": "anon 0\nfile 0\nkernel 0\nkernel_stack 0\npagetables 0\nsec_pagetables 0\npercpu 0\nsock 0\nvmalloc 0\nshmem 0\nzswap 0\nzswapped 0\nfile_mapped 0\nfile_dirty 0\nfile_writeback 0\nswapcached 0\nanon_thp 0\nfile_thp 0\nshmem_thp 0\ninactive_anon 0\nactive_anon 0\ninactive_file 0\nactive_file 0\nunevictable 0\nslab_reclaimable 0\nslab_unreclaimable 0\nslab 0\nworkingset_refault_anon 0\nworkingset_refault_file 0\nworkingset_activate_anon 0\nworkingset_activate_file 0\nworkingset_restore_anon 0\nworkingset_restore_file 0\nworkingset_nodereclaim 0\npgscan 0\npgsteal 0\npgscan_kswapd 0\npgscan_direct 0\npgscan_khugepaged 0\npgsteal_kswapd 0\npgsteal_direct 0\npgsteal_khugepaged 0\npgfault 0\npgmajfault 0\npgrefill 0\npgactivate 0\npgdeactivate 0\npglazyfree 0\npglazyfreed 0\nzswpin 0\nzswpout 0\nzswpwb 0\nthp_fault_alloc 0\nthp_collapse_alloc 0\nthp_swpout 0\nthp_swpout_fallback 0\n"
+        },
+        "sandbox_id": "ab-e5b0092d88100c69dd4e0cc53b7f23e6"
+      },
+      "conclusion": "one create timeout caught runsc CLI in D state in filemap_fault/folio_wait_bit_common before sandbox population; storage root cause and prior delete timeouts remain unresolved"
+    },
+    "archive_sha256": "8b12e4ac7adc09083b3c77b600c6fe4f583f79d2a4295d2cf7232a5d32cc7ce5",
+    "archive_members": 30,
+    "checks": [
+      "make check passed (race, vet, Python regressions, formatting)",
+      "KVM shared Cold/Warm admission: 12 fresh isolated executions cleaned",
+      "KVM execution, timeout, OOM, cancellation and failed-cleanup restart recovery passed",
+      "2GiB delegated ceiling: unsafe warm budget refused; 1GiB parent / 256MiB sandbox execution passed"
+    ]
+  },
+  "sequential_refinement_20261021": {
+    "archive": "artifacts/control-refinement-20261021.tar.gz",
+    "scope": "startup/readiness, storage correlation, foreground-first refill, optional business-health borrowing guard; no production SLO claim",
+    "core_only_baseline": {
+      "binary_sha256": "b110bfbf8f6aa29f5e18e64d9adafb6f4f8a9a14697196325d5ae7dd413e113a",
+      "outer_limits": {
+        "cpu.max": "200000 100000",
+        "memory.high": "max",
+        "memory.max": "5368709120",
+        "memory.swap.max": "0",
+        "pids.max": "2304"
+      },
+      "comparison": "baseline",
+      "schedule": [
+        [
+          0,
+          5
+        ],
+        [
+          15,
+          60
+        ],
+        [
+          30,
+          5
+        ]
+      ],
+      "phase_seconds": 15,
+      "slo_ms": 50,
+      "outcome": {
+        "slo_ms": 50,
+        "phases": [
+          {
+            "phase": "low-before",
+            "offered": 75,
+            "failed_or_dropped": 0,
+            "core_p99_ms": 16.648640972562134,
+            "slo_violating_seconds": 0,
+            "missing_seconds": 0,
+            "first_three_good_seconds_start": 0,
+            "sandbox_completed": 0,
+            "cpu_min": 2.0,
+            "cpu_max": 2.0
+          },
+          {
+            "phase": "high",
+            "offered": 900,
+            "failed_or_dropped": 0,
+            "core_p99_ms": 16.88191160792485,
+            "slo_violating_seconds": 0,
+            "missing_seconds": 0,
+            "first_three_good_seconds_start": 0,
+            "sandbox_completed": 0,
+            "cpu_min": 2.0,
+            "cpu_max": 2.0
+          },
+          {
+            "phase": "low-after",
+            "offered": 75,
+            "failed_or_dropped": 0,
+            "core_p99_ms": 20.49895195523277,
+            "slo_violating_seconds": 0,
+            "missing_seconds": 0,
+            "first_three_good_seconds_start": 0,
+            "sandbox_completed": 0,
+            "cpu_min": 2.0,
+            "cpu_max": 2.0
+          }
+        ],
+        "interpretation": "one-second P99 uses few samples in low phases; exploratory comparison; no statistical superiority claim"
+      },
+      "quality": {
+        "frames": 442,
+        "usable_frames": 442,
+        "stale_frames": 0,
+        "unavailable_frames": 0,
+        "baseline_frames": 0
+      },
+      "core_errors": 0,
+      "sandbox_requests": 0,
+      "conclusion": "all 1050 requests succeeded; high phase 900/900, P99 16.88ms; one separate run with idle daemon/observer, no sandbox work during measurement"
+    },
+    "foreground_refill_comparison": {
+      "benchmark_binary_sha256": "17c691b7d40911e3387be477e40d50f254fc3c65e3fa1e1de888071bf33a577d",
+      "platform": "kvm",
+      "kernel": "6.8.0-138-generic",
+      "summaries": [
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 1,
+          "pool_max_queued": 0,
+          "mode": "cold",
+          "scenario": "inventory",
+          "offered": 60,
+          "accepted": 60,
+          "completed": 60,
+          "rejected": 0,
+          "errors": 0,
+          "elapsed_seconds": 17.899351535,
+          "completed_per_second": 3.3520767432651017,
+          "success_wall_p50_ms": 272.047752,
+          "success_wall_p95_ms": 427.952091,
+          "success_wall_p99_ms": 533.414231,
+          "success_setup_p50_ms": 72.589024,
+          "success_execution_p50_ms": 186.035167
+        },
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 3,
+          "pool_max_queued": 16,
+          "mode": "cold",
+          "scenario": "burst",
+          "offered": 32,
+          "accepted": 3,
+          "completed": 3,
+          "rejected": 29,
+          "errors": 0,
+          "elapsed_seconds": 0.505155421,
+          "completed_per_second": 5.93876631881181,
+          "success_wall_p50_ms": 439.032486,
+          "success_wall_p95_ms": 505.047985,
+          "success_wall_p99_ms": 505.047985,
+          "success_setup_p50_ms": 104.055903,
+          "success_execution_p50_ms": 289.623454
+        },
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 4,
+          "pool_max_queued": 2,
+          "mode": "cold",
+          "scenario": "steady",
+          "offered": 60,
+          "accepted": 52,
+          "completed": 52,
+          "rejected": 8,
+          "errors": 0,
+          "elapsed_seconds": 6.166143166,
+          "completed_per_second": 8.43314833926125,
+          "success_wall_p50_ms": 470.500399,
+          "success_wall_p95_ms": 591.890404,
+          "success_wall_p99_ms": 606.695807,
+          "success_setup_p50_ms": 97.443262,
+          "success_execution_p50_ms": 313.057008
+        },
+        {
+          "pool_min_idle": 2,
+          "pool_max_total": 4,
+          "pool_max_queued": 0,
+          "mode": "warm",
+          "scenario": "inventory",
+          "offered": 60,
+          "accepted": 60,
+          "completed": 60,
+          "rejected": 0,
+          "errors": 0,
+          "elapsed_seconds": 9.274914218,
+          "completed_per_second": 6.469062526050848,
+          "success_wall_p50_ms": 147.088994,
+          "success_wall_p95_ms": 186.739426,
+          "success_wall_p99_ms": 288.618605,
+          "success_setup_p50_ms": 9.756019,
+          "success_execution_p50_ms": 122.689465
+        },
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 6,
+          "pool_max_queued": 16,
+          "mode": "warm",
+          "scenario": "burst",
+          "offered": 32,
+          "accepted": 4,
+          "completed": 4,
+          "rejected": 28,
+          "errors": 0,
+          "elapsed_seconds": 0.457489918,
+          "completed_per_second": 8.743362077762772,
+          "success_wall_p50_ms": 312.466628,
+          "success_wall_p95_ms": 457.43878,
+          "success_wall_p99_ms": 457.43878,
+          "success_setup_p50_ms": 14.788482,
+          "success_execution_p50_ms": 268.34316
+        },
+        {
+          "pool_min_idle": 0,
+          "pool_max_total": 6,
+          "pool_max_queued": 2,
+          "mode": "warm",
+          "scenario": "steady",
+          "offered": 60,
+          "accepted": 51,
+          "completed": 51,
+          "rejected": 9,
+          "errors": 0,
+          "elapsed_seconds": 6.255954959,
+          "completed_per_second": 8.15223260625141,
+          "success_wall_p50_ms": 420.468422,
+          "success_wall_p95_ms": 574.566472,
+          "success_wall_p99_ms": 745.373778,
+          "success_setup_p50_ms": 13.060392,
+          "success_execution_p50_ms": 359.709078
+        }
+      ],
+      "conditions": "same 6 CPU/5GiB, create=2, execute=4, total=6, warm=3, queue=100ms; tmpfs runsc/rootfs, pinned image, init reaper; startup probe excluded",
+      "conclusion": "steady cold 52/60 vs warm 51/60; single-run improvement relative to preceding sample is not a causal or statistical guarantee"
+    },
+    "business_guard": {
+      "enabled_by_default": false,
+      "configuration": [
+        "qos-base-cpu",
+        "qos-business-file"
+      ],
+      "verified": [
+        "shadow does not write",
+        "conservative initial quota",
+        "healthy low-pressure demand borrows",
+        "rejection revokes despite low PSI",
+        "persistent harm can reduce below base to min",
+        "stale/missing/invalid data blocks recovery",
+        "real cgroup write/readback",
+        "real daemon file/status/execution wiring"
+      ],
+      "performance_benefit_proven": false
+    },
+    "startup_probe": {
+      "required": true,
+      "workflow": "create -> fixed one-byte Python result -> confirmed cleanup -> readiness",
+      "verified": [
+        "reject before Start",
+        "success and idempotence",
+        "exec failure holds readiness false",
+        "shutdown during metadata transaction joins cleanup"
+      ]
+    },
+    "storage": {
+      "fields": [
+        "mount point",
+        "filesystem",
+        "major:minor",
+        "create/delete device counters before operation",
+        "device counters/inflight at timeout",
+        "process stack and PSI"
+      ],
+      "root_cause_fixed": false
+    },
+    "archive_sha256": "28f00c96978cdfb9259195bd4aa0b62992d1c63b394c84cc6b4bbc64b4e59d09",
+    "archive_members": 18,
+    "checks": [
+      "make check build passed",
+      "race policy/pool regressions passed",
+      "real KVM startup, shutdown during probe, failed exec, cancellation, OOM and recovery passed",
+      "real cgroup borrowing/revocation and business file wiring passed"
+    ],
+    "metadata_note": "Original baseline report retains generic static-template config.core_rate/default_cpu_max fields; actual schedule is in dynamic_design.rates and CSV, actual quotas in limits_before. Reporting code now distinguishes these fields; raw evidence is preserved."
   }
 }

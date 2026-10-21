@@ -17,16 +17,23 @@ import (
 )
 
 type runscCLI struct {
-	binaryPath string
-	stateDir   string // runsc metadata directory, passed as --root.
-	platform   string
-	logger     *slog.Logger
+	storage       map[string]storageMount
+	rootfs        string
+	sandboxParent string
+	binaryPath    string
+	stateDir      string // runsc metadata directory, passed as --root.
+	platform      string
+	logger        *slog.Logger
 }
 
 // Only operator-controlled operation names and IDs are logged. Command args,
 // environment, user input and guest stdout/stderr are never logged here.
 func (r runscCLI) runControl(ctx context.Context, cmd *exec.Cmd, operation, id string) (retErr error) {
 	start := time.Now()
+	var before *storageCounters
+	if operation == "create" || operation == "delete" {
+		before = &storageCounters{At: start, Devices: r.deviceCounters()}
+	}
 	log := r.logger
 	if log != nil {
 		log.Info("runtime operation started", "operation", operation, "sandbox_id", id)
@@ -49,6 +56,16 @@ func (r runscCLI) runControl(ctx context.Context, cmd *exec.Cmd, operation, id s
 			log.Info("runtime operation completed", fields...)
 		}
 	}()
+	// Capture the blocked CLI and sandbox before CommandContext kills the CLI.
+	cancelCommand := cmd.Cancel
+	if cancelCommand != nil {
+		cmd.Cancel = func() error {
+			if cmd.Process != nil {
+				r.captureFailure(operation, id, cmd.Process.Pid, before)
+			}
+			return cancelCommand()
+		}
+	}
 	if err := cmd.Start(); err != nil {
 		return err
 	}

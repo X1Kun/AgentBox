@@ -7,6 +7,7 @@ import (
 )
 
 type CPUConfig struct {
+	BaseCPU                              float64 // 0 keeps PSI-only AIMD; nonzero enables guarded borrowing.
 	MinCPU, MaxCPU                       float64
 	LowPressure, HighPressure            float64
 	DecreaseFactor, IncreaseCPUPerSecond float64
@@ -38,13 +39,16 @@ func (c *CPUConfig) Normalize() error {
 	if c.StableFor == 0 {
 		c.StableFor = 2 * time.Second
 	}
-	for _, v := range []float64{c.MinCPU, c.MaxCPU, c.LowPressure, c.HighPressure, c.DecreaseFactor, c.IncreaseCPUPerSecond} {
+	for _, v := range []float64{c.BaseCPU, c.MinCPU, c.MaxCPU, c.LowPressure, c.HighPressure, c.DecreaseFactor, c.IncreaseCPUPerSecond} {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
 			return fmt.Errorf("CPU policy parameters must be finite")
 		}
 	}
 	if c.MinCPU < .05 || c.MinCPU > c.MaxCPU || c.MaxCPU > 4 {
 		return fmt.Errorf("CPU bounds must satisfy 0.05 <= min <= max <= 4")
+	}
+	if c.BaseCPU < 0 || (c.BaseCPU > 0 && (c.BaseCPU < c.MinCPU || c.BaseCPU > c.MaxCPU)) {
+		return fmt.Errorf("base CPU must lie inside CPU bounds")
 	}
 	if c.LowPressure <= 0 || c.LowPressure >= c.HighPressure || c.HighPressure > 100 {
 		return fmt.Errorf("CPU pressure thresholds must satisfy 0 < low < high <= 100")
@@ -59,6 +63,8 @@ func (c *CPUConfig) Normalize() error {
 }
 
 type PolicySample struct {
+	BusinessValid     bool
+	BusinessHealthy   bool
 	Valid             bool
 	ProtectedPressure float64
 	SandboxCPU        float64
@@ -89,6 +95,26 @@ func (p *AIMD) Decide(now time.Time, current float64, s PolicySample) Decision {
 	hold := Decision{CPU: current, State: "normal", Reason: "within_hysteresis"}
 	gap := !p.lastSample.IsZero() && (now.Sub(p.lastSample) <= 0 || now.Sub(p.lastSample) > 3*c.DecisionInterval)
 	p.lastSample = now
+	if c.BaseCPU > 0 {
+		valid := s.Valid && s.BusinessValid && !gap && !math.IsNaN(s.ProtectedPressure) && !math.IsInf(s.ProtectedPressure, 0)
+		if !valid || !s.BusinessHealthy {
+			p.highSince, p.lowSince = time.Time{}, time.Time{}
+			hold.State, hold.Reason = "pressured", "business_unhealthy"
+			if !valid {
+				hold.State, hold.Reason = "degraded", "business_or_pressure_unknown"
+			}
+			if current > c.BaseCPU {
+				hold.CPU = c.BaseCPU
+				return hold
+			}
+			// The configured base is a deployment choice, not proof of the SLO.
+			// Persistent observed harm may reduce below it down to the hard floor.
+			if valid && s.SandboxCPU > .01 && (p.lastChange.IsZero() || now.Sub(p.lastChange) >= c.DecisionInterval) {
+				hold.CPU = math.Max(c.MinCPU, current*c.DecreaseFactor)
+			}
+			return hold
+		}
+	}
 	if !s.Valid || gap || math.IsNaN(s.ProtectedPressure) || math.IsInf(s.ProtectedPressure, 0) {
 		p.highSince, p.lowSince = time.Time{}, time.Time{}
 		hold.State, hold.Reason = "degraded", "invalid_cpu_sample"
@@ -104,6 +130,9 @@ func (p *AIMD) Decide(now time.Time, current float64, s PolicySample) Decision {
 			return hold
 		}
 		hold.CPU, hold.Reason = math.Max(c.MinCPU, current*c.DecreaseFactor), "protected_cpu_pressure"
+		if c.BaseCPU > 0 && current > c.BaseCPU {
+			hold.CPU = math.Min(hold.CPU, c.BaseCPU)
+		}
 		if hold.CPU == current {
 			hold.Reason = "minimum_budget"
 		}

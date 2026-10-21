@@ -1,6 +1,7 @@
 package api
 
 type CPUControlReport struct {
+	BaseCPU              float64  `json:"base_cpu,omitempty"`
 	State                string   `json:"state"`
 	Reason               string   `json:"reason"`
 	Action               string   `json:"action"`
