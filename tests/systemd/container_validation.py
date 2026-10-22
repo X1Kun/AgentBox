@@ -1,6 +1,7 @@
 """Real systemd lifecycle checks, confined to a disposable PID-1 container."""
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -81,6 +82,39 @@ def check_observation_configuration(smoke, token_path, configuration):
         token_path.write_bytes(configuration)
 
 
+def check_sandbox_cpu_configuration(smoke, token_path, configuration):
+    """Check deployed fixed parent budget and PSI-only refill wiring."""
+    run("systemctl", "stop", "agentbox.service")
+    smoke.assert_normal_stop()
+    overridden = (b"AGENTBOX_MODE=", b"AGENTBOX_SANDBOX_CPU_MILLI=", b"AGENTBOX_PARENT_CPU_MILLI=", b"AGENTBOX_WARM_REFILL_POLICY=", b"AGENTBOX_QOS=", b"AGENTBOX_QOS_REFILL_ONLY=", b"AGENTBOX_QOS_PROTECTED_CGROUP=")
+    retained = b"\n".join(line for line in configuration.splitlines() if not line.startswith(overridden))
+    token_path.write_bytes(retained+b"\nAGENTBOX_MODE=warm\nAGENTBOX_SANDBOX_CPU_MILLI=500\nAGENTBOX_PARENT_CPU_MILLI=1000\nAGENTBOX_WARM_REFILL_POLICY=slots\nAGENTBOX_QOS=enforce\nAGENTBOX_QOS_REFILL_ONLY=true\nAGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/init.scope\n")
+    configured = Smoke()
+    try:
+        configured.start()
+        code, status = configured.http("/v1/status")
+        if code != 200 or status.get("sandbox_cpu_milli") != 500 or status.get("parent_cpu_milli") != 1000 or status.get("scheduling", {}).get("refill_policy") != "slots":
+            raise RuntimeError("unit did not apply sandbox CPU configuration")
+        if not status.get("qos", {}).get("scheduling", {}).get("refill_only") or status["qos"].get("cpu_control") is not None:
+            raise RuntimeError("unit did not apply PSI refill-only scope")
+        root = configured.cgroup_root()
+        configured.wait_for_idle("configured CPU task")
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            pending = workers.submit(configured.http, "/v1/execute", {"runtime": "python", "code": "import time; time.sleep(1); print(42)", "timeout_ms": 5000})
+            group = configured.wait_for_running_task(root, pending)
+            if (group/"cpu.max").read_text().strip() != "10000 20000" or (root/"sandboxes/cpu.max").read_text().strip() != "20000 20000":
+                raise RuntimeError("configured child CPU limit or parent policy mismatch")
+            code, result = pending.result()
+        if code != 200 or result.get("status") != "succeeded" or result.get("stdout") != "42\n" or not result.get("cleanup_complete"):
+            raise RuntimeError("task failed under configured unit CPU limit")
+        configured.assert_clean(result["execution_id"])
+        return {"sandbox_cpu_milli": 500, "parent_cpu_milli":1000, "child_cpu_max": "10000 20000", "parent_cpu_max": "20000 20000", "refill_policy": "slots", "qos_refill_only":True, "cleanup_complete": True}
+    finally:
+        run("systemctl", "stop", "agentbox.service")
+        configured.assert_normal_stop()
+        token_path.write_bytes(configuration)
+
+
 def main():
     if not Path("/.dockerenv").exists() or Path("/proc/1/comm").read_text().strip() != "systemd":
         raise RuntimeError("this test must run inside its disposable systemd container")
@@ -117,6 +151,7 @@ def main():
     if mode == "warm":
         report["parallel_inventory_shutdown"] = check_parallel_inventory_shutdown(smoke, token_path, configuration)
     report["observation_checks"] = check_observation_configuration(smoke, token_path, configuration)
+    report["sandbox_cpu_configuration"] = check_sandbox_cpu_configuration(smoke, token_path, configuration)
     run("systemctl", "stop", "agentbox.service")
     smoke.assert_normal_stop()
     owner = Path("/var/lib/agentbox/owner.json").read_bytes()

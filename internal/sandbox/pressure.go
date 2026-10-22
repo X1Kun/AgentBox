@@ -8,11 +8,24 @@ import (
 // Lock order: Engine then pool, matching admission. Shutdown never waits for
 // workers with Engine.mu held. CPU actuator failures do not bypass this gate.
 func (e *Engine) applyPressure(report qos.PressureReport) {
-	if !e.config.QoS.Scheduling || e.config.QoS.Mode != "enforce" {
+	if (!e.config.QoS.Scheduling && !e.config.QoS.RefillOnly) || e.config.QoS.Mode != "enforce" {
 		return
 	}
 	e.mu.Lock()
 	if e.closed.Load() || e.broken.Load() {
+		e.mu.Unlock()
+		return
+	}
+	if e.config.QoS.RefillOnly {
+		e.refillPaused = report.RefillPaused
+		if e.pool != nil {
+			e.pool.mu.Lock()
+			if !e.pool.stopped && !e.pool.failed && e.pool.refillPressurePaused != e.refillPaused {
+				e.pool.refillPressurePaused = e.refillPaused
+				e.pool.signalLocked()
+			}
+			e.pool.mu.Unlock()
+		}
 		e.mu.Unlock()
 		return
 	}
@@ -51,10 +64,10 @@ func (p *warmPool) setPressureLocked(paused bool) {
 }
 
 func (e *Engine) qosSchedulingReport() *api.QoSSchedulingReport {
-	if !e.config.QoS.Scheduling {
+	if !e.config.QoS.Scheduling && !e.config.QoS.RefillOnly {
 		return nil
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return &api.QoSSchedulingReport{Enabled: true, Enforced: e.config.QoS.Mode == "enforce", AdmissionOpen: e.Ready() && !e.pressurePaused, RefillPaused: e.pool != nil && e.pressurePaused, PressureRejections: e.pressureRejections}
+	return &api.QoSSchedulingReport{Enabled: true, Enforced: e.config.QoS.Mode == "enforce", RefillOnly: e.config.QoS.RefillOnly, AdmissionOpen: e.Ready() && !e.pressurePaused, RefillPaused: e.pool != nil && (e.pressurePaused || e.refillPaused), PressureRejections: e.pressureRejections}
 }

@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -493,6 +494,173 @@ func TestStartupProbeRuntime(t *testing.T) {
 	}
 	if stopping.Ready() {
 		t.Fatal("shutdown probe opened readiness")
+	}
+	assertRuntimeEmpty(t, c)
+}
+
+func TestUpperConcurrencyRuntime(t *testing.T) {
+	if os.Getenv("AGENTBOX_INTEGRATION") != "1" {
+		t.Skip("requires isolated runtime")
+	}
+	for _, mode := range []string{"cold", "warm"} {
+		t.Run(mode, func(t *testing.T) {
+			c := sandbox.Config{Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"), Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: mode, Concurrency: 8, CreateConcurrency: 4, MaxSandboxes: 8, WarmPoolSize: 1, QueueTimeout: 5 * time.Second}
+			e, err := sandbox.New(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer e.Close()
+			if err := e.Start(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			var workers sync.WaitGroup
+			results := make(chan api.Result, 8)
+			for i := 0; i < 8; i++ {
+				workers.Add(1)
+				go func() {
+					defer workers.Done()
+					r, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "import time\ntime.sleep(.2)\nprint(42)", TimeoutMS: 5000})
+					if err != nil {
+						t.Error(err)
+					}
+					results <- r
+				}()
+			}
+			workers.Wait()
+			close(results)
+			ids := map[string]bool{}
+			for r := range results {
+				if r.Status != "succeeded" || r.Stdout != "42\n" || !r.CleanupComplete || ids[r.ExecutionID] {
+					t.Fatalf("upper-bound execution failed: %+v", r)
+				}
+				ids[r.ExecutionID] = true
+			}
+			if s := e.Status(); s.Total > 8 || s.Scheduling.CreationLimit != 4 {
+				t.Fatalf("invalid upper-bound accounting: %+v", s)
+			}
+			if err := e.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertRuntimeEmpty(t, c)
+		})
+	}
+}
+
+func TestSandboxCPULimitRuntime(t *testing.T) {
+	if os.Getenv("AGENTBOX_INTEGRATION") != "1" {
+		t.Skip("requires isolated runsc and delegated cgroups")
+	}
+	for _, mode := range []string{"cold", "warm"} {
+		for _, milli := range []int64{500, 1500} {
+			t.Run(fmt.Sprintf("%s-%dm", mode, milli), func(t *testing.T) {
+				c := sandbox.Config{Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"), Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: mode, Concurrency: 1, MaxSandboxes: 3, WarmPoolSize: 1, SandboxCPUMilli: milli}
+				e, err := sandbox.New(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer e.Close()
+				if err := e.Start(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				if e.Status().SandboxCPUMilli != milli {
+					t.Fatal("configured CPU limit missing from status")
+				}
+				checkLimits := func() {
+					t.Helper()
+					parent := filepath.Join(c.CgroupRoot, "sandboxes")
+					data, err := os.ReadFile(filepath.Join(parent, "cpu.max"))
+					if err != nil || strings.TrimSpace(string(data)) != "80000 20000" {
+						t.Fatalf("child limit changed parent: %s %v", data, err)
+					}
+					entries, err := os.ReadDir(parent)
+					if err != nil {
+						t.Fatal(err)
+					}
+					count := 0
+					for _, entry := range entries {
+						if !entry.IsDir() {
+							continue
+						}
+						count++
+						data, err := os.ReadFile(filepath.Join(parent, entry.Name(), "cpu.max"))
+						if err != nil || strings.TrimSpace(string(data)) != fmt.Sprintf("%d 20000", milli*20) {
+							t.Fatalf("unexpected kernel child quota: %s %v", data, err)
+						}
+					}
+					if count == 0 {
+						t.Fatal("no live sandbox to verify")
+					}
+				}
+				if mode == "warm" {
+					checkLimits()
+				}
+				done := make(chan api.Result, 1)
+				go func() {
+					r, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "import time\ntime.sleep(.4)\nprint(42)", TimeoutMS: 5000})
+					if err != nil {
+						t.Error(err)
+					}
+					done <- r
+				}()
+				waitRuntime(t, func() bool { return e.Status().Running == 1 })
+				checkLimits()
+				r := <-done
+				if r.Status != "succeeded" || r.Stdout != "42\n" || !r.CleanupComplete {
+					t.Fatalf("execution under configured quota: %+v", r)
+				}
+				if mode == "warm" {
+					waitRuntime(t, func() bool { return e.Status().Idle == 1 && e.Status().Creating == 0 })
+					checkLimits() // replacement instances use the same service policy
+				}
+				if err := e.Close(); err != nil {
+					t.Fatal(err)
+				}
+				assertRuntimeEmpty(t, c)
+			})
+		}
+	}
+}
+
+func TestIdleRefillRuntime(t *testing.T) {
+	if os.Getenv("AGENTBOX_INTEGRATION") != "1" {
+		t.Skip("requires isolated runsc and delegated cgroups")
+	}
+	c := sandbox.Config{Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"), Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: "warm", WarmRefillPolicy: "idle", WarmPoolSize: 1, Concurrency: 2, CreateConcurrency: 1, MaxSandboxes: 4}
+	e, err := sandbox.New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if err := e.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan api.Result, 1)
+	go func() {
+		r, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "import time; time.sleep(2); print('first')", TimeoutMS: 5000})
+		if err != nil {
+			t.Error(err)
+		}
+		done <- r
+	}()
+	waitRuntime(t, func() bool { return e.Status().Running == 1 })
+	s := e.Status()
+	if s.Idle != 0 || s.Creating != 0 || s.Scheduling.RefillPolicy != "idle" || s.Scheduling.RefillBlockedBy != "foreground_active" {
+		t.Fatalf("idle refill gate not wired: %+v", s)
+	}
+	second, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "print('demand')", TimeoutMS: 5000})
+	if err != nil || second.Status != "succeeded" || second.Stdout != "demand\n" || !second.CleanupComplete {
+		t.Fatalf("idle gate blocked demand creation: %+v %v", second, err)
+	}
+	first := <-done
+	if first.Status != "succeeded" || first.Stdout != "first\n" || !first.CleanupComplete || first.ExecutionID == second.ExecutionID {
+		t.Fatalf("first task failed or sandbox reused: %+v", first)
+	}
+	waitRuntime(t, func() bool { return e.Status().Idle == 1 && e.Status().Creating == 0 })
+	if s := e.Status(); s.Scheduling.RefillWithForeground != 0 || s.Scheduling.RefillCreationAttempts < 2 {
+		t.Fatalf("background overlap or refill did not resume: %+v", s.Scheduling)
+	}
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
 	}
 	assertRuntimeEmpty(t, c)
 }

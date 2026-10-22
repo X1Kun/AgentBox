@@ -87,7 +87,8 @@ func durationReport(d metrics.Duration) api.DurationReport {
 
 func schedulingReport(s poolSnapshot) *api.SchedulingReport {
 	t, c := s.Telemetry, s.Config
-	return &api.SchedulingReport{RefillBlockedBy: s.RefillBlockedBy,
+	return &api.SchedulingReport{RefillPolicy: s.Config.WarmRefillPolicy, RefillBlockedBy: s.RefillBlockedBy,
+		RefillCreationAttempts: s.Telemetry.RefillAttempts, RefillWithForeground: s.Telemetry.RefillWithForeground,
 		ExecutionInFlight: s.ExecutionInFlight, ExecutionLimit: c.Concurrency, CreationLimit: c.CreateConcurrency,
 		QueueCountLimit: c.QueueSize, QueueBytesLimit: c.QueueBytes, QueueTimeoutMS: ms(c.QueueTimeout), OldestQueueMS: s.OldestQueueMS,
 		CreationAttempts: t.CreationAttempts, CreationSucceeded: durationReport(t.CreationSucceeded),

@@ -1484,5 +1484,1970 @@
       "real cgroup borrowing/revocation and business file wiring passed"
     ],
     "metadata_note": "Original baseline report retains generic static-template config.core_rate/default_cpu_max fields; actual schedule is in dynamic_design.rates and CSV, actual quotas in limits_before. Reporting code now distinguishes these fields; raw evidence is preserved."
+  },
+  "wave_arrival_validation_20261021": {
+    "recorded_at": "2026-10-21T04:39:29Z",
+    "archive": "artifacts/wave-arrival-validation-20261021.tar.gz",
+    "archive_sha256": "3baa4e1ea2dac4ddd2d4d9f796c90dd15b0e3fd5a0f97b068fa6f378e32ccc9d",
+    "benchmark_binary_sha256": "5b8f004e43647d582f0ffce0e9052de1d0992a698060862924a70dac95e1b5dc",
+    "runsc_sha256": "210b437a9cfae51e8f8c9074ed19b8b5e59477178e2e391a18117d8d6b924f7a",
+    "rootfs_image": "python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+    "platform": "kvm",
+    "kernel": "6.8.0-138-generic",
+    "design": {
+      "same_arrival_trace_verified": true,
+      "seed": 20261021,
+      "cycles": 2,
+      "initial_idle_seconds": 2,
+      "cycle": "5 requests within 1s -> idle 10s -> 20 requests within 5s -> idle 10s",
+      "requests_per_mode": 50,
+      "replay_seconds_per_mode": 54,
+      "create_concurrency": 2,
+      "execution_concurrency": 4,
+      "max_sandboxes": 6,
+      "warm_target": 3,
+      "queue_timeout_ms": 100,
+      "outer_resources": "6 CPU / 5GiB",
+      "dependencies": "tmpfs runtime and pinned Python image rootfs",
+      "dynamic_inventory": false,
+      "qos": "off",
+      "mode_order": [
+        "cold",
+        "warm"
+      ],
+      "forced_inventory_waits": false,
+      "automatic_retries": false
+    },
+    "startup_ms": {
+      "cold": 254.23439,
+      "warm": 335.645247
+    },
+    "results": [
+      {
+        "mode": "cold",
+        "summary": {
+          "success_scheduled_p50_ms": 331.636048,
+          "success_scheduled_p95_ms": 422.69576,
+          "send_lag_p95_ms": 1.08172900000136,
+          "pool_min_idle": 0,
+          "pool_max_total": 4,
+          "pool_max_queued": 3,
+          "mode": "cold",
+          "scenario": "waves",
+          "offered": 50,
+          "accepted": 44,
+          "completed": 44,
+          "rejected": 6,
+          "errors": 0,
+          "elapsed_seconds": 54.000702951,
+          "completed_per_second": 0.8148042080105032,
+          "success_wall_p50_ms": 330.785985,
+          "success_wall_p95_ms": 421.740225,
+          "success_wall_p99_ms": 476.329257,
+          "success_setup_p50_ms": 81.412562,
+          "success_execution_p50_ms": 235.627593
+        },
+        "resources": {
+          "observed_seconds": 54.000545145,
+          "sandbox_cpu_usec": 13506842,
+          "namespace_root_cpu_usec": 16099386,
+          "sandbox_mean_memory_bytes": 9895318.849704837,
+          "namespace_root_mean_memory_bytes": 513551976.0157843,
+          "sandbox_sampled_peak_memory_bytes": 182030336,
+          "namespace_root_sampled_peak_memory_bytes": 702304256,
+          "invalid_samples": 0
+        },
+        "waves": [
+          {
+            "index": 1,
+            "offered": 5,
+            "completed": 5,
+            "rejected": 0,
+            "scheduled_p50_ms": 343.648302,
+            "scheduled_p95_ms": 372.594864,
+            "first_scheduled_response_ms": 264.614926,
+            "ready_before_first_request": 0,
+            "recovered_after_arrivals_ms": 100.34328199999982
+          },
+          {
+            "index": 2,
+            "offered": 20,
+            "completed": 17,
+            "rejected": 3,
+            "scheduled_p50_ms": 318.636409,
+            "scheduled_p95_ms": 477.098262,
+            "first_scheduled_response_ms": 280.329263,
+            "ready_before_first_request": 0,
+            "recovered_after_arrivals_ms": 200.46178800000052
+          },
+          {
+            "index": 3,
+            "offered": 5,
+            "completed": 5,
+            "rejected": 0,
+            "scheduled_p50_ms": 320.905422,
+            "scheduled_p95_ms": 340.949724,
+            "first_scheduled_response_ms": 261.216332,
+            "ready_before_first_request": 0,
+            "recovered_after_arrivals_ms": 100.97968400000173
+          },
+          {
+            "index": 4,
+            "offered": 20,
+            "completed": 17,
+            "rejected": 3,
+            "scheduled_p50_ms": 374.840338,
+            "scheduled_p95_ms": 454.777149,
+            "first_scheduled_response_ms": 257.978749,
+            "ready_before_first_request": 0,
+            "recovered_after_arrivals_ms": 200.75244999999995
+          }
+        ]
+      },
+      {
+        "mode": "warm",
+        "summary": {
+          "success_scheduled_p50_ms": 182.979274,
+          "success_scheduled_p95_ms": 415.525099,
+          "send_lag_p95_ms": 1.0858449999977893,
+          "pool_min_idle": 0,
+          "pool_max_total": 6,
+          "pool_max_queued": 2,
+          "mode": "warm",
+          "scenario": "waves",
+          "offered": 50,
+          "accepted": 46,
+          "completed": 46,
+          "rejected": 4,
+          "errors": 0,
+          "elapsed_seconds": 54.000661268,
+          "completed_per_second": 0.8518414204542144,
+          "success_wall_p50_ms": 181.941742,
+          "success_wall_p95_ms": 414.818324,
+          "success_wall_p99_ms": 463.267238,
+          "success_setup_p50_ms": 10.182401,
+          "success_execution_p50_ms": 156.648584
+        },
+        "resources": {
+          "observed_seconds": 54.000510674,
+          "sandbox_cpu_usec": 16086452,
+          "namespace_root_cpu_usec": 19634493,
+          "sandbox_mean_memory_bytes": 113829027.3495717,
+          "namespace_root_mean_memory_bytes": 620055276.2996097,
+          "sandbox_sampled_peak_memory_bytes": 245112832,
+          "namespace_root_sampled_peak_memory_bytes": 769978368,
+          "invalid_samples": 0
+        },
+        "waves": [
+          {
+            "index": 1,
+            "offered": 5,
+            "completed": 5,
+            "rejected": 0,
+            "scheduled_p50_ms": 170.762731,
+            "scheduled_p95_ms": 173.255053,
+            "first_scheduled_response_ms": 140.699356,
+            "ready_before_first_request": 3,
+            "recovered_after_arrivals_ms": 0.796577999999954
+          },
+          {
+            "index": 2,
+            "offered": 20,
+            "completed": 17,
+            "rejected": 3,
+            "scheduled_p50_ms": 168.544918,
+            "scheduled_p95_ms": 464.46676,
+            "first_scheduled_response_ms": 133.911153,
+            "ready_before_first_request": 3,
+            "recovered_after_arrivals_ms": 0.2012590000013006
+          },
+          {
+            "index": 3,
+            "offered": 5,
+            "completed": 5,
+            "rejected": 0,
+            "scheduled_p50_ms": 244.726062,
+            "scheduled_p95_ms": 278.502976,
+            "first_scheduled_response_ms": 140.964775,
+            "ready_before_first_request": 3,
+            "recovered_after_arrivals_ms": 0.24446199999874807
+          },
+          {
+            "index": 4,
+            "offered": 20,
+            "completed": 19,
+            "rejected": 1,
+            "scheduled_p50_ms": 248.926954,
+            "scheduled_p95_ms": 360.080174,
+            "first_scheduled_response_ms": 143.689707,
+            "ready_before_first_request": 3,
+            "recovered_after_arrivals_ms": 100.98954100000265
+          }
+        ]
+      }
+    ],
+    "resource_scope": "sampled full replay window including idle; namespace-root totals include load driver, runtime CLIs, init and dependencies; startup/dependency preparation/final shutdown excluded; more successful jobs also affect CPU cost",
+    "checks": [
+      "100 raw requests retained; exact planned times identical across modes",
+      "all successful tasks confirmed cleanup; no infrastructure errors",
+      "resource read errors=0; unhealthy samples=0",
+      "make check and race benchmark summary regressions passed"
+    ],
+    "conclusion": "In this trace Warm reduced typical and first-request latency; overall P95 improvement was small, CPU and resident memory cost increased. Not a sustained-throughput improvement claim or a production traffic/SLO guarantee. Core-service interference not measured."
+  },
+  "capacity_validation_20261021": {
+    "recorded_at": "2026-10-21T05:14:59Z",
+    "method": "open-loop staircase; fixed workload/quotas/C8/B4/M8; cold then warm; 200 requests per step; stop each profile at first SLO boundary; single exploratory run",
+    "book_reread": {
+      "printed_pages": [
+        64,
+        66,
+        67,
+        68,
+        69,
+        648,
+        662,
+        663,
+        664,
+        665,
+        666
+      ],
+      "pdf_offset": 39,
+      "references": [
+        "B07",
+        "B08",
+        "B24",
+        "B26"
+      ],
+      "engineering_choices_not_book_constants": [
+        "1-second deadline",
+        "95% on-time target",
+        "85% memory guard",
+        "concurrency bounds 8/4"
+      ]
+    },
+    "hardware": {
+      "cpu": "Intel Core i7-9750H @ 2.60GHz",
+      "physical_cores": 6,
+      "logical_cpus": 12,
+      "mem_total_kib": 32776756,
+      "kernel": "6.8.0-138-generic"
+    },
+    "limits": {
+      "outer": {
+        "cpu.max": "600000 100000",
+        "memory.max": "5368709120",
+        "pids.max": "2304"
+      },
+      "sandboxes": {
+        "cpu.max": "80000 20000",
+        "memory.max": "4294967296",
+        "pids.max": "2048"
+      }
+    },
+    "configuration": {
+      "execution": 8,
+      "creation": 4,
+      "total_instances": 8,
+      "warm_target": 3,
+      "queue_timeout_ms": 100,
+      "queue_size": 16,
+      "queue_bytes": 8388608,
+      "qos": false,
+      "dynamic_inventory": false,
+      "latency_slo_ms": 1000,
+      "on_time_target": 0.95,
+      "workload": "print('Hello World')",
+      "platform": "kvm",
+      "dependencies": "tmpfs; pinned Python image; bounded /tmp tmpfs; not a disk-capacity result"
+    },
+    "source": {
+      "benchmark_binary_sha256": "fa826ec9cc7ba71fa3d4128ec296a6c754906a8ebf4f736b4f7f2a87e13c0510",
+      "runsc_sha256": "210b437a9cfae51e8f8c9074ed19b8b5e59477178e2e391a18117d8d6b924f7a",
+      "rootfs_image": "python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "archive": "artifacts/capacity-validation-20261021.tar.gz",
+      "archive_sha256": "06b649d214b82e99ec0fad2c583c5fe5b366ad5b9f44c3e3ae5c10821aa36082",
+      "archive_files": 12
+    },
+    "runs": [
+      {
+        "mode": "cold",
+        "last_tested_passing_rate": 8,
+        "first_tested_failing_rate": 12,
+        "cleanup_complete": true,
+        "steps": [
+          {
+            "offered_per_second": 4,
+            "offered": 200,
+            "completed": 200,
+            "rejected": 0,
+            "on_time": 200,
+            "on_time_fraction": 1,
+            "success_scheduled_p95_ms": 328.339865,
+            "all_request_send_lag_p95_ms_csv_precision": 0.9860000000007858,
+            "delivered_in_offer_window_per_second": 3.98,
+            "execution_full_sample_fraction": 0,
+            "creation_full_sample_fraction": 0,
+            "sandbox_throttled_usec": 0,
+            "sandbox_cpu_stall_percent": 23.783115548091168,
+            "sandbox_peak_memory_bytes": 77627392,
+            "classification": "within_target"
+          },
+          {
+            "offered_per_second": 8,
+            "offered": 200,
+            "completed": 200,
+            "rejected": 0,
+            "on_time": 200,
+            "on_time_fraction": 1,
+            "success_scheduled_p95_ms": 436.501507,
+            "all_request_send_lag_p95_ms_csv_precision": 1.0429999999996653,
+            "delivered_in_offer_window_per_second": 7.92,
+            "execution_full_sample_fraction": 0,
+            "creation_full_sample_fraction": 0,
+            "sandbox_throttled_usec": 83641,
+            "sandbox_cpu_stall_percent": 29.02270968091918,
+            "sandbox_peak_memory_bytes": 155947008,
+            "classification": "within_target"
+          },
+          {
+            "offered_per_second": 12,
+            "offered": 200,
+            "completed": 134,
+            "rejected": 66,
+            "on_time": 45,
+            "on_time_fraction": 0.225,
+            "success_scheduled_p95_ms": 1207.580783,
+            "all_request_send_lag_p95_ms_csv_precision": 1.4049999999997453,
+            "delivered_in_offer_window_per_second": 7.56,
+            "execution_full_sample_fraction": 0.8606060606060606,
+            "creation_full_sample_fraction": 0.030303030303030304,
+            "sandbox_throttled_usec": 97123500,
+            "sandbox_cpu_stall_percent": 56.92850224279047,
+            "sandbox_peak_memory_bytes": 337494016,
+            "classification": "slo_boundary"
+          }
+        ]
+      },
+      {
+        "mode": "warm",
+        "last_tested_passing_rate": 8,
+        "first_tested_failing_rate": 12,
+        "cleanup_complete": true,
+        "steps": [
+          {
+            "offered_per_second": 4,
+            "offered": 200,
+            "completed": 200,
+            "rejected": 0,
+            "on_time": 200,
+            "on_time_fraction": 1,
+            "success_scheduled_p95_ms": 170.504287,
+            "all_request_send_lag_p95_ms_csv_precision": 0.9729999999999563,
+            "delivered_in_offer_window_per_second": 4,
+            "execution_full_sample_fraction": 0,
+            "creation_full_sample_fraction": 0,
+            "sandbox_throttled_usec": 0,
+            "sandbox_cpu_stall_percent": 3.4197535553693803,
+            "sandbox_peak_memory_bytes": 160772096,
+            "classification": "within_target"
+          },
+          {
+            "offered_per_second": 8,
+            "offered": 200,
+            "completed": 200,
+            "rejected": 0,
+            "on_time": 200,
+            "on_time_fraction": 1,
+            "success_scheduled_p95_ms": 219.292321,
+            "all_request_send_lag_p95_ms_csv_precision": 1.0149999999998727,
+            "delivered_in_offer_window_per_second": 7.96,
+            "execution_full_sample_fraction": 0,
+            "creation_full_sample_fraction": 0,
+            "sandbox_throttled_usec": 154782,
+            "sandbox_cpu_stall_percent": 5.963284557294196,
+            "sandbox_peak_memory_bytes": 186118144,
+            "classification": "within_target"
+          },
+          {
+            "offered_per_second": 12,
+            "offered": 200,
+            "completed": 135,
+            "rejected": 65,
+            "on_time": 55,
+            "on_time_fraction": 0.275,
+            "success_scheduled_p95_ms": 1232.954295,
+            "all_request_send_lag_p95_ms_csv_precision": 1.120999999999185,
+            "delivered_in_offer_window_per_second": 7.619999999999999,
+            "execution_full_sample_fraction": 0.6626506024096386,
+            "creation_full_sample_fraction": 0.03614457831325301,
+            "sandbox_throttled_usec": 98684488,
+            "sandbox_cpu_stall_percent": 56.95219182108421,
+            "sandbox_peak_memory_bytes": 342933504,
+            "classification": "slo_boundary"
+          }
+        ]
+      }
+    ],
+    "verification": {
+      "requests": 1200,
+      "resource_frames": 2153,
+      "errors": 0,
+      "invalid_frames": 0,
+      "oom_increments": 0,
+      "all_successful_cleanup_confirmed": true,
+      "checks": [
+        "make check build passed after permitting local test sockets",
+        "29 Python deployment/launcher checks passed",
+        "KVM cold/warm C8/B4: eight independent concurrent requests each succeeded and teardown checked"
+      ],
+      "post_measurement_changes": "all-request send-lag accounting and explicit cgroup-directory teardown check; runtime performance path unchanged; raw binary hash retained"
+    },
+    "conclusion": "Both profiles passed 8/s and failed 12/s under the selected target; Warm reduced latency at 4/8/s but did not separate sustained capacity. Execution saturation and sandbox-parent throttling, rather than frequently saturated creation slots or memory exhaustion, warrant the next controlled comparison. Not a physical-host limit, calibrated operating point, or optimal C/B selection."
+  },
+  "cpu_policy_validation_20261021": {
+    "scope": "service-owned uniform per-sandbox CPU configuration plus five single-factor exploratory comparisons; no per-request resource tiers or per-sandbox dynamic controller",
+    "configuration": {
+      "flag": "-sandbox-cpu-milli",
+      "environment": "AGENTBOX_SANDBOX_CPU_MILLI",
+      "default": 1000,
+      "range": [
+        50,
+        4000
+      ],
+      "period_usec": 20000,
+      "status_field": "sandbox_cpu_milli",
+      "parent_default_cpu": 4
+    },
+    "functional_checks": {
+      "make_check_build": "passed",
+      "python_tests": 31,
+      "kernel_readback_and_runtime": [
+        "cold-500m",
+        "cold-1500m",
+        "warm-500m",
+        "warm-1500m"
+      ],
+      "warm_replacement_policy": "checked",
+      "systemd": {
+        "version": "252",
+        "platform": "kvm",
+        "sandbox_cpu_milli": 500,
+        "child_cpu_max": "10000 20000",
+        "parent_cpu_max": "80000 20000",
+        "cleanup_complete": true,
+        "lifecycle": "startup/config expansion/update/rollback/reinstall/uninstall passed"
+      },
+      "host_service_modified": false
+    },
+    "comparison": {
+      "method": "same benchmark binary; five serial cases, cold then warm per case; 10 offered requests/s and 200 offered requests per mode; no repetitions or randomized ordering",
+      "order": [
+        [
+          8,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          8,
+          2
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          8,
+          3
+        ]
+      ],
+      "creation_concurrency": 4,
+      "max_instances": 8,
+      "warm_target": 3,
+      "sandbox_cpu_milli": 1000,
+      "queue_timeout_ms": 100,
+      "queue_size": 16,
+      "queue_bytes": 8388608,
+      "latency_slo_ms": 1000,
+      "on_time_target": 0.95,
+      "qos": false,
+      "dynamic_inventory": false,
+      "core_load": false,
+      "platform": "kvm",
+      "dependencies": "pinned Python rootfs and runsc prepared on tmpfs; bounded /tmp tmpfs",
+      "benchmark_binary_sha256": "2cccd0d9e991a963ddba2e1682d041bc22677bd6fcf9a9ea20b54dba6af277ab",
+      "runsc_sha256": "210b437a9cfae51e8f8c9074ed19b8b5e59477178e2e391a18117d8d6b924f7a",
+      "rootfs_image": "python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "profiles": [
+        {
+          "execution": 8,
+          "parent_cpu": 4,
+          "limits": {
+            "outer": {
+              "cpu.max": "600000 100000",
+              "memory.max": "5368709120",
+              "pids.max": "2304"
+            },
+            "sandboxes": {
+              "cpu.max": "80000 20000",
+              "memory.max": "4294967296",
+              "pids.max": "2048"
+            }
+          },
+          "runs": [
+            {
+              "mode": "cold",
+              "completed": 150,
+              "on_time": 31,
+              "on_time_fraction": 0.155,
+              "rejected": 50,
+              "success_scheduled_p95_ms": 1268.814243,
+              "execution_full_sample_fraction": 0.67,
+              "creation_full_sample_fraction": 0,
+              "sandbox_throttled_usec": 110351976,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 56.81547012187843,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 248.222,
+                  "mean": 243.99134666666674
+                },
+                "execution_ms": {
+                  "p50": 742.869,
+                  "mean": 717.0199333333337
+                },
+                "cleanup_ms": {
+                  "p50": 44.903,
+                  "mean": 49.87719333333334
+                },
+                "total_ms": {
+                  "p50": 1087.72,
+                  "mean": 1034.3989600000004
+                }
+              },
+              "cleanup_complete": true
+            },
+            {
+              "mode": "warm",
+              "completed": 152,
+              "on_time": 72,
+              "on_time_fraction": 0.36,
+              "rejected": 48,
+              "success_scheduled_p95_ms": 1247.748516,
+              "execution_full_sample_fraction": 0.33,
+              "creation_full_sample_fraction": 0,
+              "sandbox_throttled_usec": 112295023,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 56.13187658626665,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 207.535,
+                  "mean": 150.05255921052634
+                },
+                "execution_ms": {
+                  "p50": 760.329,
+                  "mean": 713.0740065789473
+                },
+                "cleanup_ms": {
+                  "p50": 42.869,
+                  "mean": 49.80230263157893
+                },
+                "total_ms": {
+                  "p50": 1004.21,
+                  "mean": 940.2092697368423
+                }
+              },
+              "cleanup_complete": true
+            }
+          ],
+          "archive_prefix": "c8-p4"
+        },
+        {
+          "execution": 2,
+          "parent_cpu": 4,
+          "limits": {
+            "outer": {
+              "cpu.max": "600000 100000",
+              "memory.max": "5368709120",
+              "pids.max": "2304"
+            },
+            "sandboxes": {
+              "cpu.max": "80000 20000",
+              "memory.max": "4294967296",
+              "pids.max": "2048"
+            }
+          },
+          "runs": [
+            {
+              "mode": "cold",
+              "completed": 124,
+              "on_time": 124,
+              "on_time_fraction": 0.62,
+              "rejected": 76,
+              "success_scheduled_p95_ms": 433.687107,
+              "execution_full_sample_fraction": 0.9597989949748744,
+              "creation_full_sample_fraction": 0,
+              "sandbox_throttled_usec": 0,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 24.824035275163506,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 77.665,
+                  "mean": 78.4382822580645
+                },
+                "execution_ms": {
+                  "p50": 226.016,
+                  "mean": 229.84338709677417
+                },
+                "cleanup_ms": {
+                  "p50": 14.217,
+                  "mean": 14.6939435483871
+                },
+                "total_ms": {
+                  "p50": 365.844,
+                  "mean": 366.838120967742
+                }
+              },
+              "cleanup_complete": true
+            },
+            {
+              "mode": "warm",
+              "completed": 155,
+              "on_time": 155,
+              "on_time_fraction": 0.775,
+              "rejected": 45,
+              "success_scheduled_p95_ms": 434.016648,
+              "execution_full_sample_fraction": 0.79,
+              "creation_full_sample_fraction": 0.01,
+              "sandbox_throttled_usec": 1581883,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 17.269181868675975,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 13.859,
+                  "mean": 41.07578709677419
+                },
+                "execution_ms": {
+                  "p50": 183.782,
+                  "mean": 195.94522580645156
+                },
+                "cleanup_ms": {
+                  "p50": 15.044,
+                  "mean": 15.772464516129032
+                },
+                "total_ms": {
+                  "p50": 255.18,
+                  "mean": 281.83303870967734
+                }
+              },
+              "cleanup_complete": true
+            }
+          ],
+          "archive_prefix": "c2-p4"
+        },
+        {
+          "execution": 8,
+          "parent_cpu": 2,
+          "limits": {
+            "outer": {
+              "cpu.max": "600000 100000",
+              "memory.max": "5368709120",
+              "pids.max": "2304"
+            },
+            "sandboxes": {
+              "cpu.max": "40000 20000",
+              "memory.max": "4294967296",
+              "pids.max": "2048"
+            }
+          },
+          "runs": [
+            {
+              "mode": "cold",
+              "completed": 85,
+              "on_time": 2,
+              "on_time_fraction": 0.01,
+              "rejected": 115,
+              "success_scheduled_p95_ms": 2326.627788,
+              "execution_full_sample_fraction": 0.89,
+              "creation_full_sample_fraction": 0.07,
+              "sandbox_throttled_usec": 171490873,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 67.81687380746963,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 519.794,
+                  "mean": 507.1283529411767
+                },
+                "execution_ms": {
+                  "p50": 1318.797,
+                  "mean": 1313.9018235294116
+                },
+                "cleanup_ms": {
+                  "p50": 99.148,
+                  "mean": 105.46956470588233
+                },
+                "total_ms": {
+                  "p50": 1969.075,
+                  "mean": 1961.1345411764705
+                }
+              },
+              "cleanup_complete": true
+            },
+            {
+              "mode": "warm",
+              "completed": 87,
+              "on_time": 2,
+              "on_time_fraction": 0.01,
+              "rejected": 113,
+              "success_scheduled_p95_ms": 2254.582843,
+              "execution_full_sample_fraction": 0.775,
+              "creation_full_sample_fraction": 0.015,
+              "sandbox_throttled_usec": 174068518,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 68.06826549990161,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 520.721,
+                  "mean": 458.1079885057472
+                },
+                "execution_ms": {
+                  "p50": 1299.727,
+                  "mean": 1280.2797586206896
+                },
+                "cleanup_ms": {
+                  "p50": 99.74,
+                  "mean": 102.49281609195403
+                },
+                "total_ms": {
+                  "p50": 1953.233,
+                  "mean": 1885.8509770114936
+                }
+              },
+              "cleanup_complete": true
+            }
+          ],
+          "archive_prefix": "c8-p2"
+        },
+        {
+          "execution": 4,
+          "parent_cpu": 4,
+          "limits": {
+            "outer": {
+              "cpu.max": "600000 100000",
+              "memory.max": "5368709120",
+              "pids.max": "2304"
+            },
+            "sandboxes": {
+              "cpu.max": "80000 20000",
+              "memory.max": "4294967296",
+              "pids.max": "2048"
+            }
+          },
+          "runs": [
+            {
+              "mode": "cold",
+              "completed": 189,
+              "on_time": 189,
+              "on_time_fraction": 0.945,
+              "rejected": 11,
+              "success_scheduled_p95_ms": 527.365105,
+              "execution_full_sample_fraction": 0.8140703517587939,
+              "creation_full_sample_fraction": 0,
+              "sandbox_throttled_usec": 954554,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 30.448833905087334,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 94.836,
+                  "mean": 95.13812169312162
+                },
+                "execution_ms": {
+                  "p50": 306.563,
+                  "mean": 305.25200529100516
+                },
+                "cleanup_ms": {
+                  "p50": 18.089,
+                  "mean": 18.689502645502657
+                },
+                "total_ms": {
+                  "p50": 451.875,
+                  "mean": 453.42441798941803
+                }
+              },
+              "cleanup_complete": true
+            },
+            {
+              "mode": "warm",
+              "completed": 182,
+              "on_time": 182,
+              "on_time_fraction": 0.91,
+              "rejected": 18,
+              "success_scheduled_p95_ms": 578.989576,
+              "execution_full_sample_fraction": 0.38,
+              "creation_full_sample_fraction": 0.03,
+              "sandbox_throttled_usec": 39316472,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 26.61354385580179,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 14.942,
+                  "mean": 29.52539560439562
+                },
+                "execution_ms": {
+                  "p50": 329.73,
+                  "mean": 307.1679010989012
+                },
+                "cleanup_ms": {
+                  "p50": 21.633,
+                  "mean": 24.130538461538464
+                },
+                "total_ms": {
+                  "p50": 381.715,
+                  "mean": 369.49551098901077
+                }
+              },
+              "cleanup_complete": true
+            }
+          ],
+          "archive_prefix": "c4-p4"
+        },
+        {
+          "execution": 8,
+          "parent_cpu": 3,
+          "limits": {
+            "outer": {
+              "cpu.max": "600000 100000",
+              "memory.max": "5368709120",
+              "pids.max": "2304"
+            },
+            "sandboxes": {
+              "cpu.max": "60000 20000",
+              "memory.max": "4294967296",
+              "pids.max": "2048"
+            }
+          },
+          "runs": [
+            {
+              "mode": "cold",
+              "completed": 109,
+              "on_time": 6,
+              "on_time_fraction": 0.03,
+              "rejected": 91,
+              "success_scheduled_p95_ms": 1740.179469,
+              "execution_full_sample_fraction": 0.875,
+              "creation_full_sample_fraction": 0,
+              "sandbox_throttled_usec": 144639499,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 64.9683916242295,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 341.37,
+                  "mean": 336.10720183486245
+                },
+                "execution_ms": {
+                  "p50": 1079.31,
+                  "mean": 1048.9187522935774
+                },
+                "cleanup_ms": {
+                  "p50": 60.686,
+                  "mean": 63.0224220183486
+                },
+                "total_ms": {
+                  "p50": 1539.574,
+                  "mean": 1483.3358073394493
+                }
+              },
+              "cleanup_complete": true
+            },
+            {
+              "mode": "warm",
+              "completed": 112,
+              "on_time": 11,
+              "on_time_fraction": 0.055,
+              "rejected": 88,
+              "success_scheduled_p95_ms": 1694.076755,
+              "execution_full_sample_fraction": 0.5472636815920398,
+              "creation_full_sample_fraction": 0.01990049751243781,
+              "sandbox_throttled_usec": 146334423,
+              "namespace_root_throttled_usec": 0,
+              "sandbox_cpu_stall_percent": 64.63764215387786,
+              "stages_ms": {
+                "setup_ms": {
+                  "p50": 302.084,
+                  "mean": 246.4643839285714
+                },
+                "execution_ms": {
+                  "p50": 1079.42,
+                  "mean": 1045.7203392857143
+                },
+                "cleanup_ms": {
+                  "p50": 60.683,
+                  "mean": 64.33644642857142
+                },
+                "total_ms": {
+                  "p50": 1509.886,
+                  "mean": 1395.4128214285713
+                }
+              },
+              "cleanup_complete": true
+            }
+          ],
+          "archive_prefix": "c8-p3"
+        }
+      ],
+      "requests_verified": 2000,
+      "resource_frames_verified": 2572,
+      "errors": 0,
+      "invalid_frames": 0,
+      "oom_increments": 0,
+      "outer_throttled_usec": 0
+    },
+    "source": {
+      "archive": "artifacts/cpu-policy-validation-20261021.tar.gz",
+      "archive_sha256": "63823ad598f9f99e00071c1b8a0de22a0a506cf458db4b2a93a23afd64aa136b",
+      "archive_files": 31
+    },
+    "conclusions": [
+      "Both execution concurrency and parent CPU quota constrain this workload; full execution slots alone do not justify more slots.",
+      "At parent 4 CPU, C4 achieved more on-time work than C8; C2 reduced latency but rejected more work.",
+      "At C8, delivered work increased and latency decreased across parent 2/3/4 CPU.",
+      "Warm C4/P4 retained setup savings but completed fewer jobs and had more parent throttling than Cold; refill interference is a hypothesis requiring a controlled comparison.",
+      "No tested configuration met 95% on-time success at 10 requests/s. No physical-host limit or optimal production setting was established; service defaults remain unchanged."
+    ]
+  },
+  "refill_core_validation_20261022": {
+    "recorded_at": "2026-10-22T01:53:46Z",
+    "feature": {
+      "flag": "-warm-refill-policy",
+      "environment": "AGENTBOX_WARM_REFILL_POLICY",
+      "default": "slots",
+      "candidate": "idle",
+      "rule": "pause new background reservations while any foreground lifecycle holds an execution slot; demand creation unaffected; existing creation not cancelled",
+      "counter_scope": "refill creation reservations under the scheduler lock, not exact CPU-overlap duration"
+    },
+    "method": {
+      "trace": {
+        "seed": 20261021,
+        "initial_idle_ms": 2000,
+        "duration_ms": 54000,
+        "waves": [
+          {
+            "index": 1,
+            "cycle": 1,
+            "requests": 5,
+            "start_ms": 2000,
+            "arrivals_until_ms": 3000,
+            "idle_until_ms": 13000
+          },
+          {
+            "index": 2,
+            "cycle": 1,
+            "requests": 20,
+            "start_ms": 13000,
+            "arrivals_until_ms": 18000,
+            "idle_until_ms": 28000
+          },
+          {
+            "index": 3,
+            "cycle": 2,
+            "requests": 5,
+            "start_ms": 28000,
+            "arrivals_until_ms": 29000,
+            "idle_until_ms": 39000
+          },
+          {
+            "index": 4,
+            "cycle": 2,
+            "requests": 20,
+            "start_ms": 39000,
+            "arrivals_until_ms": 44000,
+            "idle_until_ms": 54000
+          }
+        ],
+        "arrivals": [
+          {
+            "offset_ns": 2000000000,
+            "wave": 1
+          },
+          {
+            "offset_ns": 2276468965,
+            "wave": 1
+          },
+          {
+            "offset_ns": 2312950971,
+            "wave": 1
+          },
+          {
+            "offset_ns": 2656814205,
+            "wave": 1
+          },
+          {
+            "offset_ns": 2707601825,
+            "wave": 1
+          },
+          {
+            "offset_ns": 13000000000,
+            "wave": 2
+          },
+          {
+            "offset_ns": 13187328449,
+            "wave": 2
+          },
+          {
+            "offset_ns": 13326513518,
+            "wave": 2
+          },
+          {
+            "offset_ns": 13653552068,
+            "wave": 2
+          },
+          {
+            "offset_ns": 14670131833,
+            "wave": 2
+          },
+          {
+            "offset_ns": 14677029930,
+            "wave": 2
+          },
+          {
+            "offset_ns": 14727727654,
+            "wave": 2
+          },
+          {
+            "offset_ns": 14790773333,
+            "wave": 2
+          },
+          {
+            "offset_ns": 14805464106,
+            "wave": 2
+          },
+          {
+            "offset_ns": 14829601040,
+            "wave": 2
+          },
+          {
+            "offset_ns": 15007614614,
+            "wave": 2
+          },
+          {
+            "offset_ns": 15009579613,
+            "wave": 2
+          },
+          {
+            "offset_ns": 15015980243,
+            "wave": 2
+          },
+          {
+            "offset_ns": 16232912247,
+            "wave": 2
+          },
+          {
+            "offset_ns": 16509465900,
+            "wave": 2
+          },
+          {
+            "offset_ns": 16776670531,
+            "wave": 2
+          },
+          {
+            "offset_ns": 17098199449,
+            "wave": 2
+          },
+          {
+            "offset_ns": 17415774626,
+            "wave": 2
+          },
+          {
+            "offset_ns": 17492204602,
+            "wave": 2
+          },
+          {
+            "offset_ns": 17860793478,
+            "wave": 2
+          },
+          {
+            "offset_ns": 28000000000,
+            "wave": 3
+          },
+          {
+            "offset_ns": 28310618148,
+            "wave": 3
+          },
+          {
+            "offset_ns": 28310756440,
+            "wave": 3
+          },
+          {
+            "offset_ns": 28413163277,
+            "wave": 3
+          },
+          {
+            "offset_ns": 28804770121,
+            "wave": 3
+          },
+          {
+            "offset_ns": 39000000000,
+            "wave": 4
+          },
+          {
+            "offset_ns": 39706992256,
+            "wave": 4
+          },
+          {
+            "offset_ns": 39792375481,
+            "wave": 4
+          },
+          {
+            "offset_ns": 40515929324,
+            "wave": 4
+          },
+          {
+            "offset_ns": 40894687252,
+            "wave": 4
+          },
+          {
+            "offset_ns": 40936850620,
+            "wave": 4
+          },
+          {
+            "offset_ns": 41011703876,
+            "wave": 4
+          },
+          {
+            "offset_ns": 41173227506,
+            "wave": 4
+          },
+          {
+            "offset_ns": 41195055410,
+            "wave": 4
+          },
+          {
+            "offset_ns": 41196124378,
+            "wave": 4
+          },
+          {
+            "offset_ns": 41307669393,
+            "wave": 4
+          },
+          {
+            "offset_ns": 41448714615,
+            "wave": 4
+          },
+          {
+            "offset_ns": 42239988364,
+            "wave": 4
+          },
+          {
+            "offset_ns": 42256592661,
+            "wave": 4
+          },
+          {
+            "offset_ns": 42303103541,
+            "wave": 4
+          },
+          {
+            "offset_ns": 42323102286,
+            "wave": 4
+          },
+          {
+            "offset_ns": 42333299913,
+            "wave": 4
+          },
+          {
+            "offset_ns": 43661918237,
+            "wave": 4
+          },
+          {
+            "offset_ns": 43720422243,
+            "wave": 4
+          },
+          {
+            "offset_ns": 43897209933,
+            "wave": 4
+          }
+        ]
+      },
+      "order": "baseline/cold/warm-slots/warm-idle; reversed on alternating repetitions",
+      "repetitions": 2,
+      "scope": "Core and sandbox Sentry/Gofer share a 2-CPU group; driver and runtime control CLIs outside it, within outer 6 CPU/5GiB; same open-loop arrivals, no retries/READY barriers; Core failures/drops counted; startup/final shutdown outside measurement; not a physical-host capacity or production SLO claim",
+      "limits": {
+        "core": {
+          "cpu.max": "max 100000",
+          "memory.max": "268435456",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "600000 100000",
+          "memory.max": "5368709120",
+          "pids.max": "2304"
+        },
+        "shared": {
+          "cpu.max": "200000 100000",
+          "memory.max": "5368709120",
+          "pids.max": "2112"
+        }
+      },
+      "sandbox_parent_cpu_max": "40000 20000",
+      "execution_concurrency": 4,
+      "creation_concurrency": 4,
+      "max_instances": 8,
+      "warm_target": 3,
+      "sandbox_cpu_milli": 1000,
+      "sandbox_parent_memory_bytes": 4294967296,
+      "queue_timeout_ms": 100,
+      "qos": "off",
+      "core_rate": 60,
+      "core_iterations": 50000,
+      "core_checksum": "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8",
+      "core_deadline_ms": 50,
+      "platform": "kvm"
+    },
+    "profiles": [
+      {
+        "repetition": 1,
+        "profile": "baseline",
+        "core_offered": 3240,
+        "core_completed": 3240,
+        "core_rejected": 0,
+        "core_on_time": 3240,
+        "core_on_time_fraction": 1,
+        "core_success_scheduled_p99_ms": 20.055285000002186,
+        "core_arrival_window_on_time_fraction": 1,
+        "core_other_window_on_time_fraction": 1,
+        "core_send_lag_p99_ms": 1.0895559999989928,
+        "sandbox_offered": 0,
+        "sandbox_completed": 0,
+        "sandbox_success_scheduled_p50_ms": null,
+        "sandbox_success_scheduled_p95_ms": null,
+        "refill_attempts": 0,
+        "refill_reserved_with_foreground": 0,
+        "shared_throttled_usec_delta": 0,
+        "resource_samples": 1077,
+        "resource_first_sample_ms": 0.118835,
+        "resource_last_sample_ms": 54001.045213,
+        "resource_max_gap_ms": 266.0084889999998,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 1,
+        "profile": "cold",
+        "core_offered": 3240,
+        "core_completed": 3011,
+        "core_rejected": 229,
+        "core_on_time": 2682,
+        "core_on_time_fraction": 0.8277777777777777,
+        "core_success_scheduled_p99_ms": 125.98011099999712,
+        "core_arrival_window_on_time_fraction": 0.48194444444444445,
+        "core_other_window_on_time_fraction": 0.9265873015873016,
+        "core_send_lag_p99_ms": 1.1101419999999962,
+        "sandbox_offered": 50,
+        "sandbox_completed": 36,
+        "sandbox_success_scheduled_p50_ms": 1234.577642,
+        "sandbox_success_scheduled_p95_ms": 1698.635033,
+        "refill_attempts": 0,
+        "refill_reserved_with_foreground": 0,
+        "shared_throttled_usec_delta": 56572494,
+        "resource_samples": 1074,
+        "resource_first_sample_ms": 0.320869,
+        "resource_last_sample_ms": 54000.681444,
+        "resource_max_gap_ms": 277.20059100000003,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 1,
+        "profile": "warm-slots",
+        "core_offered": 3240,
+        "core_completed": 2969,
+        "core_rejected": 271,
+        "core_on_time": 2563,
+        "core_on_time_fraction": 0.7910493827160494,
+        "core_success_scheduled_p99_ms": 148.00543300000027,
+        "core_arrival_window_on_time_fraction": 0.3416666666666667,
+        "core_other_window_on_time_fraction": 0.9194444444444444,
+        "core_send_lag_p99_ms": 1.2198339999999916,
+        "sandbox_offered": 50,
+        "sandbox_completed": 37,
+        "sandbox_success_scheduled_p50_ms": 1153.032198,
+        "sandbox_success_scheduled_p95_ms": 1658.101628,
+        "refill_attempts": 36,
+        "refill_reserved_with_foreground": 36,
+        "shared_throttled_usec_delta": 68776760,
+        "resource_samples": 1074,
+        "resource_first_sample_ms": 0.225721,
+        "resource_last_sample_ms": 54000.756506,
+        "resource_max_gap_ms": 380.33197199999995,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 1,
+        "profile": "warm-idle",
+        "core_offered": 3240,
+        "core_completed": 3054,
+        "core_rejected": 186,
+        "core_on_time": 2699,
+        "core_on_time_fraction": 0.8330246913580247,
+        "core_success_scheduled_p99_ms": 99.85439500000211,
+        "core_arrival_window_on_time_fraction": 0.49027777777777776,
+        "core_other_window_on_time_fraction": 0.930952380952381,
+        "core_send_lag_p99_ms": 1.0887750000001688,
+        "sandbox_offered": 50,
+        "sandbox_completed": 39,
+        "sandbox_success_scheduled_p50_ms": 647.578498,
+        "sandbox_success_scheduled_p95_ms": 1683.528742,
+        "refill_attempts": 31,
+        "refill_reserved_with_foreground": 0,
+        "shared_throttled_usec_delta": 47767157,
+        "resource_samples": 1062,
+        "resource_first_sample_ms": 398.302533,
+        "resource_last_sample_ms": 54000.134827,
+        "resource_max_gap_ms": 300.42499099999986,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "warm-idle",
+        "core_offered": 3240,
+        "core_completed": 3064,
+        "core_rejected": 176,
+        "core_on_time": 2737,
+        "core_on_time_fraction": 0.8447530864197531,
+        "core_success_scheduled_p99_ms": 96.39801799999987,
+        "core_arrival_window_on_time_fraction": 0.5486111111111112,
+        "core_other_window_on_time_fraction": 0.9293650793650794,
+        "core_send_lag_p99_ms": 1.0985020000007353,
+        "sandbox_offered": 50,
+        "sandbox_completed": 40,
+        "sandbox_success_scheduled_p50_ms": 603.97563,
+        "sandbox_success_scheduled_p95_ms": 1461.574867,
+        "refill_attempts": 29,
+        "refill_reserved_with_foreground": 0,
+        "shared_throttled_usec_delta": 45700445,
+        "resource_samples": 1068,
+        "resource_first_sample_ms": 0.1207,
+        "resource_last_sample_ms": 54001.061927,
+        "resource_max_gap_ms": 314.29645000000164,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "warm-slots",
+        "core_offered": 3240,
+        "core_completed": 2957,
+        "core_rejected": 283,
+        "core_on_time": 2563,
+        "core_on_time_fraction": 0.7910493827160494,
+        "core_success_scheduled_p99_ms": 132.17289600000367,
+        "core_arrival_window_on_time_fraction": 0.3375,
+        "core_other_window_on_time_fraction": 0.9206349206349206,
+        "core_send_lag_p99_ms": 1.137897000000521,
+        "sandbox_offered": 50,
+        "sandbox_completed": 37,
+        "sandbox_success_scheduled_p50_ms": 1190.110515,
+        "sandbox_success_scheduled_p95_ms": 1770.895624,
+        "refill_attempts": 36,
+        "refill_reserved_with_foreground": 36,
+        "shared_throttled_usec_delta": 74246338,
+        "resource_samples": 1058,
+        "resource_first_sample_ms": 0.152556,
+        "resource_last_sample_ms": 54002.158312,
+        "resource_max_gap_ms": 652.3498170000021,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "cold",
+        "core_offered": 3240,
+        "core_completed": 3025,
+        "core_rejected": 215,
+        "core_on_time": 2660,
+        "core_on_time_fraction": 0.8209876543209876,
+        "core_success_scheduled_p99_ms": 119.57256700000289,
+        "core_arrival_window_on_time_fraction": 0.43194444444444446,
+        "core_other_window_on_time_fraction": 0.9321428571428572,
+        "core_send_lag_p99_ms": 1.1029909999997471,
+        "sandbox_offered": 50,
+        "sandbox_completed": 37,
+        "sandbox_success_scheduled_p50_ms": 1198.372483,
+        "sandbox_success_scheduled_p95_ms": 1603.821734,
+        "refill_attempts": 0,
+        "refill_reserved_with_foreground": 0,
+        "shared_throttled_usec_delta": 55611700,
+        "resource_samples": 1077,
+        "resource_first_sample_ms": 0.086757,
+        "resource_last_sample_ms": 54000.459276,
+        "resource_max_gap_ms": 261.51638000000094,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "baseline",
+        "core_offered": 3240,
+        "core_completed": 3240,
+        "core_rejected": 0,
+        "core_on_time": 3240,
+        "core_on_time_fraction": 1,
+        "core_success_scheduled_p99_ms": 19.426281000000017,
+        "core_arrival_window_on_time_fraction": 1,
+        "core_other_window_on_time_fraction": 1,
+        "core_send_lag_p99_ms": 1.0921539999981178,
+        "sandbox_offered": 0,
+        "sandbox_completed": 0,
+        "sandbox_success_scheduled_p50_ms": null,
+        "sandbox_success_scheduled_p95_ms": null,
+        "refill_attempts": 0,
+        "refill_reserved_with_foreground": 0,
+        "shared_throttled_usec_delta": 0,
+        "resource_samples": 1064,
+        "resource_first_sample_ms": 0.112987,
+        "resource_last_sample_ms": 54000.713068,
+        "resource_max_gap_ms": 208.28082300000005,
+        "cleanup_complete": true
+      }
+    ],
+    "verification": {
+      "core_requests": 25920,
+      "sandbox_requests": 300,
+      "successful_unique_sandbox_executions": 226,
+      "resource_samples": 8554,
+      "sandbox_errors": 0,
+      "core_transport_or_validation_errors": 0,
+      "core_client_drops": 0,
+      "invalid_resource_frames": 0,
+      "oom_increments": 0,
+      "all_profile_cleanup_confirmed": true,
+      "final_core_and_shared_cgroup_cleanup": "passed",
+      "checks": [
+        "make check build",
+        "race benchmark summary checks",
+        "33 Python deployment/launcher checks",
+        "KVM idle refill gating/demand creation/resumption/teardown",
+        "systemd 252/KVM warm lifecycle and idle + 500 milli-CPU configuration"
+      ],
+      "sampling_limits": "target 50ms; measured gaps up to 652ms and one first sample at 398ms; resource integrals cover actual first/last frames, not precise peaks or full initial idle cost"
+    },
+    "source": {
+      "archive": "artifacts/refill-core-validation-20261022.tar.gz",
+      "archive_sha256": "1bfcc590dcf6969855b64259d18939f269c92f7b85a4757440256d0e03e3d43d",
+      "archive_files": 37,
+      "benchmark_sha256": "8cc60d1f2a74d05942c619dfbe8939ba135803406bfe38e52f4e95aed6fc2daa",
+      "mockcore_sha256": "94036e511670bba383e54a9ac3f1eb1dce1c2b9c86caa4a68c42a3bc64aa786b",
+      "runsc_sha256": "210b437a9cfae51e8f8c9074ed19b8b5e59477178e2e391a18117d8d6b924f7a",
+      "rootfs_image": "python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258"
+    },
+    "conclusions": [
+      "Both repetitions observed lower Core P99, fewer Core rejections, more successful sandbox work and lower sandbox median latency with idle versus slots under fixed budgets and trace.",
+      "Neither policy met the 50ms Core target; the CPU budget shared by Core and sandboxes still needs headroom or business feedback.",
+      "Sandbox P95 did not improve in every repetition. Only two counterbalanced repetitions and one trace; no general optimality or production SLO claim. Default slots and host deployment unchanged."
+    ]
+  },
+  "psi_protection_validation_20261022": {
+    "recorded_at": "2026-10-22T03:28:10Z",
+    "book_reread": {
+      "printed_pages": [
+        330,
+        331,
+        613,
+        614,
+        615,
+        648
+      ],
+      "pdf_offset": 39,
+      "references": [
+        "B16",
+        "B18",
+        "B24",
+        "K02"
+      ],
+      "boundary": "book motivates pressure measurement, hard limits/priorities and controlled comparisons; CPU PSI semantics verified against Linux 6.8 docs; thresholds/timings are engineering choices"
+    },
+    "implementation": {
+      "parent_cpu_flag": "-parent-cpu-milli",
+      "parent_cpu_environment": "AGENTBOX_PARENT_CPU_MILLI",
+      "parent_default_milli": 4000,
+      "parent_range_milli": [
+        50,
+        4000
+      ],
+      "refill_only_flag": "-qos-refill-only",
+      "refill_only_environment": "AGENTBOX_QOS_REFILL_ONLY",
+      "scope": "background refill only; CPU/admission/inflight unchanged; mutually exclusive with CPU/full scheduling/business borrowing",
+      "cpu_controller_ceiling": "must not exceed configured parent budget",
+      "defaults_or_host_deployment_changed": false,
+      "gateway_boundary_fix": "absolute deadline takes precedence over an empty backend response arriving at deadline; outcome_unknown retained, no replay"
+    },
+    "method": {
+      "limits": {
+        "core": {
+          "cpu.max": "max 100000",
+          "memory.max": "268435456",
+          "pids.max": "64"
+        },
+        "outer": {
+          "cpu.max": "600000 100000",
+          "memory.max": "5368709120",
+          "pids.max": "2304"
+        },
+        "shared": {
+          "cpu.max": "200000 100000",
+          "memory.max": "5368709120",
+          "pids.max": "2112"
+        }
+      },
+      "profiles": [
+        {
+          "Name": "baseline",
+          "Mode": "cold",
+          "Policy": "slots",
+          "Control": "observe",
+          "ParentCPU": 2
+        },
+        {
+          "Name": "idle-2cpu",
+          "Mode": "warm",
+          "Policy": "idle",
+          "Control": "observe",
+          "ParentCPU": 2
+        },
+        {
+          "Name": "idle-1cpu",
+          "Mode": "warm",
+          "Policy": "idle",
+          "Control": "observe",
+          "ParentCPU": 1
+        },
+        {
+          "Name": "psi-2cpu",
+          "Mode": "warm",
+          "Policy": "slots",
+          "Control": "refill-only",
+          "ParentCPU": 2
+        },
+        {
+          "Name": "psi-1cpu",
+          "Mode": "warm",
+          "Policy": "slots",
+          "Control": "refill-only",
+          "ParentCPU": 1
+        },
+        {
+          "Name": "adaptive",
+          "Mode": "warm",
+          "Policy": "slots",
+          "Control": "adaptive",
+          "ParentCPU": 2
+        }
+      ],
+      "acceptance": "all Core windows (whole, sandbox arrivals, outside arrivals): >=99% on-time and success P99 <=50ms; preserve rejects and sandbox cost; no actuator faults",
+      "order": "listed profiles then reverse order on alternating repetitions",
+      "execution_concurrency": 4,
+      "creation_concurrency": 4,
+      "total_instances": 8,
+      "warm_target": 3,
+      "sandbox_cpu_milli": 1000,
+      "core_rate": 60,
+      "core_iterations": 50000,
+      "core_checksum": "440f1072b664bc0cfbdc875c198f7f369f229a37aefff1f70a431330958ce8b8",
+      "core_deadline_ms": 50,
+      "trace_sha256": "f884a702a26b2a566d7cba6eba2c6820d03ab5967e5dfd6c1eb4d112fbb52621",
+      "comparison": "protection",
+      "repetitions": 2,
+      "source_scope": "Core and sandbox Sentry/Gofer share a 2-CPU group; driver and runtime control CLIs outside it, within outer 6 CPU/5GiB; same open-loop arrivals, no retries/READY barriers; Core failures/drops counted; startup/final shutdown outside measurement; not a physical-host capacity or production SLO claim",
+      "cpu_policy": {
+        "min": 1,
+        "max": 2,
+        "low_pressure": 10,
+        "high_pressure": 20,
+        "confirmation_ms": 1000,
+        "stable_low_ms": 2000,
+        "decrease_factor": 0.8,
+        "increase_cpu_per_second": 0.25,
+        "base_cpu": 0,
+        "business_file": "none"
+      },
+      "all_profiles_observed": true
+    },
+    "profiles": [
+      {
+        "repetition": 1,
+        "profile": "baseline",
+        "parent_cpu_start": 2,
+        "parent_cpu_final": 2,
+        "core_target_passed": true,
+        "core_offered": 3240,
+        "core_completed": 3240,
+        "core_rejected": 0,
+        "core_on_time_fraction": 1,
+        "core_success_scheduled_p99_ms": 20.050692000004346,
+        "arrival_on_time_fraction": 1,
+        "arrival_success_p99_ms": 21.86275100000057,
+        "outside_on_time_fraction": 1,
+        "sandbox_offered": 0,
+        "sandbox_completed": 0,
+        "sandbox_success_p50_ms": null,
+        "sandbox_success_p95_ms": null,
+        "refill_attempts": 0,
+        "refill_reserved_with_foreground": 0,
+        "refill_paused_frames": 0,
+        "fresh_protected_frames": 1077,
+        "observation_frames": 1080,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 147.14121800000066,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 1,
+        "profile": "idle-2cpu",
+        "parent_cpu_start": 2,
+        "parent_cpu_final": 2,
+        "core_target_passed": false,
+        "core_offered": 3240,
+        "core_completed": 3087,
+        "core_rejected": 153,
+        "core_on_time_fraction": 0.8540123456790123,
+        "core_success_scheduled_p99_ms": 101.9819720000014,
+        "arrival_on_time_fraction": 0.5583333333333333,
+        "arrival_success_p99_ms": 146.27316900000005,
+        "outside_on_time_fraction": 0.9384920634920635,
+        "sandbox_offered": 50,
+        "sandbox_completed": 39,
+        "sandbox_success_p50_ms": 499.381696,
+        "sandbox_success_p95_ms": 1721.943812,
+        "refill_attempts": 32,
+        "refill_reserved_with_foreground": 0,
+        "refill_paused_frames": 0,
+        "fresh_protected_frames": 1077,
+        "observation_frames": 1080,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 132.56524199999694,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 1,
+        "profile": "idle-1cpu",
+        "parent_cpu_start": 1,
+        "parent_cpu_final": 1,
+        "core_target_passed": true,
+        "core_offered": 3240,
+        "core_completed": 3240,
+        "core_rejected": 0,
+        "core_on_time_fraction": 1,
+        "core_success_scheduled_p99_ms": 21.709945000002335,
+        "arrival_on_time_fraction": 1,
+        "arrival_success_p99_ms": 23.894083000001046,
+        "outside_on_time_fraction": 1,
+        "sandbox_offered": 50,
+        "sandbox_completed": 38,
+        "sandbox_success_p50_ms": 318.450695,
+        "sandbox_success_p95_ms": 1005.719742,
+        "refill_attempts": 33,
+        "refill_reserved_with_foreground": 0,
+        "refill_paused_frames": 0,
+        "fresh_protected_frames": 1074,
+        "observation_frames": 1077,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 190.5748870000025,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 1,
+        "profile": "psi-2cpu",
+        "parent_cpu_start": 2,
+        "parent_cpu_final": 2,
+        "core_target_passed": false,
+        "core_offered": 3240,
+        "core_completed": 3048,
+        "core_rejected": 192,
+        "core_on_time_fraction": 0.85,
+        "core_success_scheduled_p99_ms": 114.86480300000039,
+        "arrival_on_time_fraction": 0.5611111111111111,
+        "arrival_success_p99_ms": 147.13340400000016,
+        "outside_on_time_fraction": 0.9325396825396826,
+        "sandbox_offered": 50,
+        "sandbox_completed": 39,
+        "sandbox_success_p50_ms": 723.742811,
+        "sandbox_success_p95_ms": 1404.875482,
+        "refill_attempts": 28,
+        "refill_reserved_with_foreground": 21,
+        "refill_paused_frames": 326,
+        "fresh_protected_frames": 1079,
+        "observation_frames": 1082,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 72.43276099999639,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 1,
+        "profile": "psi-1cpu",
+        "parent_cpu_start": 1,
+        "parent_cpu_final": 1,
+        "core_target_passed": true,
+        "core_offered": 3240,
+        "core_completed": 3240,
+        "core_rejected": 0,
+        "core_on_time_fraction": 1,
+        "core_success_scheduled_p99_ms": 20.313239999999496,
+        "arrival_on_time_fraction": 1,
+        "arrival_success_p99_ms": 21.375262999999904,
+        "outside_on_time_fraction": 1,
+        "sandbox_offered": 50,
+        "sandbox_completed": 33,
+        "sandbox_success_p50_ms": 1186.848388,
+        "sandbox_success_p95_ms": 2162.472475,
+        "refill_attempts": 30,
+        "refill_reserved_with_foreground": 30,
+        "refill_paused_frames": 0,
+        "fresh_protected_frames": 1073,
+        "observation_frames": 1076,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 144.92439600000216,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 1,
+        "profile": "adaptive",
+        "parent_cpu_start": 2,
+        "parent_cpu_final": 1.6,
+        "core_target_passed": false,
+        "core_offered": 3240,
+        "core_completed": 3106,
+        "core_rejected": 134,
+        "core_on_time_fraction": 0.8910493827160494,
+        "core_success_scheduled_p99_ms": 100.22333600000275,
+        "arrival_on_time_fraction": 0.6611111111111111,
+        "arrival_success_p99_ms": 146.63330199999973,
+        "outside_on_time_fraction": 0.9567460317460318,
+        "sandbox_offered": 50,
+        "sandbox_completed": 26,
+        "sandbox_success_p50_ms": 906.943856,
+        "sandbox_success_p95_ms": 1293.102902,
+        "refill_attempts": 26,
+        "refill_reserved_with_foreground": 25,
+        "refill_paused_frames": 206,
+        "fresh_protected_frames": 1076,
+        "observation_frames": 1079,
+        "cpu_changes": 7,
+        "observed_cpu_range": [
+          1.6,
+          2
+        ],
+        "max_resource_sample_gap_ms": 168.9013570000002,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "adaptive",
+        "parent_cpu_start": 2,
+        "parent_cpu_final": 1.6,
+        "core_target_passed": false,
+        "core_offered": 3240,
+        "core_completed": 3116,
+        "core_rejected": 124,
+        "core_on_time_fraction": 0.8959876543209877,
+        "core_success_scheduled_p99_ms": 101.78972900000008,
+        "arrival_on_time_fraction": 0.6875,
+        "arrival_success_p99_ms": 161.44544299999689,
+        "outside_on_time_fraction": 0.9555555555555556,
+        "sandbox_offered": 50,
+        "sandbox_completed": 26,
+        "sandbox_success_p50_ms": 893.969972,
+        "sandbox_success_p95_ms": 1338.530782,
+        "refill_attempts": 26,
+        "refill_reserved_with_foreground": 26,
+        "refill_paused_frames": 246,
+        "fresh_protected_frames": 1076,
+        "observation_frames": 1079,
+        "cpu_changes": 9,
+        "observed_cpu_range": [
+          1.6,
+          2
+        ],
+        "max_resource_sample_gap_ms": 115.2672820000007,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "psi-1cpu",
+        "parent_cpu_start": 1,
+        "parent_cpu_final": 1,
+        "core_target_passed": true,
+        "core_offered": 3240,
+        "core_completed": 3240,
+        "core_rejected": 0,
+        "core_on_time_fraction": 1,
+        "core_success_scheduled_p99_ms": 20.678281000000425,
+        "arrival_on_time_fraction": 1,
+        "arrival_success_p99_ms": 22.628982999998698,
+        "outside_on_time_fraction": 1,
+        "sandbox_offered": 50,
+        "sandbox_completed": 36,
+        "sandbox_success_p50_ms": 1263.090207,
+        "sandbox_success_p95_ms": 1965.264492,
+        "refill_attempts": 33,
+        "refill_reserved_with_foreground": 33,
+        "refill_paused_frames": 0,
+        "fresh_protected_frames": 1076,
+        "observation_frames": 1079,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 124.75024900000062,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "psi-2cpu",
+        "parent_cpu_start": 2,
+        "parent_cpu_final": 2,
+        "core_target_passed": false,
+        "core_offered": 3240,
+        "core_completed": 3033,
+        "core_rejected": 207,
+        "core_on_time_fraction": 0.8336419753086419,
+        "core_success_scheduled_p99_ms": 148.19502300000022,
+        "arrival_on_time_fraction": 0.5083333333333333,
+        "arrival_success_p99_ms": 167.20381999999518,
+        "outside_on_time_fraction": 0.9265873015873016,
+        "sandbox_offered": 50,
+        "sandbox_completed": 39,
+        "sandbox_success_p50_ms": 889.182936,
+        "sandbox_success_p95_ms": 1499.783251,
+        "refill_attempts": 28,
+        "refill_reserved_with_foreground": 21,
+        "refill_paused_frames": 334,
+        "fresh_protected_frames": 1075,
+        "observation_frames": 1078,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 139.5866160000005,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "idle-1cpu",
+        "parent_cpu_start": 1,
+        "parent_cpu_final": 1,
+        "core_target_passed": false,
+        "core_offered": 3240,
+        "core_completed": 3238,
+        "core_rejected": 2,
+        "core_on_time_fraction": 0.9950617283950617,
+        "core_success_scheduled_p99_ms": 31.056861999997636,
+        "arrival_on_time_fraction": 0.9777777777777777,
+        "arrival_success_p99_ms": 61.30064300000231,
+        "outside_on_time_fraction": 1,
+        "sandbox_offered": 50,
+        "sandbox_completed": 39,
+        "sandbox_success_p50_ms": 399.159718,
+        "sandbox_success_p95_ms": 1247.701584,
+        "refill_attempts": 32,
+        "refill_reserved_with_foreground": 0,
+        "refill_paused_frames": 0,
+        "fresh_protected_frames": 1043,
+        "observation_frames": 1046,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 371.47494699999515,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "idle-2cpu",
+        "parent_cpu_start": 2,
+        "parent_cpu_final": 2,
+        "core_target_passed": false,
+        "core_offered": 3240,
+        "core_completed": 3076,
+        "core_rejected": 164,
+        "core_on_time_fraction": 0.862037037037037,
+        "core_success_scheduled_p99_ms": 105.68338000000222,
+        "arrival_on_time_fraction": 0.5847222222222223,
+        "arrival_success_p99_ms": 141.4159720000025,
+        "outside_on_time_fraction": 0.9412698412698413,
+        "sandbox_offered": 50,
+        "sandbox_completed": 40,
+        "sandbox_success_p50_ms": 411.025544,
+        "sandbox_success_p95_ms": 1682.189914,
+        "refill_attempts": 29,
+        "refill_reserved_with_foreground": 0,
+        "refill_paused_frames": 0,
+        "fresh_protected_frames": 1052,
+        "observation_frames": 1053,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 365.8082800000011,
+        "cleanup_complete": true
+      },
+      {
+        "repetition": 2,
+        "profile": "baseline",
+        "parent_cpu_start": 2,
+        "parent_cpu_final": 2,
+        "core_target_passed": true,
+        "core_offered": 3240,
+        "core_completed": 3240,
+        "core_rejected": 0,
+        "core_on_time_fraction": 1,
+        "core_success_scheduled_p99_ms": 18.453605000002426,
+        "arrival_on_time_fraction": 1,
+        "arrival_success_p99_ms": 16.928978000003553,
+        "outside_on_time_fraction": 1,
+        "sandbox_offered": 0,
+        "sandbox_completed": 0,
+        "sandbox_success_p50_ms": null,
+        "sandbox_success_p95_ms": null,
+        "refill_attempts": 0,
+        "refill_reserved_with_foreground": 0,
+        "refill_paused_frames": 0,
+        "fresh_protected_frames": 1065,
+        "observation_frames": 1068,
+        "cpu_changes": 0,
+        "observed_cpu_range": null,
+        "max_resource_sample_gap_ms": 379.6543939999974,
+        "cleanup_complete": true
+      }
+    ],
+    "verification": {
+      "core_requests": 38880,
+      "sandbox_requests": 500,
+      "successful_unique_sandbox_executions": 355,
+      "resource_frames": 12877,
+      "core_transport_or_validation_errors": 0,
+      "client_drops": 0,
+      "sandbox_errors": 0,
+      "invalid_resource_frames": 0,
+      "oom_increments": 0,
+      "all_cleanup_confirmed": true,
+      "checks": [
+        "make check build after Gateway deadline fix",
+        "34 Python deployment/launcher tests",
+        "real KVM PSI observe/full/refill-only high/low/missing-source lifecycle",
+        "systemd 252/KVM Warm lifecycle and parent 1 CPU + sandbox 0.5 CPU + PSI-only wiring"
+      ],
+      "sampling": "50ms target; measured maximum gap about 380ms; fresh protected snapshots at least about 99.7%; metrics remain sampled, not precise instantaneous peaks"
+    },
+    "source": {
+      "archive": "artifacts/psi-protection-validation-20261022.tar.gz",
+      "archive_sha256": "b19dee023ae67434c69ee2fe25d9193d94244a995f549daf35b99083e55d1164",
+      "archive_files": 60,
+      "benchmark_sha256": "58318e46833bbdaa2975817f1c1e2a0aa773f788c497fea3391e11133e1f1ed9",
+      "mockcore_sha256": "94036e511670bba383e54a9ac3f1eb1dce1c2b9c86caa4a68c42a3bc64aa786b",
+      "runsc_sha256": "210b437a9cfae51e8f8c9074ed19b8b5e59477178e2e391a18117d8d6b924f7a",
+      "rootfs_image": "python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258"
+    },
+    "conclusions": [
+      "Parent 1 CPU + PSI refill-only met the predeclared target in whole/arrival/outside windows for both repetitions: all 6480 Core calls succeeded within 50ms, at sandbox completion cost 33/36 out of 50.",
+      "No PSI pauses occurred in that passing profile; this does not demonstrate dynamic-gate benefit. Budget headroom and exact policy/workload remain part of the operating point.",
+      "Idle + parent 1 CPU failed its second arrival window despite passing whole-window metrics; retained as a failure.",
+      "PSI-only at 2 CPU actuated refill pauses but failed the target. AIMD + full scheduling made 7/9 actual CPU changes between 1.6 and 2, failed the target and completed 26/50 sandbox jobs.",
+      "Protected-Core PSI does not directly protect sandbox-foreground latency; idle at 1 CPU had lower sandbox median latency than PSI-only at 1 CPU.",
+      "Two fixed-trace counterbalanced repetitions provide a scoped validation point, not general optimality, production or hard realtime guarantees; no further parameter search in this batch."
+    ]
   }
 }

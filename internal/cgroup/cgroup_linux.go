@@ -20,6 +20,7 @@ const MemoryMax = 512 << 20
 type Manager struct {
 	SandboxParentPath string
 	Memory            MemoryBudget
+	sandboxCPUMilli   int64
 }
 
 type Group struct {
@@ -46,7 +47,18 @@ func New(root string, moveSelf bool) (*Manager, error) {
 }
 
 func NewWithMemory(root string, moveSelf bool, budget MemoryBudget) (*Manager, error) {
-	root, err := filepath.EvalSymlinks(root)
+	return NewWithLimits(root, moveSelf, budget, 0, 0)
+}
+
+func NewWithLimits(root string, moveSelf bool, budget MemoryBudget, sandboxCPUMilli, parentCPUMilli int64) (*Manager, error) {
+	if _, err := SandboxBandwidth(sandboxCPUMilli); err != nil {
+		return nil, err
+	}
+	parentCPU, err := ParentBandwidth(parentCPUMilli)
+	if err != nil {
+		return nil, err
+	}
+	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +103,7 @@ func NewWithMemory(root string, moveSelf bool, budget MemoryBudget) (*Manager, e
 		return nil, err
 	}
 	for _, setting := range [][2]string{
-		{"cpu.max", "80000 20000"}, {"memory.high", strconv.FormatInt(budget.ParentBytes*3/4, 10)},
+		{"cpu.max", fmt.Sprintf("%d %d", parentCPU.Quota, parentCPU.Period)}, {"memory.high", strconv.FormatInt(budget.ParentBytes*3/4, 10)},
 		{"memory.max", strconv.FormatInt(budget.ParentBytes, 10)}, {"memory.swap.max", "0"},
 		{"pids.max", "2048"}, {"cgroup.subtree_control", "+cpu +memory +pids"},
 	} {
@@ -99,12 +111,16 @@ func NewWithMemory(root string, moveSelf bool, budget MemoryBudget) (*Manager, e
 			return nil, err
 		}
 	}
-	return &Manager{SandboxParentPath: parent, Memory: budget}, nil
+	return &Manager{SandboxParentPath: parent, Memory: budget, sandboxCPUMilli: sandboxCPUMilli}, nil
 }
 
 func (m *Manager) NewGroup(id string) (*Group, error) {
 	if !validID(id) {
 		return nil, errors.New("invalid sandbox id")
+	}
+	cpu, err := SandboxBandwidth(m.sandboxCPUMilli)
+	if err != nil {
+		return nil, err
 	}
 	g := &Group{CgroupPath: filepath.Join(m.SandboxParentPath, id)}
 	if err := os.Mkdir(g.CgroupPath, 0755); err != nil {
@@ -115,7 +131,7 @@ func (m *Manager) NewGroup(id string) (*Group, error) {
 		limit = MemoryMax
 	}
 	for _, setting := range [][2]string{
-		{"cpu.max", "20000 20000"}, {"memory.high", strconv.FormatInt(limit*3/4, 10)},
+		{"cpu.max", fmt.Sprintf("%d %d", cpu.Quota, cpu.Period)}, {"memory.high", strconv.FormatInt(limit*3/4, 10)},
 		{"memory.max", strconv.FormatInt(limit, 10)}, {"memory.swap.max", "0"},
 		{"memory.oom.group", "1"}, {"pids.max", "256"},
 	} {

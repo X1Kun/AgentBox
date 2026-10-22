@@ -44,11 +44,16 @@ sudo python3 scripts/deploy.py smoke
 - `AGENTBOX_API_TOKEN`：首次生成随机 token，再次安装保留；至少 32 字符。
 - `AGENTBOX_PLATFORM`：`kvm` 或将 --platform 改为 systrap。
 - `AGENTBOX_LISTEN`：显式 loopback IP 与端口，默认 `127.0.0.1:8080`。
-- `AGENTBOX_CONCURRENCY`：1～4，默认 1。
+- `AGENTBOX_CONCURRENCY`：1～8，默认 1；不得超过 `AGENTBOX_MAX_SANDBOXES`。创建并发支持 1～4，默认 1，也受总实例预算约束。扩大并发不增加父组 CPU/内存配额。
+- `AGENTBOX_SANDBOX_CPU_MILLI`：单实例 CPU 上限，50～4000，默认 1000（1 CPU）；例如 500 表示 0.5 CPU。所有新建及补池实例使用同一模板，仍受父组总上限约束。修改后重启生效，不支持客户端按请求更改。
+- `AGENTBOX_PARENT_CPU_MILLI`：父组配置上限，50～4000，默认 4000；例如 1000 表示所有沙箱共享 1 CPU 带宽，不代表预留或绑核。
+- `AGENTBOX_QOS_MIN_CPU/MAX_CPU`：默认 0.5/4；启用 CPU 控制时最大值不得超过父组预算，且最小值不得超过最大值。调低父组预算后，使用 CPU enforce 需相应调整最大值。
 - `AGENTBOX_MODE`：cold 或 warm，默认 cold；其余池容量与队列参数见 [配置表](warm-pool.md#配置)。
+- `AGENTBOX_WARM_REFILL_POLICY`：默认 slots；Warm 可选 idle，在任一前台任务持槽时暂停新后台补池，按需创建继续可用。改配置后重启生效，切回 Cold 时需恢复 slots。
 - `AGENTBOX_WARM_DYNAMIC=true`：启用有界动态 READY 库存，默认 false；上下界与时间配置见[动态库存](dynamic-inventory.md)。
-- `AGENTBOX_QOS`：off、observe 或 enforce，默认 off。`AGENTBOX_QOS_CPU_CONTROL=true` 可在 observe 下预演，enforce 自动开启真实控制。两者均需显式受保护 cgroup 路径；采样与执行器失败行为见 [CPU QoS](qos.md#cpu)。
+- `AGENTBOX_QOS`：off、observe 或 enforce，默认 off。`AGENTBOX_QOS_CPU_CONTROL=true` 可在 observe 下预演，enforce 自动开启真实控制（显式 refill-only 作用域除外）。两者均需显式受保护 cgroup 路径；采样与执行器失败行为见 [CPU QoS](qos.md#cpu)。
 - `AGENTBOX_QOS_SCHEDULING=true`：启用压力准入与补池门控，默认 false；observe 只报告建议，enforce 实际执行。当前是否接单应同时查看 `qos.scheduling.admission_open`。
+- `AGENTBOX_QOS_REFILL_ONLY=true`：仅对 Warm 后台补池启用 PSI 门控，默认 false；要求 observe/enforce 和受保护 cgroup。与 CPU 控制、准入调度和业务借用互斥，enforce 在此显式作用域中不会自动启用 CPU 控制，按需创建继续可用。
 
 平台已经写入状态所有权，不能直接修改平台后复用旧状态。配置解析不执行 shell，不输出 token；smoke 脚本读取私有配置后在进程内构造 HTTP 请求，不通过命令行参数传递 token。
 

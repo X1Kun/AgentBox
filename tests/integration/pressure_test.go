@@ -25,7 +25,7 @@ func TestPressureSchedulingRuntime(t *testing.T) {
 	}
 	root := os.Getenv("AGENTBOX_CGROUP_ROOT")
 	core := filepath.Join(filepath.Dir(root), "scheduling-core")
-	for _, mode := range []string{"observe", "enforce"} {
+	for _, mode := range []string{"observe", "enforce", "refill-only"} {
 		t.Run(mode, func(t *testing.T) {
 			if err := os.MkdirAll(core, 0755); err != nil {
 				t.Fatal(err)
@@ -35,6 +35,9 @@ func TestPressureSchedulingRuntime(t *testing.T) {
 			}
 			c := sandbox.Config{Logger: slog.New(slog.NewJSONHandler(os.Stderr, nil)), Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"), StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: root, Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: "warm", Concurrency: 1, WarmPoolSize: 1, MaxSandboxes: 3, QueueTimeout: 3 * time.Second,
 				QoS: qos.Config{Mode: mode, Scheduling: true, ProtectedCgroup: core, Interval: 50 * time.Millisecond, CPU: qos.CPUConfig{MaxCPU: 1, DecisionInterval: 100 * time.Millisecond, StableFor: 200 * time.Millisecond}}}
+			if mode == "refill-only" {
+				c.QoS.Mode, c.QoS.Scheduling, c.QoS.RefillOnly = "enforce", false, true
+			}
 			e, err := sandbox.New(c)
 			if err != nil {
 				t.Fatal(err)
@@ -97,6 +100,23 @@ func TestPressureSchedulingRuntime(t *testing.T) {
 				if err != nil || r.Status != "succeeded" || r.Stdout != "preview-ok\n" || !r.CleanupComplete {
 					t.Fatalf("observe execution: %+v %v", r, err)
 				}
+			} else if mode == "refill-only" {
+				if !status.QoS.Scheduling.AdmissionOpen || !status.QoS.Scheduling.RefillPaused || status.QoS.CPUControl != nil {
+					t.Fatal("refill-only changed CPU or admission")
+				}
+				for i := 0; i < 2; i++ {
+					r, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "print('refill-only')"})
+					if err != nil || r.Status != "succeeded" || !r.CleanupComplete {
+						t.Fatalf("ready/demand execution failed: %+v %v", r, err)
+					}
+				}
+				data, err := os.ReadFile(filepath.Join(root, "sandboxes", "cpu.max"))
+				if err != nil || string(data) != "80000 20000\n" {
+					t.Fatalf("refill-only changed parent CPU: %s %v", data, err)
+				}
+				if s := e.Status(); s.Idle != 0 || s.Creating != 0 {
+					t.Fatal("refilled under pressure")
+				}
 			} else {
 				if status.QoS.Scheduling.AdmissionOpen || !status.QoS.Scheduling.RefillPaused {
 					t.Fatal("scheduling gate not enforced")
@@ -119,19 +139,27 @@ func TestPressureSchedulingRuntime(t *testing.T) {
 				}
 			}
 			stopLoad()
-			if mode == "enforce" {
+			if mode == "enforce" || mode == "refill-only" {
 				if err := os.Remove(core); err != nil {
 					t.Fatal(err)
 				}
 				waitRuntime(t, func() bool { s := e.Status(); return s.QoS.Pressure.State == "unknown" })
 				if e.Status().QoS.Scheduling.AdmissionOpen {
-					t.Fatal("missing source reopened admission")
+					if mode != "refill-only" {
+						t.Fatal("missing source reopened admission")
+					}
+				}
+				if !e.Status().QoS.Scheduling.RefillPaused {
+					t.Fatal("missing source reopened refill")
 				}
 				if err := os.Mkdir(core, 0755); err != nil {
 					t.Fatal(err)
 				}
 			}
-			waitRuntime(t, func() bool { s := e.Status(); return s.QoS.Scheduling.AdmissionOpen && s.Idle == 1 })
+			waitRuntime(t, func() bool {
+				s := e.Status()
+				return s.QoS.Scheduling.AdmissionOpen && !s.QoS.Scheduling.RefillPaused && s.Idle == 1
+			})
 			r, err := e.Execute(context.Background(), api.Request{Runtime: "python", Code: "print('recovered')"})
 			if err != nil || r.Status != "succeeded" || !r.CleanupComplete {
 				t.Fatalf("recovered execution: %+v %v", r, err)

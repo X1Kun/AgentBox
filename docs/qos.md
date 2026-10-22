@@ -12,6 +12,7 @@ CPU 预算、压力准入和补池门控使用同一组有效压力观测，分�
 | `-qos=observe -qos-scheduling` | 预演压力门控，不改变接单或补池 |
 | `-qos=enforce` | 执行 CPU 控制并读回确认；调度门控仍默认关闭 |
 | `-qos=enforce -qos-scheduling` | 同时执行 CPU 控制、压力准入和补池门控 |
+| `-qos=enforce -qos-refill-only` | 仅按 PSI 暂停/恢复新的 Warm 后台补池，不修改 CPU 配额或准入 |
 
 observe/enforce 都需显式指定受保护服务：`-qos-protected-cgroup=/sys/fs/cgroup/...`。该路径不得与沙箱子树相互包含。systemd 配置示例：
 
@@ -21,12 +22,14 @@ AGENTBOX_QOS_SCHEDULING=true
 AGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/system.slice/mockcore.service
 ```
 
-预演可改为 observe，并设置 `AGENTBOX_QOS_CPU_CONTROL=true`。模式、两个开关默认分别为 off、false、false。自定义策略参数使用 daemon CLI；部署与更新见 [systemd](systemd-deployment.md)。
+预演可改为 observe，并设置 `AGENTBOX_QOS_CPU_CONTROL=true`。模式默认 off，CPU 预演、完整压力调度和仅补池三个开关默认 false。父组预算及 CPU 上下界支持固定服务配置，其余策略参数通过 daemon CLI 设置；部署与更新见 [systemd](systemd-deployment.md)。
 
 <a id="cpu"></a>
 ## CPU 预算控制
 
 `internal/qos/policy.go` 决策，controller 协调采样和执行器，`internal/cgroup/cpu.go` 只修改 Manager 拥有的沙箱父级。
+
+单实例固定上限另由服务端 `-sandbox-cpu-milli` 配置，默认 1000（1 CPU），见[实例配置](warm-pool.md#配置)。AIMD 不修改子组额度；调低父组预算时，即使子组还有自身额度也可能等待父组补充。这是总预算与实例边界两层控制，不是每个实例各跑一套动态策略。
 
 | 参数 | 默认值 | CLI |
 | --- | --- | --- |
@@ -74,6 +77,23 @@ queue_entered = assigned.count + canceled.count + timed_out.count
 ```
 
 CPU 控制降级不自动关闭 Engine；静态限制和清理失败停止接单仍生效。停止时不主动放宽配额；新 Engine 先恢复静态边界再初始化策略。
+
+### 仅补池的 PSI 作用域
+
+`qos-refill-only` 可在 observe 下预演、enforce 下执行，要求 Warm 模式；与 `qos-cpu-control`、`qos-scheduling`、业务额度借用互斥。它复用 protected CPU PSI 的确认、滞回和缺测保持状态机，但不创建 CPU 执行器，也不关闭准入、清退队列或取消在途请求。已有创建继续完成。初始未知沿用有界静态补池，曾暂停后需有效低压稳定才能恢复。
+
+要替代 idle，配置 `warm-refill-policy=slots`，由 PSI 决定额外暂停条件；数量、创建并发、队列优先及实例总上限继续生效。`qos.pressure.suggested_admission_open` 是通用建议，实际行为看 `qos.scheduling.refill_only/admission_open/refill_paused`。仅补池时，即使建议关闭准入，实际准入仍开放。
+
+```ini
+AGENTBOX_MODE=warm
+AGENTBOX_WARM_REFILL_POLICY=slots
+AGENTBOX_PARENT_CPU_MILLI=1000
+AGENTBOX_QOS=enforce
+AGENTBOX_QOS_REFILL_ONLY=true
+AGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/system.slice/core.service
+```
+
+父组静态预算由 `-parent-cpu-milli` 设置，默认 4000（4 CPU），范围 50～4000。CPU AIMD 的 `qos-max-cpu` 不得超过该预算；固定服务可用 `AGENTBOX_QOS_MIN_CPU/MAX_CPU` 配置上下界。PSI 仅补池不修改此预算，不把动态反馈等同于无限可借用资源。当前高/低阈值 20%/10%、确认 1 秒、低压稳定 2 秒为工程起点，不能保证 50ms 业务时延，尤其是首次突发和已经开始的创建。
 
 ```bash
 AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \

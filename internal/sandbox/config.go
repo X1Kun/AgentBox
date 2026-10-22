@@ -5,12 +5,24 @@ import (
 	"time"
 )
 
+const MaxExecutionConcurrency = 8
+const MaxCreationConcurrency = 4
+
 func normalizePoolConfig(c *Config) error {
 	if c.Mode == "" {
 		c.Mode = "cold"
 	}
 	if c.Mode != "cold" && c.Mode != "warm" {
 		return errors.New("mode must be cold or warm")
+	}
+	if c.WarmRefillPolicy == "" {
+		c.WarmRefillPolicy = "slots"
+	}
+	if c.WarmRefillPolicy != "slots" && c.WarmRefillPolicy != "idle" {
+		return errors.New("warm-refill-policy must be slots or idle")
+	}
+	if c.Mode == "cold" && c.WarmRefillPolicy != "slots" {
+		return errors.New("idle refill policy requires warm mode")
 	}
 	if c.Mode == "cold" && c.DynamicWarmPool {
 		return errors.New("dynamic inventory requires warm mode")
@@ -59,8 +71,8 @@ func normalizePoolConfig(c *Config) error {
 			return errors.New("warm-adjust-interval must be 100ms..1m and warm-downscale-window must be between that interval and 1h")
 		}
 	}
-	if c.CreateConcurrency < 1 || c.CreateConcurrency > 2 {
-		return errors.New("create-concurrency must be 1 or 2")
+	if c.CreateConcurrency < 1 || c.CreateConcurrency > MaxCreationConcurrency || c.CreateConcurrency > c.MaxSandboxes {
+		return errors.New("create-concurrency must be 1..4 and not exceed max-sandboxes")
 	}
 	if c.QueueSize < 1 || c.QueueSize > 128 || c.QueueBytes < 1 || c.QueueBytes > 64<<20 {
 		return errors.New("queue-size must be 1..128 and queue-bytes must be 1..64 MiB")

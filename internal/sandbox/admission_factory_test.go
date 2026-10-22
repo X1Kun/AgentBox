@@ -137,3 +137,54 @@ func TestBackgroundRefillYieldsToForegroundAndResumes(t *testing.T) {
 		t.Fatal("refill did not resume after cleanup")
 	}
 }
+
+func TestConfiguredUpperBoundsRemainWithinInstanceBudget(t *testing.T) {
+	c := Config{Mode: "warm", Concurrency: 8, CreateConcurrency: 4, MaxSandboxes: 8, WarmPoolSize: 1}
+	if err := normalizePoolConfig(&c); err != nil {
+		t.Fatal(err)
+	}
+	c.CreateConcurrency = 5
+	if err := normalizePoolConfig(&c); err == nil {
+		t.Fatal("unbounded creation allowed")
+	}
+	c.CreateConcurrency = 4
+	c.MaxSandboxes = 6
+	if err := normalizePoolConfig(&c); err == nil {
+		t.Fatal("execution budget exceeds instance budget")
+	}
+}
+
+func TestIdleRefillYieldsWithoutBlockingOnDemandCreation(t *testing.T) {
+	c := poolConfig()
+	c.Mode, c.WarmRefillPolicy = "warm", "idle"
+	c.Concurrency, c.MaxSandboxes, c.WarmPoolSize = 2, 4, 1
+	var calls atomic.Int32
+	p := newWarmPool(c, func(context.Context) (*executionState, error) {
+		calls.Add(1)
+		return &executionState{}, nil
+	}, func(*executionState) error { return nil })
+	defer func() { p.stop(); _ = p.drain() }()
+	if err := p.start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.acquire(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := p.status(); s.RefillBlockedBy != "foreground_active" || s.ExecutionInFlight != 1 || s.Creating != 0 {
+		t.Fatalf("refill should yield before execution capacity is full: %+v", s)
+	}
+	second, err := p.acquire(context.Background(), 1)
+	if err != nil || second == first || calls.Load() != 2 {
+		t.Fatalf("idle policy blocked or reused demand capacity: %v", err)
+	}
+	p.release(first, true)
+	if s := p.status(); s.RefillBlockedBy != "foreground_active" || s.Idle != 0 || s.Creating != 0 {
+		t.Fatalf("refill resumed while another execution still held a slot: %+v", s)
+	}
+	p.release(second, true)
+	waitPool(t, p, func(s poolSnapshot) bool { return s.Idle == 1 && s.Creating == 0 })
+	if calls.Load() != 3 {
+		t.Fatal("idle refill did not resume after foreground cleanup")
+	}
+}

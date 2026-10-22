@@ -8,12 +8,21 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/X1Kun/AgentBox/internal/api"
 	"github.com/X1Kun/AgentBox/internal/cgroup"
+	"github.com/X1Kun/AgentBox/internal/qos"
 )
+
+func TestCPUControllerCannotRaiseConfiguredParentBudget(t *testing.T) {
+	_, err := New(Config{ParentCPUMilli: 1000, QoS: qos.Config{Mode: "enforce", ProtectedCgroup: "/sys/fs/cgroup/core", CPU: qos.CPUConfig{MaxCPU: 2}}})
+	if err == nil || !strings.Contains(err.Error(), "qos-max-cpu") {
+		t.Fatalf("controller ceiling not checked before initialization: %v", err)
+	}
+}
 
 func TestStatusReportPreservesPublicFieldsAndReadiness(t *testing.T) {
 	p := newWarmPool(Config{WarmPoolSize: 3, MaxSandboxes: 8}, nil, nil)
@@ -30,7 +39,7 @@ func TestStatusReportPreservesPublicFieldsAndReadiness(t *testing.T) {
 	p.creationFailures = 2
 	p.cleanupFailures = 0
 	p.creationTotalMS = 123.5
-	e := &Engine{pool: p}
+	e := &Engine{pool: p, config: Config{SandboxCPUMilli: 500}}
 	data, err := json.Marshal(e.Status())
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +48,7 @@ func TestStatusReportPreservesPublicFieldsAndReadiness(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	expected := `{"mode":"warm","ready":true,"target":3,"max_sandboxes":8,"creating":2,"idle":1,"leased":1,"running":1,"destroying":1,"total":6,"queued":2,"queued_bytes":300,"creation_count":17,"creation_failures":2,"cleanup_failures":0,"creation_total_ms":123.5}`
+	expected := `{"sandbox_cpu_milli":500,"mode":"warm","ready":true,"target":3,"max_sandboxes":8,"creating":2,"idle":1,"leased":1,"running":1,"destroying":1,"total":6,"queued":2,"queued_bytes":300,"creation_count":17,"creation_failures":2,"cleanup_failures":0,"creation_total_ms":123.5}`
 	if err := json.Unmarshal([]byte(expected), &want); err != nil {
 		t.Fatal(err)
 	}

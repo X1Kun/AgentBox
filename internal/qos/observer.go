@@ -13,6 +13,7 @@ import (
 )
 
 type Config struct {
+	RefillOnly      bool
 	Scheduling      bool
 	CPUControl      bool
 	CPU             CPUConfig
@@ -37,18 +38,21 @@ func (c *Config) Normalize() error {
 		return fmt.Errorf("qos interval must be 50ms..1s")
 	}
 	if c.Mode == "off" {
-		if c.CPUControl || c.Scheduling || c.CPU.BaseCPU != 0 || c.BusinessFile != "" {
+		if c.CPUControl || c.Scheduling || c.RefillOnly || c.CPU.BaseCPU != 0 || c.BusinessFile != "" {
 			return fmt.Errorf("QoS policies require observe or enforce mode")
 		}
 		return nil
 	}
-	if c.Mode == "enforce" {
+	if c.RefillOnly && (c.CPUControl || c.Scheduling || c.CPU.BaseCPU != 0 || c.BusinessFile != "") {
+		return fmt.Errorf("qos-refill-only cannot combine with CPU control, admission scheduling or business borrowing")
+	}
+	if c.Mode == "enforce" && !c.RefillOnly {
 		c.CPUControl = true
 	}
 	if c.CPU.BaseCPU != 0 && !c.CPUControl {
 		return fmt.Errorf("base CPU requires CPU control")
 	}
-	if c.CPUControl || c.Scheduling {
+	if c.CPUControl || c.Scheduling || c.RefillOnly {
 		if err := c.CPU.Normalize(); err != nil {
 			return err
 		}
@@ -148,7 +152,7 @@ func New(config Config, sandboxParent string) (*Observer, error) {
 	sources, boundary := discoverSources(sandboxParent, protected)
 	o := newObserver(config, &FileReader{}, sources)
 	o.boundary = boundary
-	if config.CPUControl || config.Scheduling {
+	if config.CPUControl || config.Scheduling || config.RefillOnly {
 		pressure, err := NewPressurePolicy(config.CPU)
 		if err != nil {
 			return nil, err

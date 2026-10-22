@@ -35,6 +35,9 @@ const token = "local-benchmark-token-never-donated-to-sandbox"
 type sample struct {
 	Mode, Scenario                 string
 	Sequence, HTTP                 int
+	Wave                           int
+	FinishedMS, ScheduledWallMS    float64
+	RejectionReason                string
 	Status, ExecutionID, Error     string
 	ScheduledMS, StartedMS, WallMS float64
 	Timings                        api.Timings
@@ -42,6 +45,9 @@ type sample struct {
 }
 
 type summary struct {
+	ScheduledP50MS float64 `json:"success_scheduled_p50_ms"`
+	ScheduledP95MS float64 `json:"success_scheduled_p95_ms"`
+	SendLagP95MS   float64 `json:"send_lag_p95_ms"`
 	PoolMinIdle    int     `json:"pool_min_idle"`
 	PoolMaxTotal   int     `json:"pool_max_total"`
 	PoolMaxQueued  int     `json:"pool_max_queued"`
@@ -83,12 +89,13 @@ func percentile(values []float64, p float64) float64 {
 
 func collectSummary(mode, scenario string, rows []sample, elapsed time.Duration) summary {
 	s := summary{Mode: mode, Scenario: scenario, Offered: len(rows), ElapsedSeconds: elapsed.Seconds()}
-	var wall, setup, execute []float64
+	var wall, setup, execute, scheduled, lag []float64
 	for _, row := range rows {
+		lag = append(lag, max(0, row.StartedMS-row.ScheduledMS))
 		if row.HTTP == 200 {
 			s.Accepted++
 		}
-		if row.HTTP == 503 {
+		if row.HTTP == 503 && row.Error == "" {
 			s.Rejected++
 			continue
 		}
@@ -100,13 +107,19 @@ func collectSummary(mode, scenario string, rows []sample, elapsed time.Duration)
 		wall = append(wall, row.WallMS)
 		setup = append(setup, row.Timings.SetupMS)
 		execute = append(execute, row.Timings.ExecutionMS)
+		scheduled = append(scheduled, row.ScheduledWallMS)
 	}
+	s.ScheduledP50MS = percentile(scheduled, .50)
+	s.ScheduledP95MS = percentile(scheduled, .95)
+	s.SendLagP95MS = percentile(lag, .95)
 	s.P50MS = percentile(wall, 0.50)
 	s.P95MS = percentile(wall, 0.95)
 	s.P99MS = percentile(wall, 0.99)
 	s.SetupP50MS = percentile(setup, 0.50)
 	s.ExecuteP50MS = percentile(execute, 0.50)
-	s.CompletionRate = float64(s.Completed) / s.ElapsedSeconds
+	if s.ElapsedSeconds > 0 {
+		s.CompletionRate = float64(s.Completed) / s.ElapsedSeconds
+	}
 	return s
 }
 
@@ -138,11 +151,25 @@ func runRequest(client *http.Client, url, mode, scenario string, index int, orig
 			if result.Status == "succeeded" && result.Stdout != "Hello World\n" {
 				row.Error = "unexpected stdout"
 			}
-		} else if row.HTTP != 503 {
+		} else if row.HTTP == 503 {
+			var rejection struct {
+				Reason string `json:"reason"`
+			}
+			if readErr != nil || json.Unmarshal(data, &rejection) != nil {
+				row.Error = "invalid rejection response"
+			}
+			row.RejectionReason = rejection.Reason
+			if rejection.Reason == "executor_unhealthy" {
+				row.Error = "executor unavailable"
+			}
+		} else {
 			row.Error = "unexpected HTTP response"
 		}
 	}
-	row.WallMS = float64(time.Since(start)) / float64(time.Millisecond)
+	finished := time.Now()
+	row.WallMS = float64(finished.Sub(start)) / float64(time.Millisecond)
+	row.FinishedMS = float64(finished.Sub(origin)) / float64(time.Millisecond)
+	row.ScheduledWallMS = float64(finished.Sub(scheduled)) / float64(time.Millisecond)
 	return row
 }
 
@@ -178,6 +205,29 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 	if os.Getenv("AGENTBOX_BENCHMARK") != "1" {
 		t.Skip("requires explicitly authorized delegated runtime benchmark environment")
 	}
+	selection := os.Getenv("AGENTBOX_BENCH_SCENARIO")
+	if selection == "capacity" || selection == "refill-core" {
+		t.Skip("explicit comparison scenario uses its own runner")
+	}
+	if selection == "" {
+		selection = "all"
+	}
+	scenarios := []string{"inventory", "burst", "steady", "waves"}
+	if selection != "all" {
+		found := false
+		for _, v := range scenarios {
+			if v == selection {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("unknown benchmark scenario")
+		}
+		scenarios = []string{selection}
+	}
+	trace := makeWaveTrace(number(t, "AGENTBOX_BENCH_WAVE_CYCLES", 2, 1, 5))
+	var waveRuns []waveRun
+	startupMS := map[string]float64{}
 	count := number(t, "AGENTBOX_BENCH_SAMPLES", 60, 10, 1000)
 	rate := number(t, "AGENTBOX_BENCH_RATE", 10, 1, 100)
 	output := os.Getenv("AGENTBOX_BENCH_OUTPUT")
@@ -195,8 +245,7 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 	if err := raw.Chmod(0644); err != nil {
 		t.Fatal(err)
 	}
-	writer := csv.NewWriter(raw)
-	_ = writer.Write([]string{"mode", "scenario", "sequence", "http_status", "status", "execution_id", "scheduled_ms", "started_ms", "wall_ms", "queue_ms", "setup_ms", "execution_ms", "cleanup_ms", "total_ms", "cleanup_complete", "error"})
+	writer := newRequestWriter(raw)
 	var summaries []summary
 	var poolStatuses []api.StatusReport
 	var configurations []sandbox.Config
@@ -206,8 +255,12 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 			Runsc: os.Getenv("AGENTBOX_RUNSC"), Rootfs: os.Getenv("AGENTBOX_ROOTFS"),
 			StateDir: filepath.Join(t.TempDir(), "state"), CgroupRoot: os.Getenv("AGENTBOX_CGROUP_ROOT"),
 			Platform: os.Getenv("AGENTBOX_PLATFORM"), Mode: mode,
-			Concurrency: 4, WarmPoolSize: 3, MaxSandboxes: 6, CreateConcurrency: number(t, "AGENTBOX_BENCH_CREATE_CONCURRENCY", 1, 1, 2),
+			SandboxCPUMilli: int64(number(t, "AGENTBOX_BENCH_SANDBOX_CPU_MILLI", 1000, 50, 4000)),
+			Concurrency:     number(t, "AGENTBOX_BENCH_EXECUTION_CONCURRENCY", 4, 1, 8), WarmPoolSize: 3, MaxSandboxes: number(t, "AGENTBOX_BENCH_MAX_SANDBOXES", 6, 3, 8), CreateConcurrency: number(t, "AGENTBOX_BENCH_CREATE_CONCURRENCY", 1, 1, 4),
 			QueueSize: 16, QueueBytes: 8 << 20, QueueTimeout: 100 * time.Millisecond, OutputLimit: 1 << 20,
+		}
+		if mode == "warm" {
+			config.WarmRefillPolicy = os.Getenv("AGENTBOX_BENCH_REFILL_POLICY")
 		}
 		configurations = append(configurations, config)
 		engine, err := sandbox.New(config)
@@ -216,12 +269,14 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = engine.Close() })
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		startupBegin := time.Now()
 		err = engine.Start(ctx)
+		startupMS[mode] = float64(time.Since(startupBegin)) / float64(time.Millisecond)
 		cancel()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if mode == "warm" {
+		if mode == "warm" && selection != "waves" {
 			waitInventory(t, engine, 3)
 		}
 		memory, err := os.ReadFile(filepath.Join(config.CgroupRoot, "sandboxes", "memory.current"))
@@ -235,7 +290,7 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 		client := &http.Client{Transport: transport, Timeout: 45 * time.Second}
 		// Exclude two first-use probes from measured populations. Their failures are
 		// still fatal; subsequent CSV contains every offered measured request.
-		for i := 0; i < 2; i++ {
+		for i := 0; selection != "waves" && i < 2; i++ {
 			if mode == "warm" {
 				waitInventory(t, engine, 3)
 			}
@@ -244,7 +299,14 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 				t.Fatalf("probe failed: %+v", row)
 			}
 		}
-		for _, scenario := range []string{"inventory", "burst", "steady"} {
+		for _, scenario := range scenarios {
+			if scenario == "waves" {
+				rows, result := runWaves(t, engine, config, client, server.URL, output, trace)
+				waveRuns = append(waveRuns, result)
+				summaries = append(summaries, result.Summary)
+				writeRequests(t, writer, rows)
+				continue
+			}
 			if mode == "warm" {
 				waitInventory(t, engine, 3)
 			}
@@ -306,20 +368,7 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 			elapsed := time.Since(origin)
 			close(sampleStop)
 			<-sampleDone
-			for _, row := range rows {
-				fields := []string{row.Mode, row.Scenario, strconv.Itoa(row.Sequence), strconv.Itoa(row.HTTP), row.Status, row.ExecutionID}
-				for _, v := range []float64{row.ScheduledMS, row.StartedMS, row.WallMS, row.Timings.QueueMS, row.Timings.SetupMS, row.Timings.ExecutionMS, row.Timings.CleanupMS, row.Timings.TotalMS} {
-					fields = append(fields, strconv.FormatFloat(v, 'f', 3, 64))
-				}
-				fields = append(fields, strconv.FormatBool(row.Cleanup), row.Error)
-				if err := writer.Write(fields); err != nil {
-					t.Fatal(err)
-				}
-			}
-			writer.Flush()
-			if err := writer.Error(); err != nil {
-				t.Fatal(err)
-			}
+			writeRequests(t, writer, rows)
 			s := collectSummary(mode, scenario, rows, elapsed)
 			s.PoolMinIdle, s.PoolMaxTotal, s.PoolMaxQueued = minimumIdle, maximumTotal, maximumQueued
 			if mode == "warm" && maximumTotal > config.MaxSandboxes {
@@ -365,9 +414,14 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 		"parent_limits": parentLimits, "configurations": configurations,
 		"samples_per_inventory_and_steady": count, "burst_requests": 32, "steady_offered_per_second": rate,
 		"pool_status_before_close": poolStatuses, "idle_parent_memory_current_bytes": idleMemory,
-		"summaries":        summaries,
-		"usage_scope":      "sandbox cgroup cumulative from creation through pre-cleanup sample, including warm idle; later cleanup and host CLI work excluded; kill completion is not awaited before sampling",
-		"percentile_scope": "successful HTTP requests with confirmed cleanup; rejected and failed counts reported separately",
+		"summaries":         summaries,
+		"selected_scenario": selection, "startup_ms": startupMS,
+		"wave_trace": trace, "wave_runs": waveRuns,
+		"wave_scope":          "fixed-seed open-loop replay; 2s initial idle, 5 requests in 1s, idle 10s, 20 requests in 5s, idle 10s; no inventory waits or retries during replay; full idle intervals included; QoS/dynamic inventory off",
+		"wave_resource_scope": "sandbox parent and visible cgroup namespace root; in private Docker root includes load driver, runtime CLIs, init and shared dependencies; cumulative CPU deltas and time-weighted sampled memory; not task-only accounting; startup, dependency preparation and final pool shutdown excluded",
+		"wave_objective":      "scheduled-to-response and first-request latency, completion/rejection, recovery and whole-cycle resource cost; completed_per_second includes idle time and is not a sustained-capacity score",
+		"usage_scope":         "sandbox cgroup cumulative from creation through pre-cleanup sample, including warm idle; later cleanup and host CLI work excluded; kill completion is not awaited before sampling",
+		"percentile_scope":    "successful HTTP requests with confirmed cleanup; rejected and failed counts reported separately",
 	}
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
@@ -386,9 +440,38 @@ func TestColdWarmHTTPBenchmark(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
+	for _, run := range waveRuns {
+		if run.Error != "" || run.UnhealthySamples != 0 || run.Resources.InvalidSamples != 0 {
+			t.Errorf("%s/waves invalid state or samples: error=%s unhealthy=%d invalid=%d; evidence retained", run.Mode, run.Error, run.UnhealthySamples, run.Resources.InvalidSamples)
+		}
+	}
 	for _, s := range summaries {
 		if s.Errors != 0 {
 			t.Errorf("%s/%s had %d errors; raw evidence retained", s.Mode, s.Scenario, s.Errors)
 		}
 	}
+}
+
+func writeRequests(t *testing.T, writer *csv.Writer, rows []sample) {
+	t.Helper()
+	for _, row := range rows {
+		fields := []string{row.Mode, row.Scenario, strconv.Itoa(row.Sequence), strconv.Itoa(row.HTTP), row.Status, row.ExecutionID}
+		for _, v := range []float64{row.ScheduledMS, row.StartedMS, row.WallMS, row.Timings.QueueMS, row.Timings.SetupMS, row.Timings.ExecutionMS, row.Timings.CleanupMS, row.Timings.TotalMS} {
+			fields = append(fields, strconv.FormatFloat(v, 'f', 3, 64))
+		}
+		fields = append(fields, strconv.FormatBool(row.Cleanup), row.Error, strconv.Itoa(row.Wave), strconv.FormatFloat(row.FinishedMS, 'f', 3, 64), strconv.FormatFloat(row.ScheduledWallMS, 'f', 3, 64), row.RejectionReason)
+		if err := writer.Write(fields); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func newRequestWriter(raw io.Writer) *csv.Writer {
+	writer := csv.NewWriter(raw)
+	_ = writer.Write([]string{"mode", "scenario", "sequence", "http_status", "status", "execution_id", "scheduled_ms", "started_ms", "wall_ms", "queue_ms", "setup_ms", "execution_ms", "cleanup_ms", "total_ms", "cleanup_complete", "error", "wave", "finished_ms", "scheduled_wall_ms", "rejection_reason"})
+	return writer
 }

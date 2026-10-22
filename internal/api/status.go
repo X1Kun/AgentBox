@@ -2,6 +2,8 @@ package api
 
 // StatusReport is the public executor status response shared by cold and warm modes.
 type StatusReport struct {
+	ParentCPUMilli   int64               `json:"parent_cpu_milli,omitempty"`
+	SandboxCPUMilli  int64               `json:"sandbox_cpu_milli"`
 	Memory           *MemoryBudgetReport `json:"memory,omitempty"`
 	Inventory        *InventoryReport    `json:"inventory,omitempty"`
 	Scheduling       *SchedulingReport   `json:"scheduling,omitempty"`

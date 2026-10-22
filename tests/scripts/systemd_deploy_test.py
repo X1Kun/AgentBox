@@ -40,6 +40,44 @@ class ContainerLauncherTests(unittest.TestCase):
             if suite != "systemd":
                 self.assertIn("--rm", command)
 
+    def test_wave_benchmark_replays_named_scenario_without_extra_network(self):
+        args = launcher.arguments(["benchmark", "--scenario", "waves", "--wave-cycles", "2", "--create-concurrency", "2"], {})
+        command = launcher.docker_command(args, "test-image", Path("/results"), environment={})
+        for value in ("AGENTBOX_BENCH_SCENARIO=waves", "AGENTBOX_BENCH_WAVE_CYCLES=2", "AGENTBOX_BENCH_CREATE_CONCURRENCY=2", "--network=none", "--init"):
+            self.assertIn(value, command)
+        with patch("sys.stderr"):
+            for argv in (["benchmark", "--wave-cycles", "0"], ["runtime", "--scenario", "waves"]):
+                with self.assertRaises(SystemExit): launcher.arguments(argv, {})
+
+    def test_capacity_profile_uses_bounded_resources_and_explicit_limits(self):
+        args = launcher.arguments(["benchmark", "--scenario", "capacity", "--execution-concurrency", "8", "--create-concurrency", "4", "--max-sandboxes", "8"], {})
+        command = launcher.docker_command(args, "test-image", Path("/results"), environment={})
+        for value in ("AGENTBOX_BENCH_EXECUTION_CONCURRENCY=8", "AGENTBOX_BENCH_CREATE_CONCURRENCY=4", "AGENTBOX_BENCH_MAX_SANDBOXES=8", "AGENTBOX_CAPACITY_SAMPLES=200", "AGENTBOX_CAPACITY_RATES=4,8,12,16", "--memory=5g", "--cpus=6", "--network=none", "/tmp:rw,exec,nosuid,nodev,mode=1777,size=268435456"):
+            self.assertIn(value, command)
+        with patch("sys.stderr"):
+            for argv in (["benchmark", "--execution-concurrency", "8"], ["benchmark", "--capacity-rates", "8,4"], ["benchmark", "--on-time-target", "nan"]):
+                with self.assertRaises(SystemExit): launcher.arguments(argv, {})
+
+    def test_cpu_controls_are_explicit_and_bounded(self):
+        args = launcher.arguments(["benchmark", "--scenario", "capacity", "--capacity-parent-cpu", "2", "--sandbox-cpu-milli", "500"], {})
+        command = launcher.docker_command(args, "test-image", Path("/results"), environment={})
+        for value in ("AGENTBOX_CAPACITY_PARENT_CPU=2", "AGENTBOX_BENCH_SANDBOX_CPU_MILLI=500", "--cpus=6"):
+            self.assertIn(value, command)
+        with patch("sys.stderr"):
+            for argv in (["benchmark", "--sandbox-cpu-milli", "49"], ["benchmark", "--sandbox-cpu-milli", "4001"], ["benchmark", "--capacity-parent-cpu", "5"], ["benchmark", "--capacity-parent-cpu", "2"], ["runtime", "--sandbox-cpu-milli", "500"]):
+                with self.assertRaises(SystemExit): launcher.arguments(argv, {})
+
+    def test_refill_core_comparison_is_explicit_and_keeps_driver_budget(self):
+        args = launcher.arguments(["benchmark", "--scenario", "refill-core", "--repetitions", "2", "--create-concurrency", "4", "--max-sandboxes", "8"], {})
+        command = launcher.docker_command(args, "test-image", Path("/results"), environment={})
+        for value in ("--network=none", "--init", "--cpus=6", "--memory=5g", "AGENTBOX_BENCH_SCENARIO=refill-core", "AGENTBOX_REFILL_REPETITIONS=2", "/tmp:rw,exec,nosuid,nodev,mode=1777,size=268435456"):
+            self.assertIn(value, command)
+        with patch("sys.stderr"):
+            for argv in (["benchmark", "--scenario", "refill-core", "--repetitions", "4"], ["benchmark", "--scenario", "refill-core", "--warm-refill-policy", "idle"], ["runtime", "--warm-refill-policy", "idle"]):
+                with self.assertRaises(SystemExit): launcher.arguments(argv, {})
+        protection = launcher.arguments(["benchmark", "--scenario", "refill-core", "--refill-comparison", "protection", "--repetitions", "2"], {})
+        self.assertIn("AGENTBOX_REFILL_COMPARISON=protection", launcher.docker_command(protection, "test-image", Path("/results"), environment={}))
+
     def test_live_api_is_explicit_and_never_places_key_in_docker_arguments(self):
         with patch("sys.stderr"):
             for argv, env in ((["live"], {}), (["mcp"], {"AGENTBOX_LIVE_DEEPSEEK": "1"}),
@@ -332,7 +370,7 @@ class ToolTests(unittest.TestCase):
     def test_configuration_rejects_unsafe_or_ambiguous_values(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "config"
-            for extra in ("AGENTBOX_LISTEN=0.0.0.0:8080", "AGENTBOX_LISTEN=127.0.0.1:8080/path", "AGENTBOX_LISTEN=127.0.0.1", "AGENTBOX_CONCURRENCY=5", "AGENTBOX_PLATFORM=ptrace", "AGENTBOX_MODE=auto", "AGENTBOX_QOS=enforce", "AGENTBOX_QOS=observe", "AGENTBOX_QOS_INTERVAL=10ms", "AGENTBOX_MAX_SANDBOXES=9", "AGENTBOX_QUEUE_TIMEOUT=6s", "AGENTBOX_MODE=warm\nAGENTBOX_WARM_SIZE=7", "AGENTBOX_SANDBOX_MEMORY_MIB=64", "AGENTBOX_MEMORY_RESERVE_MIB=1", "AGENTBOX_QUEUE_BYTES=0", "UNKNOWN=value", "AGENTBOX_LISTEN='127.0.0.1:8080'", "AGENTBOX_API_TOKEN="+"y"*32):
+            for extra in ("AGENTBOX_LISTEN=0.0.0.0:8080", "AGENTBOX_LISTEN=127.0.0.1:8080/path", "AGENTBOX_LISTEN=127.0.0.1", "AGENTBOX_CONCURRENCY=9", "AGENTBOX_PLATFORM=ptrace", "AGENTBOX_MODE=auto", "AGENTBOX_QOS=enforce", "AGENTBOX_QOS=observe", "AGENTBOX_QOS_INTERVAL=10ms", "AGENTBOX_MAX_SANDBOXES=9", "AGENTBOX_QUEUE_TIMEOUT=6s", "AGENTBOX_MODE=warm\nAGENTBOX_WARM_SIZE=7", "AGENTBOX_SANDBOX_MEMORY_MIB=64", "AGENTBOX_MEMORY_RESERVE_MIB=1", "AGENTBOX_QUEUE_BYTES=0", "UNKNOWN=value", "AGENTBOX_LISTEN='127.0.0.1:8080'", "AGENTBOX_API_TOKEN="+"y"*32):
                 config.write_text("AGENTBOX_API_TOKEN="+"x"*32+"\n"+extra+"\n")
                 with self.subTest(extra=extra), self.assertRaises(ValueError):
                     load_config(config)
@@ -346,6 +384,61 @@ class ToolTests(unittest.TestCase):
                 with self.assertRaises(ValueError): load_config(path)
             path.write_text(base+"AGENTBOX_QOS_BASE_CPU=1\nAGENTBOX_QOS_BUSINESS_FILE=/run/core/health.json\n")
             self.assertEqual(load_config(path)["AGENTBOX_QOS_BASE_CPU"], "1")
+
+    def test_higher_concurrency_requires_explicit_instance_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/"config"
+            base = "AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_CONCURRENCY=8\nAGENTBOX_CREATE_CONCURRENCY=4\n"
+            path.write_text(base)
+            with self.assertRaises(ValueError): load_config(path)
+            path.write_text(base+"AGENTBOX_MAX_SANDBOXES=8\n")
+            self.assertEqual(load_config(path)["AGENTBOX_CREATE_CONCURRENCY"], "4")
+
+    def test_sandbox_cpu_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)/"config"
+            base = "AGENTBOX_API_TOKEN="+"x"*32+"\n"
+            config.write_text(base)
+            self.assertEqual(load_config(config)["AGENTBOX_SANDBOX_CPU_MILLI"], "1000")
+            for milli in ("50", "500", "1500", "4000"):
+                config.write_text(base+"AGENTBOX_SANDBOX_CPU_MILLI="+milli+"\n")
+                self.assertEqual(load_config(config)["AGENTBOX_SANDBOX_CPU_MILLI"], milli)
+            for milli in ("0", "49", "4001", "-1", "nan", "0.5"):
+                config.write_text(base+"AGENTBOX_SANDBOX_CPU_MILLI="+milli+"\n")
+                with self.assertRaises(ValueError): load_config(config)
+        unit = (REPOSITORY/"deploy/systemd/agentbox.service").read_text()
+        self.assertIn("-sandbox-cpu-milli ${AGENTBOX_SANDBOX_CPU_MILLI}", unit)
+        self.assertIn("AGENTBOX_SANDBOX_CPU_MILLI=1000", unit)
+
+    def test_idle_refill_is_opt_in_and_requires_warm_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)/"config"
+            base = "AGENTBOX_API_TOKEN="+"x"*32+"\n"
+            config.write_text(base)
+            self.assertEqual(load_config(config)["AGENTBOX_WARM_REFILL_POLICY"], "slots")
+            config.write_text(base+"AGENTBOX_MODE=warm\nAGENTBOX_WARM_REFILL_POLICY=idle\n")
+            self.assertEqual(load_config(config)["AGENTBOX_WARM_REFILL_POLICY"], "idle")
+            for extra in ("AGENTBOX_WARM_REFILL_POLICY=idle\n", "AGENTBOX_MODE=warm\nAGENTBOX_WARM_REFILL_POLICY=unknown\n"):
+                config.write_text(base+extra)
+                with self.assertRaises(ValueError): load_config(config)
+        unit = (REPOSITORY/"deploy/systemd/agentbox.service").read_text()
+        self.assertIn("-warm-refill-policy ${AGENTBOX_WARM_REFILL_POLICY}", unit)
+        self.assertIn("AGENTBOX_WARM_REFILL_POLICY=slots", unit)
+
+    def test_psi_refill_scope_and_parent_budget_are_deployable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p=Path(directory)/"config"
+            base="AGENTBOX_API_TOKEN="+"x"*32+"\nAGENTBOX_MODE=warm\nAGENTBOX_PARENT_CPU_MILLI=1000\nAGENTBOX_QOS=enforce\nAGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/core\n"
+            p.write_text(base+"AGENTBOX_QOS_REFILL_ONLY=true\n")
+            self.assertEqual(load_config(p)["AGENTBOX_PARENT_CPU_MILLI"],"1000")
+            for extra in ("", "AGENTBOX_QOS_REFILL_ONLY=true\nAGENTBOX_QOS_CPU_CONTROL=true\n", "AGENTBOX_QOS_REFILL_ONLY=true\nAGENTBOX_QOS_SCHEDULING=true\n", "AGENTBOX_QOS_REFILL_ONLY=true\nAGENTBOX_QOS_MAX_CPU=nan\n"):
+                p.write_text(base+extra)
+                with self.assertRaises(ValueError):load_config(p)
+            p.write_text(base+"AGENTBOX_QOS_MIN_CPU=0.5\nAGENTBOX_QOS_MAX_CPU=1\n")
+            self.assertEqual(load_config(p)["AGENTBOX_QOS_MAX_CPU"],"1")
+        unit=(REPOSITORY/"deploy/systemd/agentbox.service").read_text()
+        for flag in ("-parent-cpu-milli ${AGENTBOX_PARENT_CPU_MILLI}","-qos-refill-only=${AGENTBOX_QOS_REFILL_ONLY}","-qos-max-cpu ${AGENTBOX_QOS_MAX_CPU}"):
+            self.assertIn(flag,unit)
 
     def test_cpu_control_configuration(self):
         with tempfile.TemporaryDirectory() as directory:

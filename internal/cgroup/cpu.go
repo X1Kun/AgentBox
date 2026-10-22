@@ -12,6 +12,27 @@ import (
 // The static four-CPU ceiling and bandwidth period cannot be raised by policy.
 type CPUBandwidth struct{ Quota, Period uint64 }
 
+// SandboxBandwidth is a service-owned limit, never an execution request field.
+// Zero selects the existing one-CPU default. Integer milli-CPU avoids float
+// rounding and maps exactly to the fixed 20ms bandwidth period.
+func SandboxBandwidth(milli int64) (CPUBandwidth, error) {
+	return cpuBandwidth(milli, 1000, "sandbox-cpu-milli")
+}
+
+func ParentBandwidth(milli int64) (CPUBandwidth, error) {
+	return cpuBandwidth(milli, 4000, "parent-cpu-milli")
+}
+
+func cpuBandwidth(milli, defaultMilli int64, name string) (CPUBandwidth, error) {
+	if milli == 0 {
+		milli = defaultMilli
+	}
+	if milli < 50 || milli > 4000 {
+		return CPUBandwidth{}, fmt.Errorf("%s must be 50..4000 (1000 = 1 CPU)", name)
+	}
+	return CPUBandwidth{Quota: uint64(milli) * 20, Period: 20000}, nil
+}
+
 func (m *Manager) ReadCPUQuota() (CPUBandwidth, error) {
 	data, err := os.ReadFile(filepath.Join(m.SandboxParentPath, "cpu.max"))
 	if err != nil {
