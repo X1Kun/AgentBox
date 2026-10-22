@@ -25,6 +25,25 @@ const publicToken = "gateway-test-token-with-at-least-32-characters"
 const backendToken = "daemon-test-token-with-at-least-32-characters"
 const validBody = `{"runtime":"python","code":"print(1)","request_id":"client-1"}`
 
+type lateDeadlineTransport struct{ calls atomic.Int32 }
+
+func (x *lateDeadlineTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	x.calls.Add(1)
+	deadline, _ := r.Context().Deadline()
+	time.Sleep(max(0, time.Until(deadline)) + time.Millisecond)
+	return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+}
+
+func TestGatewayClassifiesResponseAtExpiredDeadlineWithoutReplay(t *testing.T) {
+	s := testGateway(t, http.NotFoundHandler(), func(c *Config) { c.RequestTimeout = 5 * time.Millisecond })
+	transport := &lateDeadlineTransport{}
+	s.client = &http.Client{Transport: transport}
+	w := callGateway(s, "POST", "/v1/execute", validBody, publicToken)
+	if w.Code != 504 || !strings.Contains(w.Body.String(), "request_deadline_exceeded") || !strings.Contains(w.Body.String(), `"outcome_unknown":true`) || transport.calls.Load() != 1 {
+		t.Fatalf("deadline classification/replay: %d %s calls=%d", w.Code, w.Body.String(), transport.calls.Load())
+	}
+}
+
 func testGateway(t *testing.T, backend http.Handler, mutate func(*Config)) *Server {
 	t.Helper()
 	dir := t.TempDir()

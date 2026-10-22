@@ -29,6 +29,8 @@ var (
 
 type Config struct {
 	Memory              cgroup.MemoryBudget
+	SandboxCPUMilli     int64
+	ParentCPUMilli      int64
 	Logger              *slog.Logger
 	QoS                 qos.Config
 	Runsc               string
@@ -41,6 +43,7 @@ type Config struct {
 	OutputLimit         int
 	Mode                string
 	WarmPoolSize        int
+	WarmRefillPolicy    string
 	DynamicWarmPool     bool
 	WarmMinSize         int
 	WarmMaxSize         int
@@ -54,6 +57,7 @@ type Config struct {
 }
 
 type Engine struct {
+	refillPaused       bool
 	pressurePaused     bool
 	pressureRejections uint64
 	config             Config
@@ -94,12 +98,28 @@ type executionState struct {
 }
 
 func New(c Config) (_ *Engine, retErr error) {
+	cpu, err := cgroup.SandboxBandwidth(c.SandboxCPUMilli)
+	if err != nil {
+		return nil, err
+	}
+	c.SandboxCPUMilli = int64(cpu.Quota / 20)
+	parentCPU, err := cgroup.ParentBandwidth(c.ParentCPUMilli)
+	if err != nil {
+		return nil, err
+	}
+	c.ParentCPUMilli = int64(parentCPU.Quota / 20)
 	c.QoS.Logger = c.Logger
 	if err := c.QoS.Normalize(); err != nil {
 		return nil, err
 	}
+	if c.QoS.CPUControl && c.QoS.CPU.MaxCPU > float64(c.ParentCPUMilli)/1000 {
+		return nil, errors.New("qos-max-cpu must not exceed parent-cpu-milli budget")
+	}
 	if err := normalizePoolConfig(&c); err != nil {
 		return nil, err
+	}
+	if c.QoS.RefillOnly && c.Mode != "warm" {
+		return nil, errors.New("qos-refill-only requires warm mode")
 	}
 	if c.Platform != "kvm" && c.Platform != "systrap" {
 		return nil, errors.New("platform must explicitly be kvm or systrap")
@@ -107,8 +127,8 @@ func New(c Config) (_ *Engine, retErr error) {
 	if os.Geteuid() != 0 {
 		return nil, errors.New("phase 1 requires root in a dedicated systemd unit or isolated test container; rootless resource enforcement is not supported")
 	}
-	if c.Concurrency < 1 || c.Concurrency > 4 {
-		return nil, errors.New("concurrency must be between 1 and 4")
+	if c.Concurrency < 1 || c.Concurrency > MaxExecutionConcurrency {
+		return nil, errors.New("concurrency must be between 1 and 8")
 	}
 	if c.OutputLimit == 0 {
 		c.OutputLimit = 1 << 20
@@ -116,7 +136,6 @@ func New(c Config) (_ *Engine, retErr error) {
 	if c.OutputLimit < 1 || c.OutputLimit > 1<<20 {
 		return nil, errors.New("output limit must be between 1 byte and 1 MiB")
 	}
-	var err error
 	c.Runsc, err = exec.LookPath(c.Runsc)
 	if err != nil {
 		return nil, fmt.Errorf("locate runsc: %w", err)
@@ -223,7 +242,7 @@ func New(c Config) (_ *Engine, retErr error) {
 	if int64(memoryInstances) > c.Memory.ParentBytes/c.Memory.SandboxBytes {
 		return nil, fmt.Errorf("mode requires capacity for %d instances, memory budget fits at most %d; reduce max-sandboxes/concurrency/warm-size or configure memory budgets", memoryInstances, c.Memory.ParentBytes/c.Memory.SandboxBytes)
 	}
-	groups, err := cgroup.NewWithMemory(c.CgroupRoot, c.MoveSelf, c.Memory)
+	groups, err := cgroup.NewWithLimits(c.CgroupRoot, c.MoveSelf, c.Memory, c.SandboxCPUMilli, c.ParentCPUMilli)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +275,7 @@ func New(c Config) (_ *Engine, retErr error) {
 	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	e.pool = newWarmPool(c, e.createSandbox, e.destroyInstanceResources)
-	if e.observer != nil && c.QoS.Scheduling {
+	if e.observer != nil && (c.QoS.Scheduling || c.QoS.RefillOnly) {
 		if err := e.observer.SetPressureHandler(e.applyPressure); err != nil {
 			e.cancel()
 			if e.pool != nil {
@@ -371,7 +390,7 @@ func (e *Engine) Status() api.StatusReport {
 		b := e.config.Memory
 		memory = &api.MemoryBudgetReport{ParentBytes: b.ParentBytes, SandboxBytes: b.SandboxBytes, ReserveBytes: b.ReserveBytes, CapacityBytes: b.CapacityBytes}
 	}
-	return api.StatusReport{Memory: memory,
+	return api.StatusReport{Memory: memory, SandboxCPUMilli: e.config.SandboxCPUMilli, ParentCPUMilli: e.config.ParentCPUMilli,
 		Scheduling: schedulingReport(snapshot), Cleanup: e.cleanup.report(), Inventory: inventoryReport(snapshot),
 		QoS:  e.observationReport(),
 		Mode: poolMode(e.config.Mode), Ready: snapshot.Ready && (!e.startupRequired || e.startupReady.Load()) && !e.broken.Load() && !e.closed.Load(),

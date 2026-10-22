@@ -72,6 +72,42 @@ func TestColdPressureAdmissionAndObserveHasNoSideEffects(t *testing.T) {
 	}
 }
 
+func TestRefillOnlyPressureLeavesAdmissionAndDemandCreationOpen(t *testing.T) {
+	c := poolConfig()
+	c.Concurrency = 2
+	c.MaxSandboxes = 4
+	c.WarmPoolSize = 1
+	p := testPool(t, c)
+	e := schedulingEngine(t, p, "enforce")
+	e.config.QoS.Scheduling, e.config.QoS.RefillOnly = false, true
+	e.applyPressure(gateDecision(true))
+	r := e.qosSchedulingReport()
+	if !r.RefillOnly || !r.AdmissionOpen || !r.RefillPaused || e.pressurePaused {
+		t.Fatalf("scope was not refill-only: %+v", r)
+	}
+	first, err := p.acquire(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := p.acquire(context.Background(), 1)
+	if err != nil || first == second {
+		t.Fatalf("demand creation blocked or reused: %v", err)
+	}
+	p.release(first, true)
+	p.release(second, true)
+	if s := p.status(); s.Creating != 0 || s.Idle != 0 || s.RefillBlockedBy != "qos_pressure" {
+		t.Fatalf("refill not paused: %+v", s)
+	}
+	unknown := gateDecision(true)
+	unknown.State = "unknown"
+	e.applyPressure(unknown)
+	if !e.qosSchedulingReport().RefillPaused {
+		t.Fatal("unknown reopened refill")
+	}
+	e.applyPressure(gateDecision(false))
+	waitPool(t, p, func(s poolSnapshot) bool { return s.Idle == 1 })
+}
+
 func TestWarmQueuedRequestRejectedWithoutCancellingInFlight(t *testing.T) {
 	p := testPool(t, poolConfig())
 	e := schedulingEngine(t, p, "enforce")

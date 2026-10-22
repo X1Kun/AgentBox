@@ -1,6 +1,6 @@
 # AgentBox
 
-面向 AI Agent 的 Python 代码执行沙箱，使用 gVisor 隔离代码，以 cgroups v2 限制资源。已实现 cold/一次性 warm 池、有界 FIFO、动态 READY 库存、单机 CPU/压力 QoS、普通用户 Gateway、MCP 及 DeepSeek Tool Calls 示例。当前优先收敛单机供给、资源预算与动态收益证据；多 Worker 调度和 kind 跨节点验证在后续阶段。
+面向 AI Agent 的 Python 代码执行沙箱，使用 gVisor 隔离代码，以 cgroups v2 限制资源。已实现 cold/一次性 warm 池、有界 FIFO、动态 READY 库存、单机 CPU/压力 QoS、普通用户 Gateway、MCP 及 DeepSeek Tool Calls 示例。单机阶段已完成供给、预算及固定场景的保护验收；多 Worker 调度和 kind 跨节点验证在后续阶段。
 
 每个任务使用全新实例，用后销毁；Gateway 仅绑定 loopback，经受权限保护的 Unix socket 调用 root daemon。任务默认无外网、只读根文件系统、UID 1000。取消后由 daemon 独立清理，结果不确定时不自动重放。
 
@@ -57,6 +57,6 @@ MCP/DeepSeek 的环境变量、实际 API 联调和远端隧道见 [接入说明
 | 性能模型与依据 | [performance-theory](docs/performance-theory.md)、[引用索引](docs/performance-theory-references.md) |
 | 下一阶段 | [implementation-plan](docs/implementation-plan.md) |
 
-功能通过、设计依据与性能收益分别陈述：固定 warm 的历史数据支持命中等待降低，动态库存和动态 QoS 的收益仍待对照；tmpfs 功能通过不代表普通磁盘冷启动问题已修复；kind 节点共享宿主资源，不能代替物理跨机性能证据。
+功能通过、设计依据与收益分别陈述：Warm 在有空闲间隔的波次中降低典型等待，额外准备也会争用 CPU。两轮保护对照中，父组 1 CPU＋PSI 仅补池配置的 6,480 个 Core 请求全部在 50ms 内成功，但门控未触发，不能归因为动态收益；AIMD 组合未达到同一目标。该运行点限于共享 2 CPU 与指定负载，详见[验收](docs/validation.md)。动态库存独立收益仍未证明；tmpfs 通过不代表普通磁盘问题已修复，kind 不能代替物理跨机性能证据。
 
 面试讲解与已验证边界见 [interview](docs/interview.md)。

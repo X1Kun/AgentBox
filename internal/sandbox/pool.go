@@ -34,14 +34,15 @@ type warmPool struct {
 	ready   []*executionState
 	waiters []*poolWaiter
 
-	queuedBytes    int
-	creating       int
-	executing      int
-	pressurePaused bool
-	pressureEpoch  uint64
-	inventory      inventoryState
-	policy         *inventoryPolicy
-	now            func() time.Time
+	queuedBytes          int
+	creating             int
+	executing            int
+	pressurePaused       bool
+	refillPressurePaused bool
+	pressureEpoch        uint64
+	inventory            inventoryState
+	policy               *inventoryPolicy
+	now                  func() time.Time
 
 	started             bool
 	initialized         bool
@@ -87,6 +88,7 @@ type poolSnapshot struct {
 }
 
 type poolTelemetry struct {
+	RefillAttempts, RefillWithForeground                          uint64
 	CreationAttempts                                              uint64
 	CreationSucceeded, CreationFailed, CreationAborted            metrics.Duration
 	QueueEntered                                                  uint64
@@ -184,6 +186,10 @@ func (p *warmPool) refill() {
 			continue
 		}
 		p.creating++
+		p.telemetry.RefillAttempts++
+		if p.executing > 0 {
+			p.telemetry.RefillWithForeground++
+		}
 		p.telemetry.CreationAttempts++
 		p.signalLocked()
 		p.mu.Unlock()
@@ -363,7 +369,7 @@ func (p *warmPool) status() poolSnapshot {
 // shared bounded factory, while idle refill yields whenever foreground work
 // fills execution slots or queues. Already reserved creation is not cancelled.
 func (p *warmPool) refillBlockerLocked() string {
-	if p.pressurePaused {
+	if p.pressurePaused || p.refillPressurePaused {
 		return "qos_pressure"
 	}
 	if len(p.waiters) > 0 {
@@ -371,6 +377,9 @@ func (p *warmPool) refillBlockerLocked() string {
 	}
 	if p.executing >= p.config.Concurrency {
 		return "execution_saturated"
+	}
+	if p.config.WarmRefillPolicy == "idle" && p.executing > 0 {
+		return "foreground_active"
 	}
 	if len(p.items)+p.creating >= p.config.MaxSandboxes {
 		return "total_capacity"

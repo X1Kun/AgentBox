@@ -13,26 +13,29 @@ type DurationReport struct {
 }
 
 type SchedulingReport struct {
-	RefillBlockedBy       string         `json:"refill_blocked_by,omitempty"`
-	ExecutionInFlight     int            `json:"execution_in_flight"`
-	ExecutionLimit        int            `json:"execution_limit"`
-	CreationLimit         int            `json:"creation_limit"`
-	QueueCountLimit       int            `json:"queue_count_limit"`
-	QueueBytesLimit       int            `json:"queue_bytes_limit"`
-	QueueTimeoutMS        float64        `json:"queue_timeout_ms"`
-	OldestQueueMS         float64        `json:"oldest_queue_ms"`
-	CreationAttempts      uint64         `json:"creation_attempts"`
-	CreationSucceeded     DurationReport `json:"creation_succeeded"`
-	CreationFailed        DurationReport `json:"creation_failed"`
-	CreationAborted       DurationReport `json:"creation_aborted"`
-	QueueEntered          uint64         `json:"queue_entered"`
-	QueueAssigned         DurationReport `json:"queue_assigned"`
-	QueueCanceled         DurationReport `json:"queue_canceled"`
-	QueueTimedOut         DurationReport `json:"queue_timed_out"`
-	QueueUnavailable      DurationReport `json:"queue_unavailable"`
-	QueuePressureRejected DurationReport `json:"queue_pressure_rejected"`
-	QueueCountFull        uint64         `json:"queue_count_full"`
-	QueueBytesFull        uint64         `json:"queue_bytes_full"`
+	RefillPolicy           string         `json:"refill_policy,omitempty"`
+	RefillCreationAttempts uint64         `json:"refill_creation_attempts"`
+	RefillWithForeground   uint64         `json:"refill_started_with_foreground"`
+	RefillBlockedBy        string         `json:"refill_blocked_by,omitempty"`
+	ExecutionInFlight      int            `json:"execution_in_flight"`
+	ExecutionLimit         int            `json:"execution_limit"`
+	CreationLimit          int            `json:"creation_limit"`
+	QueueCountLimit        int            `json:"queue_count_limit"`
+	QueueBytesLimit        int            `json:"queue_bytes_limit"`
+	QueueTimeoutMS         float64        `json:"queue_timeout_ms"`
+	OldestQueueMS          float64        `json:"oldest_queue_ms"`
+	CreationAttempts       uint64         `json:"creation_attempts"`
+	CreationSucceeded      DurationReport `json:"creation_succeeded"`
+	CreationFailed         DurationReport `json:"creation_failed"`
+	CreationAborted        DurationReport `json:"creation_aborted"`
+	QueueEntered           uint64         `json:"queue_entered"`
+	QueueAssigned          DurationReport `json:"queue_assigned"`
+	QueueCanceled          DurationReport `json:"queue_canceled"`
+	QueueTimedOut          DurationReport `json:"queue_timed_out"`
+	QueueUnavailable       DurationReport `json:"queue_unavailable"`
+	QueuePressureRejected  DurationReport `json:"queue_pressure_rejected"`
+	QueueCountFull         uint64         `json:"queue_count_full"`
+	QueueBytesFull         uint64         `json:"queue_bytes_full"`
 }
 
 type CleanupPhase struct {

@@ -252,7 +252,7 @@ func TestWarmPoolCreationFailuresAreBounded(t *testing.T) {
 func TestPoolConfiguration(t *testing.T) {
 	for _, mutate := range []func(*Config){
 		func(c *Config) { c.Mode = "automatic" }, func(c *Config) { c.MaxSandboxes = 9 }, func(c *Config) { c.WarmPoolSize = 7; c.MaxSandboxes = 6 },
-		func(c *Config) { c.CreateConcurrency = 3 }, func(c *Config) { c.QueueBytes = -1 }, func(c *Config) { c.QueueSize = 129 }, func(c *Config) { c.QueueTimeout = 6 * time.Second },
+		func(c *Config) { c.CreateConcurrency = 5 }, func(c *Config) { c.QueueBytes = -1 }, func(c *Config) { c.QueueSize = 129 }, func(c *Config) { c.QueueTimeout = 6 * time.Second },
 	} {
 		c := poolConfig()
 		mutate(&c)

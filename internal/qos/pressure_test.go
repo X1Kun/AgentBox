@@ -105,6 +105,26 @@ func TestSchedulingPreviewDoesNotInitializeCPUActuator(t *testing.T) {
 	}
 }
 
+func TestRefillOnlyEnforcementDoesNotInitializeCPUActuator(t *testing.T) {
+	o, err := New(Config{Mode: "enforce", RefillOnly: true, ProtectedCgroup: "/sys/fs/cgroup/core"}, "/sys/fs/cgroup/agentbox-test/sandboxes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer o.Close()
+	if o.pressure == nil || o.controller != nil || o.config.CPUControl {
+		t.Fatal("refill-only initialized CPU enforcement")
+	}
+	for _, c := range []Config{{Mode: "off", RefillOnly: true}, {Mode: "enforce", RefillOnly: true, CPUControl: true}, {Mode: "enforce", RefillOnly: true, Scheduling: true}} {
+		if err := c.Normalize(); err == nil {
+			t.Fatalf("ambiguous scope accepted: %+v", c)
+		}
+	}
+	legacy := Config{Mode: "enforce", ProtectedCgroup: "/sys/fs/cgroup/core"}
+	if err := legacy.Normalize(); err != nil || !legacy.CPUControl {
+		t.Fatal("legacy enforce no longer enables CPU control", err)
+	}
+}
+
 func TestSharedPressureStateGovernsCPUBudgetActions(t *testing.T) {
 	f := &quotaFixture{value: cgroup.CPUBandwidth{Quota: 80000, Period: 20000}}
 	c, err := NewCPUController("enforce", CPUConfig{}, f, nil)

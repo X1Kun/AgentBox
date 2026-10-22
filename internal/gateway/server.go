@@ -161,6 +161,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
+	// The daemon deadline can expire just before our context timer is run.
+	// Classify against the absolute deadline before interpreting its response.
+	if !time.Now().Before(deadline) {
+		s.fail(w, r, requestID, "request_deadline_exceeded", context.DeadlineExceeded)
+		return
+	}
 	if err != nil {
 		s.fail(w, r, requestID, "daemon_response_failed", err)
 		return

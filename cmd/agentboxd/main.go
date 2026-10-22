@@ -42,22 +42,26 @@ func run() (retErr error) {
 	flag.Int64Var(&parentMemory, "parent-memory-mib", 0, "sandbox parent memory budget; 0 fits host/ancestor capacity, up to 4096 MiB")
 	flag.Int64Var(&sandboxMemory, "sandbox-memory-mib", 512, "per-sandbox hard memory limit, at least 128 MiB")
 	flag.Int64Var(&reserveMemory, "memory-reserve-mib", 512, "memory reserved outside sandboxes, at least 128 MiB")
-	flag.IntVar(&c.Concurrency, "concurrency", 1, "concurrent executions, 1 to 4")
+	flag.Int64Var(&c.SandboxCPUMilli, "sandbox-cpu-milli", 1000, "per-sandbox CPU ceiling, 50..4000 milli-CPU (1000 = 1 CPU); does not reserve CPU")
+	flag.Int64Var(&c.ParentCPUMilli, "parent-cpu-milli", 4000, "sandbox subtree CPU ceiling, 50..4000 milli-CPU; bounds QoS maximum")
+	flag.IntVar(&c.Concurrency, "concurrency", 1, "concurrent executions, 1 to 8")
 	flag.StringVar(&c.Mode, "mode", "cold", "execution mode: cold or once-only warm pool")
 	flag.IntVar(&c.WarmPoolSize, "warm-size", 3, "target READY sandbox inventory")
+	flag.StringVar(&c.WarmRefillPolicy, "warm-refill-policy", "slots", "background refill: slots yields at full execution capacity; idle yields to any foreground execution (warm only)")
 	flag.BoolVar(&c.DynamicWarmPool, "warm-dynamic", false, "adapt READY inventory within configured bounds (warm mode only)")
 	flag.IntVar(&c.WarmMinSize, "warm-min-size", 1, "minimum dynamic READY inventory")
 	flag.IntVar(&c.WarmMaxSize, "warm-max-size", 0, "maximum dynamic READY inventory; 0 uses warm-size")
 	flag.DurationVar(&c.WarmAdjustInterval, "warm-adjust-interval", time.Second, "minimum inventory action interval, 100ms to 1m")
 	flag.DurationVar(&c.WarmDownscaleWindow, "warm-downscale-window", 30*time.Second, "downscale recommendation stabilization window, up to 1h")
 	flag.IntVar(&c.MaxSandboxes, "max-sandboxes", 6, "total sandbox cap, including creation and destruction")
-	flag.IntVar(&c.CreateConcurrency, "create-concurrency", 1, "shared on-demand/background creation concurrency, 1 or 2")
+	flag.IntVar(&c.CreateConcurrency, "create-concurrency", 1, "shared on-demand/background creation concurrency, 1 to 4")
 	flag.IntVar(&c.QueueSize, "queue-size", 16, "maximum waiting requests")
 	flag.IntVar(&c.QueueBytes, "queue-bytes", 8<<20, "maximum queued request payload bytes")
 	flag.DurationVar(&c.QueueTimeout, "queue-timeout", 100*time.Millisecond, "maximum admission queue wait, 1ms to 5s")
 	flag.StringVar(&c.QoS.Mode, "qos", "off", "QoS mode: off, observe or enforce")
 	flag.BoolVar(&c.QoS.CPUControl, "qos-cpu-control", false, "preview AIMD in observe mode; automatic in enforce mode")
 	flag.BoolVar(&c.QoS.Scheduling, "qos-scheduling", false, "preview or enforce pressure admission and refill gates")
+	flag.BoolVar(&c.QoS.RefillOnly, "qos-refill-only", false, "pressure gate for new Warm background refill only; keeps admission and CPU quota unchanged")
 	flag.Float64Var(&c.QoS.CPU.BaseCPU, "qos-base-cpu", 0, "optional conservative startup/loan-revocation budget; requires a business health file")
 	flag.StringVar(&c.QoS.BusinessFile, "qos-business-file", "", "trusted local collector's atomic JSON health window; never supplied by tasks")
 	flag.Float64Var(&c.QoS.CPU.MinCPU, "qos-min-cpu", .5, "minimum sandbox CPU bandwidth")
@@ -73,6 +77,12 @@ func run() (retErr error) {
 	flag.StringVar(&address, "listen", "127.0.0.1:8080", "loopback HTTP address or unix:/absolute/socket")
 	flag.BoolVar(&inspect, "doctor", false, "print read-only environment report and exit")
 	flag.Parse()
+	if c.ParentCPUMilli < 50 || c.ParentCPUMilli > 4000 {
+		return fmt.Errorf("parent-cpu-milli must be 50..4000")
+	}
+	if c.SandboxCPUMilli < 50 || c.SandboxCPUMilli > 4000 {
+		return fmt.Errorf("sandbox-cpu-milli must be 50..4000 (1000 = 1 CPU)")
+	}
 	if c.QoS.BusinessFile == "none" {
 		c.QoS.BusinessFile = ""
 	}

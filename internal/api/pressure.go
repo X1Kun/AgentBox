@@ -11,6 +11,7 @@ type PressureStateReport struct {
 }
 
 type QoSSchedulingReport struct {
+	RefillOnly         bool   `json:"refill_only"`
 	Enabled            bool   `json:"enabled"`
 	Enforced           bool   `json:"enforced"`
 	AdmissionOpen      bool   `json:"admission_open"`

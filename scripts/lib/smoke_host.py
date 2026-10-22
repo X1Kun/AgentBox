@@ -5,6 +5,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
+import math
 import http.client
 import socket
 import os
@@ -229,10 +230,12 @@ class Smoke:
             if (group / "sandboxes" / name).read_text().strip() != expected:
                 raise ValueError("unexpected parent cgroup setting: "+name)
         cpu = (group/"sandboxes/cpu.max").read_text().split()
-        if self.config["AGENTBOX_QOS"] == "enforce":
-            if len(cpu) != 2 or cpu[1] != "20000" or not 10000 <= int(cpu[0]) <= 80000:
+        if self.config["AGENTBOX_QOS"] == "enforce" and self.config["AGENTBOX_QOS_REFILL_ONLY"] != "true":
+            minimum = math.ceil(float(self.config["AGENTBOX_QOS_MIN_CPU"])*20000)
+            maximum = math.floor(float(self.config["AGENTBOX_QOS_MAX_CPU"])*20000)
+            if len(cpu) != 2 or cpu[1] != "20000" or not minimum <= int(cpu[0]) <= maximum:
                 raise ValueError("controlled CPU budget is outside configured service bounds")
-        elif cpu != ["80000", "20000"]:
+        elif cpu != [str(int(self.config["AGENTBOX_PARENT_CPU_MILLI"])*20), "20000"]:
             raise ValueError("unexpected static parent CPU setting")
         status, _ = self.http("/v1/execute", {"runtime": "python", "code": "print(1)"}, authenticate=False)
         if status != 401:
@@ -276,7 +279,7 @@ class Smoke:
             with ThreadPoolExecutor(max_workers=1) as workers:
                 pending = workers.submit(self.http, "/v1/execute", {"runtime": "python", "code": "import time; time.sleep(20)", "timeout_ms": 30000})
                 group = self.wait_for_running_task(root, pending)
-                for name, expected in {"cpu.max": "20000 20000", "memory.max": str(int(self.config["AGENTBOX_SANDBOX_MEMORY_MIB"]) << 20), "memory.swap.max": "0", "pids.max": "256"}.items():
+                for name, expected in {"cpu.max": f'{int(self.config["AGENTBOX_SANDBOX_CPU_MILLI"])*20} 20000', "memory.max": str(int(self.config["AGENTBOX_SANDBOX_MEMORY_MIB"]) << 20), "memory.swap.max": "0", "pids.max": "256"}.items():
                     if (group / name).read_text().strip() != expected:
                         raise ValueError("unexpected task cgroup setting: "+name)
                 self.sandbox_limits = {name: (group / name).read_text().strip() for name in ("cpu.max", "memory.high", "memory.max", "memory.swap.max", "pids.max")}
