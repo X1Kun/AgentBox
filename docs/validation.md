@@ -1,289 +1,255 @@
-# 验收与性能证据
-
-最近更新：2026-10-22。本页统一保存执行、预热池、QoS、Gateway、MCP 的结果及适用范围；配置和复现入口分别见各功能说明。历史批次不自动代表当前版本重新完成性能测试。
-
-## 同日后续：预算余量、PSI 补池与 AIMD 组合
-
-已增加 `qos-refill-only`：复用 protected CPU PSI 的短窗、确认和滞回，仅暂停新后台补池，不改 CPU、准入、队列代次或在途任务；在 observe 下预演，enforce 下执行，与 CPU/完整压力调度互斥。父组 CPU 通过 `parent-cpu-milli`／`AGENTBOX_PARENT_CPU_MILLI` 正式配置，默认 4000；AIMD 上界必须不超过该预算，固定服务增加 QoS CPU 上下界。默认配置及宿主服务未改变。
-
-重读本书印刷页 330～331、613～615、648，分别核对压力时间、资源上限/优先级和单因素对照；CPU PSI 接口按 Linux 6.8 文档核对。书中没有给出本项目的 20%/10%、确认 1 秒、低压稳定 2 秒，也不证明这些值能保障 50ms SLO，见[引用索引](performance-theory-references.md#b16)。
-
-**预先定义六方案、两轮反向排序**：共享组 2 CPU、外层 6 CPU/5GiB、固定 Core 60 req/s/50,000 次 SHA-256、相同 54 秒波次、执行/创建并发均 4、总实例 8、Warm 目标 3、队列 100ms。静态组也开启同套 observe 采样，PSI 组去掉 idle，仅按压力控制补池；组合组使用既有 AIMD 1～2 CPU、完整压力准入与补池，BaseCPU=0，没有启用业务健康文件。库存目标不动态。仅对同预算下的两种补池条件、同条件下的两档预算作单因素解释，组合组按整体方案评价，不与上一批次直接相减。
-
-**验收条件在运行前固定**：Core 全窗口、沙箱到达窗口、其余初始空闲/恢复窗口，分别要求至少 99% 全部请求在 50ms 内成功，且成功 P99 ≤50ms。拒绝/错误/客户端丢弃均计入代价，不能只看全窗口成功延迟。
-
-| 方案 | Core 全窗口 P99，两轮 ms | 到达窗口 P99，两轮 ms | Core 目标通过 | 沙箱完成数，两轮（每轮50） |
-|---|---:|---:|---:|---:|
-| Core-only | 20.05 / 18.45 | 21.86 / 16.93 | 2/2 | 无请求 |
-| idle＋2 CPU | 101.98 / 105.68 | 146.27 / 141.42 | 0/2 | 39 / 40 |
-| idle＋1 CPU | 21.71 / 31.06 | 23.89 / 61.30 | 1/2 | 38 / 39 |
-| PSI 仅补池＋2 CPU | 114.86 / 148.20 | 147.13 / 167.20 | 0/2 | 39 / 39 |
-| PSI 仅补池＋1 CPU | 20.31 / 20.68 | 21.38 / 22.63 | 2/2 | 33 / 36 |
-| AIMD＋完整压力调度 | 100.22 / 101.79 | 146.63 / 161.45 | 0/2 | 26 / 26 |
-
-**达标运行点与收益归因分开**：1 CPU＋PSI 仅补池两轮共 6,480 个 Core 请求均在 50ms 内成功、无拒绝，三个窗口都达标；该配置可作为本实验资源与工作量下的部署参考。但两轮均未观测到 PSI 暂停，不能宣称动态门控使其达标，证据主要支持 CPU 预算余量的重要性。idle＋1 CPU 第二轮全局按期率 99.51%、P99 31.06ms，看似达标，但到达窗口按期率 97.78%、P99 61.30ms，且有 2 次拒绝，故保留为失败；逐请求发起滞后很小，超期发生于真实 Core 执行/等待，未改判为压测端问题。
-
-**动态不自动优于保守配置**：2 CPU 的 PSI 仅补池有 326/334 个暂停采样点，动作真实发生，但仍未保护到目标；采样中首次暂停约在 3.25～3.45 秒，Core 在初始补齐阶段已发生超期。组合方案有 7/9 次真实写回，实际额度在 1.6～2 CPU 间变化，仍未达标且只完成 26/50 个沙箱请求。反馈需要采样和持续确认，不能追回已经发生的等待，也不能取消已开始创建。
-
-**单看 Core 压力不等于保护沙箱前台**：PSI 仅补池＋1 CPU 在 Core 低压时继续并行准备，沙箱成功 P50 约 1186.85/1263.09ms，idle＋1 CPU 为 318.45/399.16ms；完成数也更少。不能把“Core 达标”说成整体性能全面改善，选择时需明确业务优先级及拒绝/等待代价。
-
-`make check build`、34 个部署/入口回归、真实 PSI 高压/恢复与缺测保持、PSI 仅补池不改准入/CPU、systemd 252/KVM Warm 生命周期与父组 1 CPU/实例 0.5 CPU 接线均通过。完整回归还暴露并修复 Gateway 截止时间竞态：后端恰在截止点返回空响应时，按绝对截止时间分类为 504；保留 outcome_unknown，不重放，增加单次转发回归。
-
-共核对 38,880 条 Core、500 条沙箱请求，355 个成功实例全部唯一且确认清理；12,877 帧没有读取错误、不健康或 OOM 增量，最终 Core/shared 与沙箱子组、bundle 均回收。所有 Core 传输/响应校验错误和客户端丢弃为 0；PSI 仅补池组所有采样中实际准入均开放、CPU 变更计数为 0，固定组最终额度不变。新鲜 protected 采样占比约 99.7%以上，目标 50ms 资源采样的实际最大间隔约 380ms；不将采样峰值视为精确瞬时峰值。
-
-本轮形成了有边界的保护验收点，不是通用最优、所有 Python 负载或裸机实时保证。若继续研究动态借用，应从已校准的保守额度启动，并验证真实业务健康反馈；不能用本轮结果代替该可选模式的性能验收。原始数据、配置/哈希、控制轨迹和检查日志归档 `artifacts/psi-protection-validation-20261022.tar.gz`；汇总见[证据 JSON](data/performance-theory-evidence.json)的 `psi_protection_validation_20261022`。
-
-复现沿用 [Core 对照入口](warm-pool.md#补池与-core-争用对照)，增加 `--refill-comparison protection`。现阶段可进入文档/提交收尾，不继续在同一轨迹上搜索参数。
-
-## 2026-10-22：补池时机与 Core 争用
-
-增加可选 `warm-refill-policy=idle`：任一前台任务持槽时暂停新的后台创建预留，按需创建仍可用，已开始创建继续完成；前台清理结束后恢复补池。默认 `slots` 保留原有槽满／排队退让条件。新增后台创建次数与“预留时已有前台任务”计数，不仅凭 creating 采样判断机制。
-
-`make check build`、race 摘要及 33 个部署/入口回归通过。真实 KVM 验证了 idle 提前退让、缺货按需创建、全新实例、库存恢复与清理；systemd 252/KVM Warm 生命周期及 idle＋0.5 CPU 的 unit 展开、内核限额、执行与回收通过。未更新宿主服务。
-
-**固定竞争组对照**：外层 6 CPU／5GiB，Core 与 Sentry/Gofer 共享 2 CPU 子树；压测端与 runsc 控制 CLI 在竞争组外。沙箱父组 2 CPU、单实例 1 CPU，执行/创建并发均 4，总实例 8、Warm 目标 3、FIFO 100ms，QoS/动态库存关闭。Core 每请求 50,000 次 SHA-256、服务并发 4、60 req/s，50ms 是实验期限。KVM、有界 tmpfs 依赖与状态，不代表普通磁盘或裸机性能。
-
-每个 profile 同轨迹 54 秒，沙箱两轮 5/1s＋空闲10s＋20/5s＋空闲10s，不等 READY、不重试、不按响应推迟到达。第一轮 baseline／Cold／Warm-slots／Warm-idle，第二轮反向排序；baseline 保留空闲 Cold 引擎与相同采样，只不发沙箱任务。启动与最终停服销毁不计入窗口，同一 Core 进程持续运行。
-
-| Profile | Core 成功 P99，两轮 ms¹ | Core 按期成功率，两轮¹ | 沙箱完成数，两轮（每轮50） | 沙箱成功 P50，两轮 ms |
-|---|---:|---:|---:|---:|
-| Core-only | 20.06 / 19.43 | 100% / 100% | 无请求 | — |
-| Cold | 125.98 / 119.57 | 82.78% / 82.10% | 36 / 37 | 1234.58 / 1198.37 |
-| Warm-slots | 148.01 / 132.17 | 79.10% / 79.10% | 37 / 37 | 1153.03 / 1190.11 |
-| Warm-idle | 99.85 / 96.40 | 83.30% / 84.48% | 39 / 40 | 647.58 / 603.98 |
-
-¹ 从计划到达计时。Core 每轮每 profile 3,240 请求，按期率分母包含拒绝；对应拒绝数 Cold 229/215、slots 271/283、idle 186/176，基线均无拒绝。沙箱未完成项都是容量拒绝，不能只凭成功分位数声称可靠性改善。
-
-slots 窗口内后台预留 36/36 次，全部在已有前台任务时启动；idle 为 31/29 次，前台在途时启动均为 0。两种 Warm 每波前都自然恢复 READY=3。相同预算和到达轨迹下，两轮 idle 都降低 Core P99、减少拒绝并增加沙箱完成，支持此策略在本场景中的作用，不能外推任意负载。
-
-Core 在沙箱到达期间的按期率，slots 为 34.17%/33.75%，idle 为 49.03%/54.86%；其余初始空闲和恢复期间为 slots 91.94%/92.06%、idle 93.10%/92.94%。全窗口结果不能掩盖恢复期干扰。沙箱 P95 未全面改善：第一轮 idle 1683.53ms 略高于 slots 1658.10ms，第二轮为 1461.57/1770.90ms。
-
-**idle 仍未守住 Core 50ms 目标。** 基线约消耗 0.70 CPU，而沙箱仍可使用共享组全部 2 CPU；减少部分后台创建不能替代 CPU 预算余量或业务反馈。下一步固定 idle，对照更保守的父组配额及沙箱代价；当前不提高上限、开启每实例 AIMD或改变服务默认配置。
-
-核对了 25,920 条 Core、300 条沙箱请求及 226 个唯一成功实例，清理全部确认；8,554 帧无读取错误、不健康或 OOM 增量，最终 bundle、子组与 Core/shared 树回收通过。Core 无传输/响应校验错误或客户端丢弃，全窗口发起滞后 P99 ≤1.22ms。资源目标采样间隔 50ms，但实际最大间隔约 652ms，一次首样本晚约 398ms；积分仅覆盖实际首尾，不声称精确瞬时峰值或完整初始空闲 CPU 成本。请求统计和调度动作计数不依赖该采样间隔。
-
-仅两轮固定轨迹、反向排序，无置信区间或生产流量。原始 CSV/JSONL、配置/哈希和检查日志归档 `artifacts/refill-core-validation-20261022.tar.gz`，汇总见[既有证据 JSON](data/performance-theory-evidence.json)的 `refill_core_validation_20261022`；复现见[补池与 Core 对照](warm-pool.md#补池与-core-争用对照)。
-
-## 同日后续：执行槽／CPU 配额对照与单实例限额配置
-
-已增加服务端 `-sandbox-cpu-milli`／`AGENTBOX_SANDBOX_CPU_MILLI`，默认 1000（1 CPU）、范围 50～4000；鉴权 status 增加配置值。Cold 新建、Warm 库存及补池共用同一模板，父组默认仍 4 CPU，请求不能指定资源。KVM 在 Cold/Warm、500/1500 milli-CPU 四个组合下实际读回子组和父组限制，执行与回收通过，Warm 替换库存仍保持额度。systemd 252/KVM Cold 生命周期也通过：环境变量 500 实际写成子组 `10000 20000`，父组保持 `80000 20000`，任务成功清理；更新、回退、重装与卸载保持原语义。`make check build`、31 个部署/入口回归通过；未更新宿主服务。
-
-**固定负载下的五组对照**：同一测试二进制，10 req/s，Cold/Warm 各 200 请求，1 秒／95% 按期成功目标；创建并发 4、总实例 8、Warm 目标 3、单实例 1 CPU、父组内存 4GiB、队列 16／8MiB／100ms 均固定。外层 6 CPU／5GiB，KVM、tmpfs 依赖及控制目录，QoS/动态库存关闭，无 Core 压测服务。五组按 8槽/4CPU、2槽/4CPU、8槽/2CPU、4槽/4CPU、8槽/3CPU 串行，每组 Cold 在先；不是完整参数搜索。
-
-| 执行槽 / 父组 CPU | Cold / Warm 完成数¹ | Cold / Warm 按期成功率 | Cold / Warm 成功 P95 |
-|---|---:|---:|---:|
-| 2 / 4 | 124 / 155 | 62.0% / 77.5% | 433.69 / 434.02ms |
-| 4 / 4 | 189 / 182 | 94.5% / 91.0% | 527.37 / 578.99ms |
-| 8 / 4 | 150 / 152 | 15.5% / 36.0% | 1268.81 / 1247.75ms |
-| 8 / 3 | 109 / 112 | 3.0% / 5.5% | 1740.18 / 1694.08ms |
-| 8 / 2 | 85 / 87 | 1.0% / 1.0% | 2326.63 / 2254.58ms |
-
-¹ 每项分母均为 200，未完成项都是容量拒绝；按期率分母包含拒绝。全部 2,000 条请求分类、成功清理和 2,572 帧资源记录核对通过，无执行/传输/基础设施错误、OOM、缺测、实例超预算或外层 CPU 节流；最终 bundle 和子 cgroup 目录检查通过。
-
-在相同父组 4 CPU 下，Cold 从 8 槽改为 4 槽，按期完成由 31 增至 189，父组累计节流约 110.35→0.95 秒，成功执行阶段中位数约 742.87→306.56ms；创建准备约 248.22→94.84ms，清理约 44.90→18.09ms。**执行槽满是准入受限的直接现象，不能单据此增加槽位。** 本轮更支持限制过多在途生命周期、使执行并发与 CPU 预算匹配；没有用阶段分位数相减推断精确因果。
-
-固定 8 槽，父组 2→3→4 CPU 时两路完成数上升、P95 下降，说明固定 CPU 配额确实限制了这组工作负载。它不证明物理 CPU 耗尽；本轮也未突破现有 4 CPU 上界。Cold 2槽/4CPU 基本无父组节流却拒绝较多，说明执行槽同样可能成为限制，两者不是二选一。
-
-**Warm 仍有待定位的争用**：4槽/4CPU 时 Warm 的 setup 中位数约 14.94ms，明显低于 Cold 的 94.84ms，但 Warm 完成数更少、父组累计节流约 39.32 秒，高于 Cold 的 0.95 秒。这提供了补池与前台共享额度可能产生干扰的线索；没有单独隔离补池变量，不能把全部差异直接归因于补池，也不能用命中收益宣称持续容量领先。
-
-没有任何组合达到本次 95% 目标；4槽/4CPU 是本轮更合理的候选，尚未校准生产运行点。每路仅约 20 秒到达窗口、单次顺序比较，无重复或随机交错，不能声称全局最优或与上一批次直接作提升归因。后续优先用波次＋Core 对照验证补池干扰，再考虑前台资源预留；按任务资源规格与单实例动态控制另行实现。服务默认参数保持不变。
-
-原始配置、CSV、JSONL、systemd/runtime/check 日志统一归档 `artifacts/cpu-policy-validation-20261021.tar.gz`；摘要与哈希见[既有证据 JSON](data/performance-theory-evidence.json)的 `cpu_policy_validation_20261021`。复现使用[容量入口](warm-pool.md#容量扫描寻找可用边界)，固定 `--capacity-rates 10 --capacity-samples 200 --create-concurrency 4 --max-sandboxes 8`，只改变 `--execution-concurrency` 或 `--capacity-parent-cpu`。
-
-## 容量阶梯：旧并发限制不是电脑上限
-
-2026-10-21，宿主 i7-9750H（6 物理核／12 SMT 线程）、约 31.26GiB 内存。新增独立 capacity 场景；执行并发可配置上限从 4 扩至 8、创建从 2 扩至 4，总实例仍最多 8，默认配置不变。真实 KVM 短流程在 Cold/Warm 各并发提交 8 个独立任务，执行和回收通过；这不是最优并发或硬件极限的证明。
-
-容量探索固定执行 8、创建 4、总实例 8、Warm 目标 3、队列 16／8MiB／100ms，关闭动态 QoS/库存。外层 `cpu.max=600000 100000`／5GiB，父组 `80000 20000`／4GiB；固定 Hello World、KVM、tmpfs 依赖及有界 tmpfs 控制目录，Cold 后 Warm。仅逐级提高请求率，预先设定 1 秒期限／95% 按期成功目标，每档 200 请求；越界停止，不运行更高档。总计 1,200 请求、六个负载窗口，扫描用例约 216 秒。
-
-| 请求率 | Cold 完成／发起 | Warm 完成／发起 | Cold / Warm 按期成功率¹ | Cold / Warm 成功 P95¹ |
-|---|---:|---:|---:|---:|
-| 4/s | 200/200 | 200/200 | 100% / 100% | 328.34 / 170.50ms |
-| 8/s | 200/200 | 200/200 | 100% / 100% | 436.50 / 219.29ms |
-| 12/s | 134/200 | 135/200 | 22.5% / 27.5% | 1207.58 / 1232.95ms |
-
-¹ 从计划到达时刻计时，包含发起滞后。按期成功率的分母包括所有已发起请求；成功分位数不包括拒绝。12/s 分别拒绝 66/65，按期成功为 45/55，窗口内完成交付为 7.56/7.62 次/秒；不能把全部完成数或快速 503 当作按期有效交付。全部六档均无执行/传输/基础设施错误、OOM、无效采样或内存停止；逐请求核对全部成功均清理，结束 Engine.Close 和 bundle 检查通过。
-
-**两种模式均在 8/s 达标、12/s 不达标；这是待细分的容量区间，不是 8/s 的精确上限。** Warm 的中低负载延迟更低，过载容量未拉开。12/s 到达窗口中，执行槽满的采样占比为 Cold 86.1%、Warm 66.3%；创建并发满仅约 3.0%／3.6%，虽然两者都曾达到峰值。父组累计节流约 97.12／98.68 秒（多 CPU 累计计数，不等于墙钟停顿），CPU PSI 差分约 57%，外层节流为 0。沙箱父组采样内存峰值不超过 328MiB，外层不超过 828MiB。证据更支持先核对父组带宽限制与任务持槽时间，暂不支持盲目把创建并发继续加大；没有证明物理 CPU 已耗尽或最终瓶颈只有一种。
-
-本轮只有单次顺序扫描；不同负载窗口约 17～50 秒，只用于粗定位。下一次需要容量结论时，在 8～12/s 细分，延长并重复边界附近档位；再固定其他配置，分别扫描执行并发和创建并发。不能与旧 60 请求批次直接作提升归因，也不外推长计算、普通磁盘、真实 Gateway 或核心服务混部。复现和停止规则见[容量扫描](warm-pool.md#容量扫描寻找可用边界)，书中依据见[理论补充](performance-theory.md#capacity)。
-
-`make check build` 通过，覆盖 race、摘要回归、脚本回归、vet、格式和构建；最初受沙箱本地 socket 权限限制，授权后完整重跑通过。原始 CSV、六份资源 JSONL、配置/二进制哈希摘要和日志统一归档 `artifacts/capacity-validation-20261021.tar.gz`；汇总见[既有证据 JSON](data/performance-theory-evidence.json)的 `capacity_validation_20261021`。测量后的统计回归将发起滞后扩展到包括拒绝在内的全部请求；离线核对六档全部请求 P95 滞后均小于 1.5ms，不改变本次分类。性能数据只代表归档哈希的测量二进制。
-
-## 波次请求：利用空闲提前准备，降低下一波等待
-
-2026-10-21 新增 waves 场景，未修改生产调度。固定种子先生成相对到达轨迹，Cold/Warm 原样重放：共同空闲 2 秒后，每轮为 1 秒内 5 请求、空闲 10 秒、5 秒内 20 请求、空闲 10 秒；两轮各 50 请求、54 秒。回放中不等 READY、不重试拒绝，也不因响应慢而延后下一波。固定 Hello World、KVM、外层 6 CPU/5GiB、创建并发 2、执行并发 4、总上限 6、Warm 目标 3、FIFO 100ms；QoS/动态库存关闭，runsc/rootfs 为 tmpfs 测试依赖。
-
-| 指标 | Cold | Warm |
-|---|---:|---:|
-| 完成 / 发起 | 44/50 | 46/50 |
-| 容量拒绝 / 基础设施错误 | 6 / 0 | 4 / 0 |
-| 成功请求计划到达至响应 P50 | 331.64ms | 182.98ms |
-| 同口径 P95 | 422.70ms | 415.53ms |
-| 四波首请求响应范围 | 257.98～280.33ms | 133.91～143.69ms |
-| 沙箱父组时间加权平均内存 | 9.44MiB | 108.56MiB |
-| 命名空间根累计 CPU 时间 | 16.10 CPU秒 | 19.63 CPU秒 |
-
-逐请求核对了双方相同的计划到达时间，共 100 行；成功均确认清理。每波开始前 Cold 的 READY 为 0，Warm 自然恢复为 3。Warm 的前 3 波在到达窗口结束后的首个采样点就观察到满库存，末波在结束后约 101ms 采样到恢复；观测间隔为 50ms，不表示精确恢复时刻，未使用补池屏障制造命中。
-
-**本次结果支持在该波次轨迹中减少首请求和典型等待，不证明持续吞吐提高。** P95 改善很小，Warm 的 CPU 与待命内存成本更高；完成数不同也影响 CPU 总量。资源覆盖整个 54 秒回放及空闲期，根计数包含测试驱动、CLI、init 和共享依赖；不含启动、依赖准备、最终停服销毁。只运行一条轨迹，Cold 在前 Warm 在后，每波样本少，不能外推为生产 P95 或任意流量收益，也没有测同机核心业务干扰。
-
-`make check`、race 摘要回归及真实 KVM 回放通过；2,157 个原始资源样本无读取错误或执行器不健康。原始 CSV、轨迹/摘要、库存资源 JSONL 和日志归档为 `artifacts/wave-arrival-validation-20261021.tar.gz`；摘要追加至 [既有证据 JSON](data/performance-theory-evidence.json) 的 `wave_arrival_validation_20261021`。
-
-## 同日后续：启动探测、补池退让与业务反馈
-
-按顺序落地：启动必须完成可信 Python 创建/执行/销毁探测才开放 readiness；超时现场关联挂载和设备开始/结束计数；执行槽饱和或存在 FIFO 请求时暂停后台补池；可选业务健康约束从配置的 base CPU 启动，业务恶化时收回借用额度，持续恶化可降至 min，失效信号禁止恢复。最后一项默认关闭，依赖核心服务或可信采集器提供实际窗口计数，不自动替用户采集生产 SLO。
-
-**补充独立基线**：外层 2 CPU/5GiB，保持相同 5/60/5 req/s、每段 15 秒的核心请求；测量期没有沙箱工作或库存，保留空闲 daemon/observer，启动探测在窗口之外。1,050 个请求全部成功，442 帧观测有效；高负载 900/900 成功，P99 16.88ms，三段均没有 50ms SLO 超标秒。说明目标在本次环境中可达，不证明任意混部配额都能达标；与上一轮是不同时间的单次测量。
-
-**补池退让短测**：沿用上轮创建并发 2、执行并发 4、总容量 6、Warm 目标 3、FIFO 100ms；6 CPU/5GiB KVM，runsc/rootfs tmpfs 和固定镜像，使用 init。启动探测成本不计入任务时延。
-
-| 场景 | Cold 完成/发起 | Warm 完成/发起 | Cold/Warm 成功 P50 |
-|---|---:|---:|---:|
-| 库存充足 | 60/60 | 60/60 | 272.05 / 147.09ms |
-| 瞬时突发 | 3/32 | 4/32 | 439.03 / 312.47ms |
-| 持续 10 req/s | 52/60 | 51/60 | 470.50 / 420.47ms |
-
-304 个请求无基础设施错误，其余为容量拒绝。Warm 本轮持续完成数更接近 Cold，但没有重复批次和显著性证明，不把 49→51 全部归因为补池策略，也不声称持续吞吐领先。
-
-`make check build` 通过（race、vet、Python 部署/测量回归、格式和构建）。真实 KVM 验证了启动前拒绝、探测成功、探测 exec 失败不就绪、启动中关闭回收；Cold/Warm 并发隔离、2GiB 预算、Warm 超时/OOM/取消/清理失败恢复与动态库存回归通过。业务约束已验证真实 cpu.max 读回、健康文件正常/异常/过期到 status 的接线；没有新增该模式的业务性能对照。原 PSI-only AIMD 的性能数据保留在下节，不挪用为新模式收益。
-
-本地原始结果归档到 `artifacts/control-refinement-20261021.tar.gz`；摘要追加到 [既有证据 JSON](data/performance-theory-evidence.json) 的 `sequential_refinement_20261021`。磁盘慢 I/O 尚未根治，本轮没有修改宿主部署或运行新的参数搜索。
-
-## 2026-10-21：可靠性、统一供给与动态对照
-
-本轮实现：Cold/Warm 统一有界 FIFO 与创建配额；Warm 缺货按需创建；清理兜底保留独立 2 秒预算；启动时校验宿主/祖先 cgroup 内存预算并在 status 报告；超时前采集有界内核现场。默认仍为 Cold、动态 QoS/库存关闭。以下为单轮探索，未做参数寻优，不能将与历史批次的差异全部归因于代码。性能样本对应各自记录的二进制哈希；后续内存校验及队列计数修正另有回归，不视作最终源码的全面性能验收。
-
-`make check` 通过 race、vet、Python 回归与格式检查；真实 KVM 验证覆盖 Cold/Warm 共 12 次并发全新实例、超时、OOM、取消、清理失败停接单及重启修复。2GiB 委派子树拒绝超出预算的 Warm 配置，改为 1GiB 父组/256MiB 实例后执行与回收通过。未更新宿主已部署服务，本轮未重跑配对 systemd 全套。
-
-**同预算冷暖短测**：KVM，外层 6 CPU/5GiB；双方创建并发 2、执行并发 4、总上限 6、FIFO 16/8MiB/100ms，Warm 目标 3。runsc/rootfs 位于 tmpfs，rootfs 来自固定 Python 镜像；使用 Docker init，benchmark 的控制状态未额外挂入 tmpfs。
-
-| 场景 | Cold 完成/发起 | Warm 完成/发起 | Cold/Warm 成功 wall P50 |
-|---|---:|---:|---:|
-| 库存充足、顺序请求 | 60/60 | 60/60 | 265.33 / 150.11ms |
-| 瞬时突发 | 4/32 | 4/32 | 450.69 / 329.40ms |
-| 10 req/s，约 6 秒 | 52/60 | 49/60 | 461.47 / 457.59ms |
-
-304 个请求全部分类，无基础设施错误；非完成项均为 503。新路径保留 READY 命中收益，但持续完成数 Warm 仍略低，不证明 Warm 提升吞吐，也不证明历史退化已经在所有环境消除。旧 Cold 可随 4 个执行槽并行创建，与本轮双方共享 2 个创建名额不同。
-
-**动态 CPU 对照**：KVM，外层 2 CPU/5GiB，tmpfs 依赖与测量目录；每组连续运行 45 秒，核心请求率依次为 5/60/5 req/s，每段 15 秒；两个沙箱客户端持续执行固定工作量。比较固定 1 CPU、固定 2 CPU、AIMD 1～2 CPU；动态库存与压力准入门控均关闭，预先设定核心服务 50ms SLO。
-
-| 策略 | 高负载成功请求 P99 | 高负载失败/丢弃 | 高负载 SLO 超标秒数¹ | 45 秒内沙箱完成数 |
-|---|---:|---:|---:|---:|
-| 固定 1 CPU | 73.76ms | 12/900 | 5/15 | 16 |
-| 固定 2 CPU | 135.43ms | 161/900 | 15/15 | 25 |
-| AIMD 1～2 CPU | 93.69ms | 72/900 | 13/15 | 26 |
-
-¹ 按一秒窗口检查：有核心失败/丢弃或成功请求 P99 超过 50ms 即计超标；低压每秒仅 5 个样本，不作稳定 P99 推断。所有三组恢复阶段均从首秒开始出现连续三个达标窗口。共 3,150 个核心请求、1,338 帧有效观测；沙箱无拒绝/错误，回收检查通过。核心失败/丢弃保留在结果中，未算成成功延迟样本。
-
-AIMD 发生 5 次配额变化，实测 2→1.6→1.28→1.024→1.524→2 CPU。首次降额约在测量第 17.70 秒（高负载开始约 2.70 秒后），高负载末段已开始恢复。相比固定 2 CPU，观察到较低的核心 P99；相比固定 1 CPU，保护更弱。它没有守住 50ms SLO，也未证明支配静态方案，默认继续关闭。没有无沙箱高负载基线、重复批次或置信区间，不作生产收益承诺。下一步若继续研究，应核对 PSI 与业务拒绝/SLO 的对应关系，尤其是业务拒绝减少实际工作量后 PSI 是否会提前回落；本轮不调整参数追求好看结果。
-
-**普通磁盘现场**：一次 create 超时捕获到 runsc CLI 为 D 状态，栈为 `filemap_fault → folio_wait_bit_common`；此时目标 cgroup populated=0、memory.current=0、OOM 计数为 0。依赖位于 ext4，宿主 I/O PSI 较高。这次故障发生于文件缺页等待阶段，不能归因于尚未发生的任务执行/cgroup 销毁，也不能外推所有历史超时同因。普通磁盘问题仍未修复；该次测试 observe 子用例失败、enforce 子用例通过，不合并成通过结论。
-
-摘要、配置与失败快照合并在 [既有理论证据 JSON](data/performance-theory-evidence.json) 的 `implementation_review_20261021` 中；本地原始 CSV/JSONL/日志统一归档为 `artifacts/implementation-validation-20261021.tar.gz`（Git 忽略）。
+# 验证指南
+
+本页区分待退役旧实现的历史证据、新平台验证和 Daemon 退出验收。详细旧数据保存在[本地验收归档](archive/local-validation.md)，JSON/图表继续留在 data/assets；它们不代表新平台测试。agentboxd 已决定退役，但新平台和实际移除均未完成，状态见[路线图](roadmap.md)。
+
+## 当前证据摘要
+
+| 范围 | 已有证据支持 | 不能据此推导 |
+| --- | --- | --- |
+| 旧执行与生命周期 | KVM/systrap 指定环境下的隔离、取消、OOM、回收和重启流程 | 完整安全审计或任意存储环境稳定 |
+| 旧 Warm 与库存 | READY 命中和有空闲波次的典型等待下降，库存机制可运行 | 新平台同等启动时延或持续吞吐 |
+| 旧 CPU/QoS | 静态预算有局部保护价值，动态机制有真实接线与动作 | AIMD 支配静态配置或保证业务 SLO |
+| 旧 Gateway/MCP | 普通用户转发、取消、无自动重放和模型错误修正闭环 | 新 Job 接口兼容或相同取消语义 |
+| 新平台 | 目前只有设计与实验协议 | 组件兼容、生产就绪或性能改善 |
 
 <a id="runtime"></a>
-## 执行隔离与生命周期
-
-- 2026-10-12～16，KVM/systrap 的 cold/warm 真实执行用例通过，覆盖 stdin/stdout、UID 1000、环境允许列表、Python main/pickle、代码错误、用户退出码 125/128、超时、输出洪水、只读根、禁网、工作目录隔离、后台进程销毁、OOM、取消、容量拒绝和重启回收。
-- 输入准备在 umask 0022/0077 下保留镜像权限；根及挂载点显式 0755，任务输入只读。fork 测试降低 guest rlimit 后验证拦截，不声称实测精确的 64 进程边界；OOM 专门区分软水位与硬限制。
-- 每任务全新实例，待命 init 保持 Sentry 存活，使用附着 runsc exec 获取短任务退出码；清理失败保留 intent 并停止接单。
-- create/start 已开始时在独立预算内完成，避免取消导致半写元数据。空闲库存四路回收，清理确认前仍占容量。
-- systemd 252 容器的 KVM cold/warm、systrap warm 验收包括执行中停止、主进程 SIGKILL 后恢复、更新/回退/卸载重装和 purge。注入每实例删除延迟 2 秒，8 实例停止约 4.1～4.4 秒；不是生产停止时间上界。
-- 2026-10-15 宿主 systemd 249 的 KVM cold 服务另有安装与生命周期记录，见 [部署说明](systemd-deployment.md)。后续 Gateway/MCP 只在隔离容器验收，没有替换该宿主服务。
-
-平台固定使用项目记录的 runsc release-20261005.0 和 Python digest；功能容器通常为 6 CPU/5GiB/2304 host tasks、私有 PID/cgroup。功能通过不等于完整隔离安全证明或固定时延承诺。
-
 <a id="warm"></a>
-## 预热池与冷暖对比
-
-历史 KVM 基准时间为 2026-10-15，内核 6.8.0-111-generic，Go 1.25.11；执行并发 4、固定 warm 库存 3、创建并发 1、总上限 6、队列 16/8MiB/100ms。每路先探测两次，inventory/steady 各 60 请求，burst 32 请求，steady 仅约 6 秒。
-
-| 模式 | 场景 | 发起 / 完成 / 拒绝 | 成功 wall P50 | 成功 wall P99 |
-| --- | --- | ---: | ---: | ---: |
-| cold | inventory | 60 / 60 / 0 | 287.78ms | 387.23ms |
-| cold | burst | 32 / 4 / 28 | 418.92ms | 442.47ms |
-| cold | steady | 60 / 49 / 11 | 405.68ms | 497.72ms |
-| warm | inventory | 60 / 60 / 0 | 156.40ms | 372.63ms |
-| warm | burst | 32 / 3 / 29 | 184.40ms | 207.68ms |
-| warm | steady | 60 / 34 / 26 | 247.29ms | 560.30ms |
-
-全部 304 行核对无传输或基础设施错误；成功必须确认清理，拒绝单列，P99 为 nearest-rank，小样本 burst 的尾分位接近最大值。库存充足时 setup P50 从 72.57ms 降至 10.24ms；warm steady 成功数反而更低，说明 READY 缓冲与持续创建产能不同。阶段分位数不能相减作严格归因。
-
-3 READY 时父组 memory.current 单次约 99.29MiB，不是单实例固定成本。以上支持提前准备降低命中等待，不证明动态库存策略提高长期吞吐或节省固定比例内存。2026-10-20 动态库存 v2 已通过实际阻塞归因、缩容稳定、容量守恒和一次真实目标调整/回收；收益对照仍未完成。
-
 <a id="qos"></a>
-## 观测与 QoS
-
-- 只读真实内核采集通过：CPU/内存与一秒 I/O/PID 增量有效，目录变化、缺测、过期和计数回退按无效数据处理。
-- 确定性压力驱动真实 cpu.max：observe 保持 `80000 20000`，enforce 确认写入 `64000 20000`。
-- 真实 PSI 测试使受保护组限为 0.05 CPU 作为压力源；observe 不改变接单，enforce 拒绝新请求与排队者、保持在途任务、暂停补池，缺测时保持限制，低压稳定后恢复。
-- KVM 普通磁盘依赖曾在 runsc create/delete 或 Python 启动预算内失败。准备 runsc/rootfs 到容器 tmpfs 后，上述控制与执行链路通过。新观测字段的普通磁盘 KVM 端到端短测失败仍是已知问题，没有用延长超时改判成功。
-- 真实 PSI 到控制器的功能通路已验证；测试压力源不证明沙箱噪声的因果，也没有动态 QoS 相对静态保护的业务收益结论。
-
 <a id="static"></a>
-## 静态 CPU 对照
-
-2026-10-17，Linux 6.8.0-138-generic、KVM、外层 2 CPU/5GiB，九组各有一分钟比较窗口。配置与统计方法见 [实验说明](static-cpu-experiment.md)。
-
-| 组别 | 三轮 Core P99（ms） | 三轮沙箱完成率（次/秒） |
-| --- | --- | --- |
-| 无沙箱基线 | 19.64 / 21.44 / 17.15 | 0 / 0 / 0 |
-| 默认 4 CPU 父级配额 | 94.52 / 81.11 / 80.64 | 0.550 / 0.533 / 0.567 |
-| 静态 1 CPU 父级配额 | 21.77 / 23.77 / 22.88 | 0.367 / 0.367 / 0.367 |
-
-共 12,600 个 Core 请求成功，177 个正式沙箱任务成功且清理（默认 105、protected 72）；6,225 帧状态全部可用，无拒绝、客户端丢弃、传输、基础设施或采样错误。窗口外 drain 完成不计窗口吞吐。
-
-降低静态配额使 Core P99 接近基线，同时降低沙箱完成率。此结论限于外层 2 CPU、固定工作量和旧版本，不外推裸机或动态控制收益。[实验 JSON](data/static-cpu-experiment.json)记录版本、哈希、逐轮配置和结果；[离线分析](data/observability-analysis.json)关联到全部 177 个任务。依赖快照准备约 508 秒，在测量窗口之外，不能算入 API 时延。
-
-早期中止批次出现 delete 超时，没有对应 OOM 增量；Docker init 和宿主侧 tmpfs 修正后正式批次未复现。缺少现场内核栈，未确定旧失败的精确根因。
-
-![正式三轮静态对照](assets/static-cpu-comparison.png)
-
 <a id="gateway"></a>
-## Gateway 验收与开销
+代表性数字保留在证据源：固定波次 Cold/Warm 成功 P50 为 331.64/182.98ms，而 P95 改善很小；共享 2 CPU 的固定场景中，父组 1 CPU＋PSI 仅补池配置两轮 6,480 个 Core 请求均在 50ms 内成功，但门控未触发，不能归因于动态策略。所有配置、任务代价、失败反例和版本条件见[归档](archive/local-validation.md)，不将这些数字转用于 Kubernetes 后端。
 
-2026-10-20，普通用户 UID 1000 Gateway，经 Unix HTTP 调用 root Engine 和真实 systrap runsc。
+## 旧代码检查与真实复现
 
-- 入口上限 1 时多余请求约 0.764ms 返回 gateway_capacity；同次 readyz/status 均可访问。
-- 客户端取消、Gateway SIGTERM 后，确认清理并补足库存的单次观测约 50.194ms/13.214ms；任务资源删除、容量恢复。不是取消延迟分位数。
-- 完整 1MiB NUL 输出转义后约 6MiB JSON，未截断；单请求进程 RSS 高水位约 20.84MiB。不能证明 64 个并发大响应适配默认 512MiB unit，默认仍为 8。
-- 两路交替、每路预热 3 次后采样 30 次，均成功且清理：Unix 直连 wall 中位数 170.859ms/P90 200.545ms，Gateway 为 177.594ms/195.549ms。
-- 对每个请求计算客户端 wall 减 Engine total_ms，再逐对相减，中位数约 0.257ms。这是轻载下入口路径开销估计，包含客户端与编码，不能当纯 Gateway CPU 时间；端到端中位数之差不能全部归因于 Gateway。
-
-[完整 60 个样本与摘要](data/gateway-validation.json)保留原始精度。条件为 warm、库存 2、执行并发 1、总容量 4、systrap、tmpfs 依赖；不报告 P99、吞吐、KVM 或普通磁盘收益。
-
-隔离 systemd 252/systrap 配对生命周期通过：专用普通 UID 999、root:专用组 0750 目录/0660 socket，其他用户不能连接，Gateway 不能读取 root 凭据文件；启动依赖、daemon 重启后恢复、停止传播、Gateway 更新、移除恢复独立模式、保留凭据重新配对和 purge 均通过。共检查 5 次配对与 1 次独立执行。
-
-首次 systemd PID 1 因 inotify_init 返回 EMFILE 退出；root 诊断只有 4 个 FD、RLIMIT_NOFILE 为 1,048,576，当时实例限额为 128。用户临时提高为 1024 后同一套件通过，未确定占用最多的进程，没有声称发生泄漏。宿主配对服务没有切换。
-
-<a id="mcp"></a>
-## MCP 与真实 DeepSeek
-
-实际普通用户 MCP/Gateway stdio 链路通过成功、代码异常、超时、RPC 取消与直接关闭传输的回收；模拟 API 的 3 次模型请求、2 次真实执行完成除零错误后修正为 42。SDK 优雅 Close 会等在途调用，不能当作实际断线；进程生命周期另显式取消 HTTP 转发。
-
-配置私有凭据后，真实 deepseek-flash API 同样以 3 次模型请求、2 次真实 runsc 执行完成 failed/ZeroDivisionError → succeeded/42，两次 cleanup_complete 均确认。Agent/MCP/Gateway 使用实际编译二进制，API key 不进入 MCP 或任务环境，未出现在输出与待提交文件中。[脱敏证据](data/deepseek-live-validation.json)记录实际计数、最终回答和日志哈希；详细用法见 [MCP](mcp-deepseek.md)。
-
-真实 API 用例必须显式选择，普通 make check 不调用付费模型。当前无跨宿主机或多 Worker 验收，下一步为独立 kind 功能模拟。
-
-<a id="evidence"></a>
-## 原始数据与复现
-
-本次整理后，artifacts 保留近期关键验收日志、宿主部署摘要与 `reference-data.tar.gz`。归档中保存原始路径下的正式静态九组 CSV/JSONL/日志和冷暖 requests.csv/summary.json；派生绘图、失败重试和旧流水账已移出活跃目录。
+本节及后续本地/MCP 命令针对当前仍保留的旧源码，仅用于迁移期回归和历史复现，不是目标平台验收。P2c 后需使用归档代码版本；活动 CI 将改为新平台检查。所有命令在对应仓库根目录执行，普通检查不启动付费 API 或特权运行时；真实用例另需 runsc/rootfs、Docker 和可用平台。
 
 ```bash
-# 按原路径恢复原始数据，随后可离线分析，不启动负载。
-tar -xzf artifacts/reference-data.tar.gz -C .
+make check
+make build
+```
+
+make check 包含 Go race、基准摘要、vet、格式/差异检查及部署和实验脚本回归。按改动范围再选择真实用例；不把单元测试或 tmpfs 验收当作普通磁盘验证。
+
+```bash
+python3 scripts/container.py runtime --platform kvm
+python3 scripts/container.py runtime --platform systrap
+python3 scripts/container.py systemd --platform kvm --mode warm
+python3 scripts/container.py systemd --platform systrap --mode warm
+```
+
+Gateway 和 QoS 短流程：
+
+```bash
+AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
+  python3 scripts/container.py gateway --platform systrap
+AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
+  python3 scripts/container.py qos --platform kvm
+```
+
+动态库存的单独机制回归：
+
+```bash
+AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
+  python3 scripts/container.py qos --platform systrap --pattern '^TestDynamicInventoryRuntime$'
+```
+
+该用例验证真实库存阻塞、扩缩及清理；不证明策略收益。宿主服务 smoke 与显式启停/SIGKILL 检查见[运维指南](operations.md#smoke)，执行前确认服务作用范围。
+
+<a id="mcp"></a>
+## 旧 MCP 与模型验证
+
+```bash
+make check build
+AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
+  python3 scripts/container.py mcp --platform systrap
+```
+
+普通 MCP 流程使用确定性模拟模型 API 和真实沙箱。历史真实 deepseek-flash 记录为 3 次模型请求、2 次执行，从除零错误修正为 42，两次确认清理；见[脱敏证据](data/deepseek-live-validation.json)。不把单次演示当作性能或普遍自愈能力。
+
+付费 API 仅通过下列显式入口调用：
+
+```bash
+AGENTBOX_LIVE_DEEPSEEK=1 \
+  AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
+  python3 scripts/container.py live --platform systrap
+```
+
+默认读取 `.local/deepseek.env`，或由 AGENTBOX_DEEPSEEK_CONFIG 指定私有文件，只解析允许的 KEY=VALUE，不执行 shell 内容。上限为 4 次模型请求、3 次工具调用、100 秒对话；只有该套件的控制容器使用 bridge 出站访问 API，runsc 任务仍禁网。普通容器验证均保持禁网。
+
+<a id="local-experiments"></a>
+## 本地性能实验入口
+
+实验需选择对应资源和工作负载口径；详细方法、参数、失败条件和逐批结果见[归档](archive/local-validation.md#pool-experiments)。
+
+| 问题 | 现有入口/详细说明 |
+| --- | --- |
+| Warm 命中、突发、持续、波次 | scripts/container.py benchmark；[供给实验](archive/local-validation.md#pool-experiments) |
+| 配额与延迟目标下的容量 | benchmark --scenario capacity；[容量扫描](archive/local-validation.md#容量扫描寻找可用边界) |
+| 补池与 Core 争用 | benchmark --scenario refill-core；[补池对照](archive/local-validation.md#补池与-core-争用对照) |
+| 固定 CPU 保护与代价 | scripts/container.py static；[静态方法](archive/local-validation.md#static-method) |
+
+### 本地动态 CPU 对照
+
+沿用现有实验入口，不新增脚本：
+
+```bash
+make build
+AGENTBOX_TEST_IMAGE_ROOTFS=1 python3 scripts/container.py static --platform kvm --comparison dynamic --duration 15 --repetitions 1
+```
+
+每组包含三个各 15 秒的阶段，固定 1 CPU、固定 2 CPU 与 AIMD 1～2 CPU 使用同一工作量、5/60/5 req/s 核心到达率、两个沙箱客户端。保持静态库存、关闭准入门控，避免把多个策略收益混在一起。预先设定 50ms 核心 SLO，记录拒绝/丢弃、超标秒数、完成量、配额轨迹和恢复；一轮结果不支持显著性推断。2026-10-21 的未达标结果及限制见[详细记录](archive/local-validation.md)。
+
+<a id="recording"></a>
+## 记录与离线分析
+
+```bash
+# 启动受控的短观测实验；已有本地依赖后执行。
+make build
+python3 scripts/container.py observe --platform kvm
+
+# 记录已运行的 observe/enforce 服务；token 从环境读取。
+python3 scripts/experiment.py record --output artifacts/observe-manual \
+  --duration 30 --rate 20 --sandbox-workers 2
+
+# 读取历史数据，不启动负载；恢复原始数据的方法见 validation.md。
 python3 scripts/experiment.py analyze artifacts/static-kvm-XCmQHtIX \
   --output /tmp/agentbox-analysis --no-plots
 ```
 
-历史 JSON 中的绝对路径、脚本哈希和记录版本是当时来源，不是当前文件布局或当前版本性能成绩。源码重构不修改这些历史数字；恢复原始数据后可核对哈希。只保留一种规范 JSON 汇总，删除重复导出的 docs CSV。
+记录器保存逐请求 Core/沙箱 CSV、状态 JSONL、配置和质量摘要。成功、拒绝、客户端丢弃、其他失败分开；enforce 的动作来自 daemon，记录器不修改策略。容器观测为 2 CPU，idle-pool 仍包含库存与观察开销，不能当独占业务基线。
 
-整理前 docs/scripts/artifacts 的完整备份位于 `.local/repo-cleanup-20261020-165120.tar.gz`，备份位置、压缩包 SHA-256 另见 `.local/cleanup-backup.json`。它未包含 DeepSeek 配置，不进入 Git；仅在需要回看历史材料时恢复。其余旧验收和失败批次也保存在这份完整备份中。新实验仍使用独立输出目录，不自动覆盖或删除用户已有结果。
+离线分析只写新的输出目录并记录源文件哈希。Core 三种时间口径使用同一窗口、同一批成功请求；沙箱阶段只匹配正式 CSV 中成功且清理完成的 execution_id，排除 warmup。drain 完成请求保留阶段数据，但不计入窗口吞吐。
 
-## 当前检查与未验证项
+历史图表和口径核对见[分析归档](archive/local-validation.md#observation-analysis)；不要在缺失旧字段时补写新观测值。
 
-普通 `make check` 检查 Go race、vet、脚本语法、部署与测量边界，真实平台测试需显式开启。本次整理已通过完整 make check、公共入口/引用检查、一次新入口驱动的真实 MCP/systrap 短流程及 systemd 配对生命周期。压缩原始数据解包后，经新分析入口重算得到相同的 9 组有效对照和 177 个匹配任务；未重跑长时间性能实验或付费 API 演示。
+<a id="evidence"></a>
+## 历史资料与复现
 
-普通磁盘 create/delete 超时的精确根因、新采集净开销、动态 QoS/库存收益、多租户公平与物理跨机资源隔离仍未取得完整证据，不能用本页功能通过替代。
+[原始数据恢复说明](archive/local-validation.md#evidence)保存归档位置、恢复命令和版本边界。[理论分析](archive/performance-theory.md)及[引用索引](archive/performance-references.md)为历史研究资料，不再承担当前开发计划。data/assets 的现有文件未迁移或重算。
+
+<a id="limits"></a>
+## 已知限制
+
+普通磁盘 create/delete 超时尚未根治；tmpfs 成功不等于磁盘修复。动态库存独立收益、业务健康借用收益、采集净开销、长期生产运行、多租户公平与物理跨机性能仍缺完整证据。Kubernetes 后端与 AdmissionCheck/Koordinator 不以本地证据代验。
+
+<a id="retirement"></a>
+## 新平台迁移与 Daemon 退役验收（计划）
+
+新链路独立证明安全与正确性，不要求 Warm、同步等待或旧 API 行为等价。至少核对：
+
+| 验收项 | 必须取得的证据 |
+| --- | --- |
+| 独立运行 | agentboxd/旧 Gateway 未安装或未运行时，真实 Job 与新 API/MCP 完成任务 |
+| 平台所有权 | 实际计算、运行时进程和资源归属 Job Pod；由 kubelet/containerd 管理，没有旁路本地沙箱 |
+| 新调用契约 | 版本化提交/查询/取消、断线后继续、重复输入冲突、未知结果查询、attempt 与产物校验 |
+| 旧入口退出 | 调用方已切换，旧 API/MCP 不误投新任务，也不成为新平台自动回退目标 |
+| 旧资源收敛 | 旧请求排空或明确取消、残留处理、服务/进程/监听/凭据清退记录 |
+| 活动发布收敛 | 构建、CI、部署和默认文档无 agentboxd 必需依赖；旧代码版本与证据仍可复现 |
+
+退役完成条件和操作步骤分别见[路线图](roadmap.md#retirement)、[运维指南](operations.md#retirement)。文档修改、安装 containerd 或单个 Job 成功都不能替代上述验收；Koordinator 不作为退役前置条件。
+
+<a id="platform"></a>
+## 新平台实验协议（计划）
+
+以下仅用于未来阶段，尚无对应新平台成绩。
+
+### 要回答的问题
+
+
+| 假设 | 最小比较 | 可以否定该假设的结果 |
+| --- | --- | --- |
+| 健康准入有价值 | 调优固定配额 vs 同配额＋AdmissionCheck | 在线无明显改善或批任务等待代价不可接受 |
+| 节点压制有额外价值 | 无节点压制 vs 原生 Koordinator | 原生资源机制已足够或压制导致更差权衡 |
+| 两者互补 | 四组消融 | 联动没有额外收益或造成振荡/饥饿 |
+| 机制可迁移 | 冻结策略后使用未参与调参的场景/应用 | 只有单一自研计算接口有效 |
+
+CPU 利用率上升不能单独证明收益。功能通过、测量有效、性能改善分别记录；负向结果仍是交付。
+
+### 固定资源域与工作量
+
+首轮固定一个 Linux Worker，在线 Deployment 与离线 Job 共用明确资源域；控制面、监控和 k6 尽量在域外。记录 CPU 型号、逻辑/物理核、SMT、虚拟化/steal、频率、温度背景、内核、cgroup 驱动、祖先 quota/weight/cpuset、内存、swap、存储及网络。
+
+kind 用于功能验证；同机独立 CPU 集也可能共享 LLC、内存和内核，不能冒充物理独立机器。无法观察的祖先限制和背景干扰明确列出。
+
+在线先使用现有 Mock Core 的固定计算与校验能力，适配 Kubernetes 部署及业务指标，不根据策略改变单请求工作量、并发或入口超时。后续增加一个独立服务验证，不能只凭自研服务声称普适性。
+
+离线选择一份固定图片 manifest，固定库版本、尺寸、编码参数、线程数和输出规则。通过工作量构造短/长任务，不用 sleep 或永远运行后超时的任务计成功吞吐。runc/gVisor、缓存准备、数据分发和存储条件在所有策略组一致。
+
+### 基线与消融
+
+所有平台组均使用 Kueue 管理队列，基础配额始终存在。“关闭健康准入”不表示取消基础资源预算。
+
+| 组别 | 基础平台 | 自研健康检查 | Koordinator CPU Suppress |
+| --- | --- | --- | --- |
+| R | 只有在线业务及同套观测 | 无离线请求 | 关闭 |
+| B | Kueue 固定配额＋固定任务规格 | 关闭 | 关闭 |
+| A | 与 B 相同 | 开启 | 关闭 |
+| K | 与 B 相同的兼容资源模型 | 关闭 | 开启 |
+| AK | 与 K 相同 | 开启 | 开启 |
+
+P1 完成 R/B 和多档固定配额扫描；P2 比较 B/A；P3 才补 K/AK。相同任务规格下，配额可约束最大运行规模，但不把 CPU 配额直接称为任意任务的精确并发槽。
+
+正式比较前在调参集选择满足在线目标、批任务产出较好的静态配置，冻结后用于正式集。可额外报告事后最优静态点作为诊断，不冒充可部署的预知策略。
+
+P3 必须让 B/A/K/AK 的请求资源、预算上限、权重、任务、调度位置、runtime 和采集保持一致；如引入 batch 扩展资源、调度插件或不同 cpuset 模式，应建立共同兼容基线或拆成单独机制实验，不能直接拼接历史 B/A 数据归因。
+
+首轮不同时开发 PSI 替代策略。只有原生 Koordinator 对照暴露可复现问题后，才单独比较同执行器下的信号/策略，保持 SLO guard、调参预算和其他功能开关一致。
+
+### 到达轨迹与评估场景
+
+先在在线独占时扫描容量 C，提前确定实验 SLO、正确性规则和可接受到达偏差。流量按本环境容量比例构造，不能跨机器照搬绝对 QPS。
+
+首批只选三类：
+
+- Steady：稳定中等在线负载与固定批任务积压。
+- Step：低→高→低在线负载与持续计算任务，观察等待、压制和恢复。
+- Fault：同一轨迹下注入指标陈旧、Controller 重启或权限失败。
+
+之后再增加短突发、超过独占容量、I/O 瓶颈转移和未参与调参的应用。过载场景用于暴露边界，不要求有限资源满足任意 SLO。
+
+使用 k6 open arrival-rate 场景，一次 iteration 对应一个请求；记录计划到达、实际发起、完成、失败和 dropped_iterations。到达率无法维持时标记试验无效并保留证据，不能把实际负载下降后的延迟当收益。[到达模型](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/open-vs-closed/)、[丢弃迭代](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/dropped-iterations/)
+
+批任务清单、到达时间和输入固定，不随响应速度临时增减任务。队列等待、未准入和未完成任务都属于结果。
+
+### 统计与有效性
+
+在线同时报告：
+
+- offered/sent/completed、正确成功、错误、拒绝、超时和未发出请求。
+- 正确且在 SLO 内完成的数量/测量时间，即及时成功 goodput。
+- 正确且按时完成数占预先定义请求集合的比例；客户端丢弃另列并参与到达有效性判断。
+- 成功延迟 P50/P95/P99、全窗口及预定义突发/恢复窗口；不平均各 Pod P99，不隐藏超时。
+
+离线同时报告窗口内校验成功的工作量、固定清单全部完成时间、排队时间、最长等待、积压及未完成任务年龄。窗口外 drain 完成保留但不计窗口内吞吐；失败、重试、启动和产物校验成本全部披露。
+
+观察 quota、实际 CPU、节流、PSI、内存、OOM、I/O 与 Controller/监控开销，区分父子层级，避免重复累加。Kueue 配额、CPU usage 和物理可用 CPU 是不同口径。
+
+缺测为 unknown，不补成零；记录抓取/决策间隔分布、时间同步误差和采集边界。异步启动延迟单列，不能从查询周期推出控制效果。
+
+### 重复、调参与停止规则
+
+配置、镜像和轨迹先冻结；预热不计主窗口，缓存方式固定。正式窗口根据任务长度与稳态预实验选择，初始可采用 5～10 分钟，不作为未校准的固定承诺。
+
+同种子配对，各策略交错或随机顺序，先安排至少 5 次独立运行观察变异；不足时明确报告范围，不作显著性结论。以独立 run 计算配对差异和不确定性，不能用大量相关请求制造虚假的窄区间。
+
+正式评估场景与调参场景分离。不能看结果后放宽 SLO、删掉最差轮次或只保留成功任务。安全边界突破、持续 OOM、资源归属不明、关键证据缺失时停止本轮并标为无效；业务达不到 SLO 是有效负向结果，不能因此删轮次。
+
+### 原始证据与产物
+
+拟议每个不可变 run 目录保存：
+
+- manifest：源码 commit、组件/镜像版本、配置 hash、资源域、全部有效开关。
+- workload manifest：输入哈希、任务规格、轨迹与种子、输出校验规则。
+- 客户端原始结果、Job/Pod attempt 与结果验证记录。
+- 健康样本、AdmissionCheck 决策/状态、Kueue 预留/准入事件、Koordinator 配置和实际动作证据。
+- 环境与资源采样、validity、summary、固定脚本生成的图表。
+
+文件名、版本锁与实验命令随 P0/P1 实现后固定，当前没有新增可运行入口。已有单机四脚本入口继续有效；新平台使用单独配置/场景，避免改变旧结果的复现口径。
+
+图表至少分面显示在线及时成功/延迟、批任务有效产出/等待、实际 CPU/预算、健康判定/准入以及样本有效性。Grafana 用于运行观测，正式图从归档原始数据生成。
+
+### 结论模板
+
+报告同时给出环境、对手配置、任务类型、独立运行数、收益/代价和失效场景。可接受结果包括“健康准入降低在线违约但显著增加批任务等待”“Koordinator 已足够，额外扩展无收益”或“某配置下联动改善权衡”。
+
+不得宣称未验证的生产 SLO、跨机收益、GPU 迁移或完整安全性。历史单机数据不改写成新平台成绩。

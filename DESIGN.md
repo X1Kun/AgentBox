@@ -1,647 +1,144 @@
 # AgentBox 系统设计
 
-> 面向 AI Agent 的轻量代码执行沙箱
->
-> **AgentBox: A Prewarmed Sandbox Runtime with PSI-Guided Resource Control**
+版本：V2.1｜更新：2026-10-25｜已决定退役 agentboxd；平台迁移及代码移除尚未实施。
 
-- 文档版本：V1.1 设计草案（补充 QoS 开源调研与设计演进）
-- 日期：2026-10-12；实现说明更新于 2026-10-17；QoS 调研更新于 2026-10-16
-- 项目状态：单次执行、systemd 部署、一次性预热池、有界 FIFO 和单机压力 QoS 初版已实现，支持 CPU AIMD、压力准入、补池暂停/恢复与[有界动态库存](docs/dynamic-inventory.md)；动态执行并发和多租户公平性仍待实现。调度边界与功能验收见 [QoS 调度](docs/qos.md#scheduling)，预热池基准见 [预热池文档](docs/warm-pool.md)
-- 范围：本机 Linux 上的单机执行引擎；MCP/DeepSeek 示例已接入；多节点、eBPF 和其他模型适配作为后续扩展
+AgentBox 面向 AI Agent 提供受控任务执行。目标采用 **Kubernetes Job＋Kueue＋containerd/gVisor 的单一执行链路**，健康感知 AdmissionCheck 是首个研发点，Koordinator 是后续节点控制基线。**agentboxd 及其直接调用 runsc 的本地执行后端退出目标架构，不再规划长期双后端。**
 
-## 1. 项目定位与本机条件
+AgentBox 产品层仅负责鉴权、受控任务模板、提交/查询/取消和结果适配；容器管理、任务生命周期、排队与节点控制由成熟组件承接。不再把 agentboxd 改造成通用 containerd 客户端，也不自研 shim。退役是已确定的方向，现有代码仍可构建，新平台尚未交付；本次文档修改不等于已完成运行迁移。
 
-AgentBox 面向不可信 Agent 代码执行，通过预热供给降低请求等待时间，通过 cgroups v2 与 PSI 反馈控制减少对同机服务的干扰。
+本页只维护架构与关键取舍。阶段和验收条件见[路线图](docs/roadmap.md)，接口见[使用指南](docs/usage.md)，部署配置见[运维指南](docs/operations.md)，证据见[验证指南](docs/validation.md)。
 
-本项目需要同时解决三个问题：
+## 1. 目标与范围
 
-1. 不可信代码需要独立的执行与资源隔离边界。
-2. 每次请求都从零创建运行环境，会增加交互延迟。
-3. CPU、内存等资源失控时，执行任务不能无约束地影响同机核心服务。
+同时衡量受保护在线业务的正确及时成功率，以及平台任务的准入等待、按期完成、有效产出和积压。目标首版聚焦可排队、可重试且输出可校验的受控计算任务，不承诺旧同步 API、低延迟 Warm 命中或任意任务语义等价。CPU 利用率只是解释指标，不能靠长期阻止全部任务运行证明资源管理有效。
 
-### 1.1 本机只读检查结果
+研究健康准入相对调优静态配额是否改善权衡，以及 Koordinator 对在途干扰是否有额外价值。功能正确和实验可信是必交付项；性能改善允许被实验否定。
 
-以下为设计讨论期间、2026-10-12 在当前工具执行环境中观察到的结果，不代表已经完成运行时能力验证。
+现有本地 Python、Cold/Warm、FIFO、清理恢复、PSI/AIMD 及 Gateway/MCP 是已实现、待退役的旧链路。它们保留为迁移期复现和故障收尾依据，历史成绩不改写。Kubernetes 平台、AdmissionCheck、Koordinator 及新 API/MCP 适配均待实现和验证。
 
-后续在宿主环境确认 `/dev/kvm` 可用，并完成项目本地 runsc 和 Python rootfs 准备。实际实现范围与最新验收结果见 [README](README.md) 和 [第一阶段验收记录](docs/validation.md#runtime)。下表保留初次检查的环境快照。
+## 2. 组件职责与所有权
 
-| 项目 | 检查结果 | 对项目的意义 |
-|---|---|---|
-| 系统 | Ubuntu 22.04.5，Linux 6.8 | 具备实现基础 |
-| CPU | i7-9750H，6 核、12 线程，支持 VT-x | 适合单机实验；12 线程不能当成 12 个完整物理核 |
-| 内存 | 总计约 31 GiB，available 约 19 GiB | 可以从小规模沙箱池开始 |
-| Swap | 已使用约 4.4 GiB | 测试时需要记录交换活动，避免干扰延迟结果 |
-| cgroup | v2，包含 cpu、memory、pids、cpuset 控制器 | 资源控制底座具备 |
-| PSI | CPU、memory 压力文件可读取 | 可以实现反馈采集 |
-| KVM | 内核模块已加载，但当前工具环境看不到 `/dev/kvm` | 还不能认定项目能够使用 KVM |
-| runsc | 当前 PATH 中未发现 | 后续需要安装并验证 |
-| GPU | 当前环境中 `nvidia-smi` 无法连接驱动 | 本次检查无法确认 GPU 可用性 |
+| 职责/对象 | 主体 | AgentBox 开发边界 |
+| --- | --- | --- |
+| Pod 运行与资源归属 | kubelet、containerd、gVisor RuntimeClass | 受控模板与隔离验证 |
+| Pod 放置 | 原生 scheduler | 声明式资源与节点约束，不自行绑定 |
+| Job、输入和结果引用 | 任务生成器，后续薄产品适配 | 创建模板化任务、查询和显式取消 |
+| Pod 创建、重试与终态 | Job controller | 观察 attempt，不另建补偿任务系统 |
+| Workload、队列、配额与基础准入 | Kueue | LocalQueue/ClusterQueue/ResourceFlavor 配置 |
+| 在线健康检查项 | 自研 AdmissionCheck Controller | 仅维护自身检查、判定、恢复节奏和故障处理 |
+| 可选节点动态压制 | Koordinator | 先用原生机制，后按证据选择一个扩展 |
+| 监控与告警 | Prometheus、Grafana、现有 exporter | 少量业务/策略指标及 Dashboard |
+| 在线压测、离线工作 | k6、现成图片库/后续 ffmpeg 或 PyTorch | 固定轨迹、数据、参数和输出校验 |
+| 实验分析 | Python 工具 | baseline、消融、原始证据和质量判断 |
 
-`/dev/kvm` 和 GPU 的结果受当前执行环境的设备可见性影响，不能据此断定宿主机缺少设备或驱动损坏。正式实施前，需要在实际运行 daemon 的环境中完成 KVM 功能验证。
+不新写通用批任务队列、配额账本、完整 Node Agent、调度器或监控数据库。API/MCP 适配不访问 containerd/CRI socket、不管理宿主 cgroup，不以新名字继续承担 agentboxd 职责。GPU、eBPF、会话快照和复杂多节点放置不进入首轮。
 
-### 1.2 对初始设想的修正
-
-| 原假设 | 设计修正 |
-|---|---|
-| 没有嵌套虚拟化就只能用 ptrace | gVisor 从 2023 年起默认平台已经是 systrap |
-| KVM 固定提升 5～10 倍 | 性能取决于负载，应对 KVM、systrap 做实测 |
-| 单个沙箱约 15 MB | 必须测量 Sentry、Gofer、Python 和工作目录的整体开销 |
-| 清空文件层就能安全复用 | 进程、内存、打开的文件、后台任务等状态仍可能残留 |
-| 50 ms 读取 avg10 就能快速响应 | avg10 是较长时间尺度的趋势，不能作为唯一快速反馈信号 |
-| 宿主 `pids.max=64` 精确限制沙箱内 64 个进程 | gVisor 内外的进程模型不一一对应 |
-| cgroup socket eBPF 可以直接拦截所有沙箱连接 | 默认 netstack 路径需要换到实际经过的网络包拦截点 |
-| 调整 `cpu.max` 就是内核内调度算法 | 决策在用户态，资源约束由内核执行 |
-
-gVisor 官方建议裸机优先评估 KVM，无虚拟化支持或虚拟机环境优先评估 systrap，但没有保证固定性能倍数。参见 [gVisor 平台说明](https://gvisor.dev/docs/architecture_guide/platforms/)。
-
-在实际测量之前，项目标题不包含 `Sub-50ms` 等性能承诺。所有性能数字必须注明工作负载、平台、资源配置及测量口径。
-
-## 2. 第一版范围
-
-第一版规划集中实现一个完整的单机执行闭环。下表描述目标范围，当前实际完成项以 README 和阶段文档为准。
-
-| 能力 | 第一版 | 后续扩展 |
-|---|---|---|
-| 代码执行 | Python、标准库、固定镜像 | Bash、额外依赖模板 |
-| 隔离引擎 | runsc，显式选择 KVM 或 systrap | 平台性能优化 |
-| 预热方式 | 一次性预热沙箱 | 干净快照恢复、会话沙箱 |
-| 调度 | 有界队列、并发上限、后台补池 | 多租户公平调度 |
-| 资源控制 | 静态上限＋PSI 动态 CPU 控制 | 更复杂的资源预测 |
-| 网络 | 默认无外网 | 受控代理、TC eBPF |
-| 接入 | MCP stdio、loopback HTTP Gateway＋Unix HTTP daemon | 远程 MCP HTTP、多 Worker |
-| 部署 | 本机 systemd | 多 Worker、Kubernetes |
-| 演示 | DeepSeek Tool Calls 示例、模拟 API 回归、Mock 核心服务 | 本地模型、多 Worker 演示 |
-
-第一版的核心交付物是：能安全执行、能可靠结束、能恢复容量、能解释性能。
-
-GPU、本地模型、Kubernetes 可以增加展示效果，但不作为核心执行链路的依赖。
-
-## 3. 系统架构与组件边界
-
-系统保留 Gateway 与 Daemon 两个边界。
+## 3. 唯一目标执行链路
 
 ```mermaid
-flowchart TB
-    A[Agent / CLI / MCP Adapter] --> G[Gateway<br/>校验、限流、路由]
-    G -->|Unix HTTP Execute / Status / 取消传播| D[Daemon<br/>准入与任务管理]
-
-    D --> Q[有界任务队列]
-    Q --> P[Slot Scheduler]
-    P --> W[全新预热沙箱池]
-    W --> E[一次性执行]
-    E --> X[销毁与回收]
-    X --> R[后台补充沙箱]
-    R --> W
-
-    M[PSI / cgroup / 核心服务指标] --> C[QoS Controller]
-    C -->|调整 CPU 配额| K[cgroups v2]
-    C -->|调整准入与补池速度| D
-    K --> W
-    K --> E
-    K --> R
-
-    D --> O[指标、事件、实验 CSV]
+flowchart TD
+    A[Agent / 调用方] --> B[AgentBox API / MCP 薄适配]
+    T[首阶段受控任务生成器] --> J[Kubernetes Job]
+    B --> J
+    J --> Q[Kueue 队列 / 配额 / 准入]
+    H[自研健康感知 AdmissionCheck] --> Q
+    Q --> S[原生 scheduler / kubelet]
+    S --> C[containerd]
+    C --> R[官方 runsc shim / gVisor]
+    R --> P[实际执行任务的 Pod]
+    K[后续可选 Koordinator] --> P
+    O[在线质量与资源观测] --> H
+    O --> M[Prometheus / Grafana / 实验数据]
 ```
 
-| 组件 | 核心职责 |
-|---|---|
-| Gateway | 请求校验、鉴权、入口并发限制、固定单 Worker、传播取消与期限；多节点路由留待后续 |
-| Admission | 判断队列、执行槽位、内存预算是否允许接单 |
-| Scheduler | 将任务绑定到唯一沙箱，处理排队和超时 |
-| Pool Manager | 维护预热库存，限制创建并发和沙箱总数 |
-| Runtime Adapter | 包装 runsc 生命周期，隐藏 CLI 和版本差异 |
-| QoS Controller | 读取信号、计算动作、更新配额与准入状态 |
-| Reconciler | 清理孤儿沙箱、失败资源和重启前残留 |
-| Observer | 输出指标、结构化事件和基准测试数据 |
+整条链路为目标设计，尚未交付。首阶段由受控任务生成器提交真实 Job，之后接入新的 API/MCP 适配。图中箭头表示管理/执行关系，不表示所有组件之间都有同步 RPC；Kueue 控制准入，Job controller 管 Pod 生命周期，scheduler 负责放置。
 
-网络入口和特权操作分开。Gateway 使用普通用户运行；需要操作 cgroup、挂载和 runsc 的执行管理组件只暴露本机受保护接口。
+| 旧能力 | 目标承接方式 | 迁移决定 |
+| --- | --- | --- |
+| runsc CLI 创建/exec/等待/删除 | containerd＋官方 runsc shim | 删除本地运行时适配，不自研替代 shim |
+| 本地 FIFO、容量账本 | Kueue＋资源声明 | 不移植为第二套平台队列 |
+| 一次性 Warm、动态 READY 库存 | 首版普通 Job 启动 | 退出交付目标，不要求功能等价 |
+| 本地 cgroup AIMD/压力门控 | 静态资源边界、健康 AdmissionCheck、后续 Koordinator | 不把旧控制器带进新运行链路 |
+| root Daemon＋Unix 转发 Gateway | 受限 Kubernetes API 客户端服务 | 旧配对服务随 Daemon 退役，可复用通用校验代码 |
+| 同步 execute_python/get_status | 显式任务提交、状态查询和取消工具 | 版本化切换，不静默更改旧工具含义 |
+| bundle/cgroup 清理确认 | Job/Pod 生命周期＋产物和资源收敛检查 | 保留验证要求，重新定义结果字段 |
 
-第一版不引入 etcd、Redis 或数据库来完成单机闭环。
+**计算必须实际运行在受 Kueue 管理的 Job Pod 中。**不能让 Job 仅调用另一个 Daemon 的 HTTP，而把客户端的请求资源当成任务容量；也不在特权 Job 内旁路创建逃离 Pod 资源域的宿主沙箱。
 
-## 4. 预热池生命周期与隔离语义
+迁移期间旧服务只用于已存任务收尾、必要修复和历史复现，不作为新平台依赖或自动回退目的地。验收后从活动发布中移除 agentboxd、本地执行路径和专用部署配置；退役步骤见[路线图](docs/roadmap.md#retirement)，原理保留在[旧运行时参考](docs/runtime.md)。
 
-### 4.1 一次性沙箱
+<a id="platform"></a>
+## 4. Kubernetes 平台与隔离契约
 
-执行任意 Python 代码后，即使删除工作目录，也不能证明以下状态已经消失：
+首轮一个专用实验 Worker，在线 Deployment 和离线 Job 固定在明确资源域；控制面、监控、压测器尽量在域外。单机环境记录共享 LLC、内存和内核干扰。kind 只用于 API、控制器和生命周期功能验证，不构成物理多机性能证据。
 
-- Python 全局变量、模块缓存、修改过的运行环境；
-- 子进程、后台线程、打开的文件描述符；
-- 信号处理器、共享内存、其他内核对象；
-- 运行时被攻击后产生的异常状态。
+首批平台包括独立 namespace/节点标签、在线服务、受控 Job、Kueue 三类队列/资源对象、监控与 k6、runsc handler/RuntimeClass。先固定配额、资源规格，不借用、不抢占；Kueue 配额预留不是节点绑定或物理独占。ResourceFlavor 与允许节点集合对应，首版只映射一个 Worker。
 
-因此，第一版采用明确的隔离语义：
+锁定 Kubernetes、containerd、cgroup 驱动、内核、CNI、Kueue、监控 chart、runsc/shim、k6、任务镜像与库版本；不使用 latest，不复制与已安装 CRD 不匹配的示例。Koordinator 在后续阶段加入兼容矩阵。部署交付需包含只读 preflight、readiness、升级回退和仅清理本部署/run 对象的流程；不修改已有集群或宿主服务。
 
-> 一个沙箱只执行一个任务；任务结束后销毁整个沙箱，由后台创建新实例补充库存。
+gVisor 通过 containerd 的正式 runtime handler 接入。RuntimeClass 不自动复制现有隔离策略，必须逐项验证：
 
-```mermaid
-stateDiagram-v2
-    [*] --> CREATING
-    CREATING --> READY: 初始化及就绪检查通过
-    CREATING --> FAILED: 创建失败
-    READY --> LEASED: 绑定任务
-    LEASED --> RUNNING: 输入准备完成，开始任务
-    RUNNING --> DESTROYING: 完成、超时、取消或异常
-    LEASED --> DESTROYING: 分配后取消
-    READY --> DESTROYING: 服务关闭回收
-    FAILED --> DESTROYING
-    DESTROYING --> DEAD: 资源回收确认
-    DEAD --> [*]
-```
+- 服务端模板控制镜像 digest、entrypoint、线程数、资源、挂载、期限和重试预算；用户不能提交任意 PodSpec。
+- 非 root、禁止提权、最小能力集、只读根、有界临时目录/输出/日志。
+- 无 hostPath、hostNetwork、宿主设备/runtime socket、自动挂载的 Kubernetes API 凭据。
+- 默认拒绝不需要的网络，验证 CNI/运行时效果；产物上传若需网络，限定目的地和凭据权限/有效期。
+- 按 Job/Pod UID 核对业务线程、Sentry/Gofer 及祖先预算；运行时成本纳入记账或单独披露。
 
-不存在 `RUNNING → READY` 的转换。
+可信 runc smoke 可用于排障，但对外声明沙箱能力前必须通过 gVisor 同路径验收；正式策略比较固定 runtime。
 
-### 4.2 后续模式
+## 5. 局部研发与节点控制
 
-| 模式 | 状态语义 |
-|---|---|
-| 一次性任务 | 每次领取全新环境 |
-| 会话任务 | 只在同一个会话中保留状态，结束后销毁 |
-| 快照恢复 | 从已验证的干净模板恢复为新实例 |
+首个研发点使用官方外部 AdmissionCheck 协议和 controller-runtime：根据有效在线质量窗口对未准入 Workload 发出许可，不自行排队、预留配额或解除 Job suspend。样本失效、滞回、Pending 占配额、恢复风暴、Ready 到启动窗口和状态更新竞态，统一在[扩展设计](docs/admission-check.md)定义。
 
-gVisor 提供 checkpoint/restore，但恢复兼容性、文件系统一致性、连接和随机状态都需要单独验证，作为后续性能优化。参见 [gVisor Checkpoint/Restore](https://gvisor.dev/docs/user_guide/checkpoint_restore/)。
+健康准入不能立即消除在途任务竞争。后续先运行原生 Koordinator CPU Suppress，记录实际 quota/cpuset 策略与作用域，不默认一并开启 CPU QoS、Burst、驱逐或额外调度优化。
 
-## 5. 预热与任务注入流程
+Koordinator BE/LS 与 Kubernetes QoS 分开理解；引入 batch 扩展资源时，Kueue 配额、Pod 声明和节点 allocatable 的单位及预算必须一致。先保留原生 scheduler，额外调度/运行时依赖须单独验证和披露。目标运行链路不包含本地 AIMD，静态上限及祖先限制单独记录。
 
-当前实现预热运行环境：Sentry、Gofer 和等待中的 init；任务 Python 解释器仍通过附着式 `runsc exec` 新启动。这样复用已经验证的退出状态、超时、OOM 和输出收集路径，也保留一次性销毁语义。解释器预加载和常驻管道注入作为后续优化，需要根据阶段耗时实测决定。
+cpu.max 是上限，不保证最低 CPU 服务量。集成不稳定时保留已完成阶段，不用私有脚本抢写 cgroup 绕过所有权。原生机制足够时保留原生机制。
 
-1. 后台提前创建 OCI bundle、输入目录和独立 cgroup，写入运行环境配置。
-2. 启动 runsc 沙箱和等待进程，确认 cgroup 中有受限进程后放入 READY 池。
-3. Daemon 原子分配执行名额与 READY 实例，并检查运行时仍存活。
-4. 在已挂载的输入目录写入结构化 task.json 和 stdin；明确建立 guest 访问权限。
-5. 打开本次 stdin，通过附着式 `runsc exec` 启动任务，持续读取输出。
-6. 宿主侧确认退出或触发终止，读取资源统计。
-7. 销毁沙箱、确认 cgroup 回收，再删除记录和释放容量。
-8. 后台创建全新实例补充库存，执行过的实例不归还池。
+<a id="batch"></a>
+## 6. 批任务接口与结果契约
 
-用户输出不会成为宿主控制协议。超时、OOM、退出状态以宿主观测为准，代码和环境变量不拼接进宿主 shell 命令。输入 bind mount 使用共享文件访问语义，以保证运行环境启动后写入的文件可见。
+首版一个固定图片数据集和处理库：输入 manifest 含哈希、数量、尺寸，冻结解码/缩放/编码、线程和产物校验。输入分发与存储在 P0 选一种受控机制，明确容量、权限、持久性和清理；不开放任意宿主路径或把数据集塞入无界请求/ConfigMap。
 
-请求到来时不需要重新创建 gVisor 沙箱；仍包含新 Python 进程启动成本，不据此承诺固定低时延。当前不使用 cgroup freezer，也不进行快照恢复或任务后的环境清洗。
+产品仅做受控模板、提交关联、查询、取消和产物引用；生命周期复用 Job/Workload，不新增通用 BatchRun CRD 或调度数据库。稳定提交标识关联输入摘要，拒绝同标识不同输入；网络结果不确定时先查询同对象，不创建第二份 Job。
 
-## 6. 本地调度、准入与补池
+Job UID、Pod UID、attempt 隔离输出，结果发布要处理重复尝试。首版只接受可重试模板；准入幂等、提交去重与执行 exactly-once 是不同保证。Job 可能重复启动程序，失败和重试成本必须披露。
 
-### 6.1 初始参数
+至少区分执行失败、校验失败、结果未知、验证成功、取消中和已取消。Job Complete 不自动表示产物正确，Pod 退出也不代表清理完成；不直接复用本地 cleanup_complete。保留结果摘要/引用后才 TTL 删除 Job，产物有独立保留期。
 
-以下为当前实现的默认配置，不是已经验证的最优配置；实验可以显式调整执行并发。
+任务提交成功后断线不取消，显式取消按已确认身份执行并等待 Pod 收敛。接口和 MCP schema 必须版本化；旧请求不能在客户端不知情时变成可后台重试的 Job，新平台故障也不能回落到 agentboxd。实现前明确鉴权、租户与结果访问，再更新[使用指南](docs/usage.md)；目前没有新的任务端点。
 
-| 参数 | 初始建议 |
-|---|---:|
-| READY 目标数量 | 3 |
-| 同时执行任务数 | 1 |
-| 同时创建沙箱数 | 1 |
-| 沙箱总数上限 | 6 |
-| 排队任务上限 | 16 |
-| 排队输入字节预算 | 8 MiB |
-| 最大排队时间 | 100 ms |
-| 默认执行时限 | 5 s |
-| 执行时限硬上限 | 30 s |
-| 单请求代码大小上限 | 256 KiB |
-| stdout＋stderr 总上限 | 1 MiB |
+## 7. 验证与生产边界
 
-总数上限覆盖 `CREATING、READY、LEASED、RUNNING、DESTROYING`，不能只数正在运行的实例。否则清理缓慢时，补池会不断创建新实例。
+监控复用成熟组件，只补健康、准入、产出和控制成本指标；对象/run/request ID 放事件日志，避免无界标签。用[验证指南](docs/validation.md#platform)规定的静态基线和 B/A/K/AK 消融评价收益及等待代价，调参集与正式集分离，独立重复保留负向结果。
 
-### 6.2 调度策略
+生产导向要求版本锁、最小权限、模板、预算、故障处置、结果/重试语义、升级回退、清理范围和容量告警。安装组件或 CRD 不等于生产就绪。普通磁盘超时及现有本地收益只按原版本证据表述，不被新后端或 tmpfs 通过替代。
 
-- 第一版使用 FIFO。
-- 同时限制任务数量与排队输入总字节数。
-- 队列已满或等待到期时明确拒绝。
-- READY 用尽时等待后台补池，不偷偷切换到另一套冷启动路径。
-- 创建失败采用有上限的退避。
-- 后续 PSI 阶段研究节点高压时减少接单和补池并发，当前依赖静态内核配额。
-- 沙箱创建、销毁也计入资源和吞吐成本。
+## 8. 关键决策
 
-### 6.3 持续吞吐约束
+| 决策 | 理由 | 重议条件 |
+| --- | --- | --- |
+| 退役 agentboxd，只交付成熟平台执行链路 | 收敛运行管理与资源所有权，不长期维护双后端 | 未来有独立低延迟需求时重新立项，不默认恢复旧后端 |
+| Kueue 管队列和配额 | 收缩自研一致性范围 | 上游不满足已验证需求 |
+| AdmissionCheck 是首个研发点 | 正式接口、职责明确、可做消融 | 证据不足时缩减扩展 |
+| Koordinator 先用再改 | 评价成熟节点机制 | 有可复现策略缺口 |
+| 不迁移本地 FIFO/Warm/AIMD 到目标平台 | 通用管理交给成熟组件，保留测试经验 | 独立需求与瓶颈证据 |
+| 只选一个后续深挖方向 | 控制范围与实验变量 | 按阶段结果决定 |
 
-预热可以吸收突发，但持续吞吐受补池能力约束：
+## 9. 官方依据
 
-$$
-\lambda_{\text{steady}}
-\leq
-\min\left(
-\frac{C_{\text{run}}}{T_{\text{slot}}},
-\frac{C_{\text{create}}}{T_{\text{create}}},
-\text{CPU 与内存允许的吞吐}
-\right)
-$$
+来源用于定义接口语义，实际部署须锁定版本；不代表已完成组合验证。
 
-其中，`C_run` 是执行并发，`T_slot` 是领取至清理完成的名额占用耗时，包含准备、执行和销毁，`C_create` 是创建并发，`T_create` 是创建耗时。
-
-例如，如果实测创建耗时为 200 ms、创建并发为 2，那么仅补池这一项的理想上限就是约 10 个新沙箱/秒。即使前几个任务在 10 ms 内完成，也不能据此宣称持续达到 100 QPS。
-
-## 7. API 与执行语义
-
-### 7.1 外部 HTTP 接口
-
-对外保留 `POST /v1/execute`，第一版采用同步返回。
-
-请求字段：
-
-| 字段 | 用途 |
-|---|---|
-| `request_id` | 当前仅用于请求关联；有范围的去重为后续能力 |
-| `runtime` | 第一版固定为 Python |
-| `code` | 待执行代码 |
-| `stdin` | 程序输入 |
-| `timeout_ms` | 请求时限，服务端执行上限约束 |
-| `env` | 允许列表内的任务环境变量 |
-
-资源档位由服务端决定，不开放任意镜像、宿主路径、挂载和 runsc 参数。实现时需要明确端到端期限、排队期限与执行期限的关系，并在 Gateway 和 Worker 之间传播剩余预算。
-
-响应字段：
-
-| 字段 | 用途 |
-|---|---|
-| `execution_id` | 本次执行标识 |
-| `status` | `succeeded / failed / timeout / oom / cancelled / output_limit / infrastructure_error` |
-| `exit_code` | 有明确退出状态时返回 |
-| `stdout / stderr` | 有界输出 |
-| `timings` | 排队、分配、执行、总耗时 |
-| `usage` | CPU、内存等观测数据，并说明统计口径 |
-| `worker_id` | Worker 标识 |
-
-HTTP 语义：
-
-- 参数错误：400。
-- 调用方限流：429。
-- Worker 无可用容量：503。
-- 已完成的代码执行：200，具体执行结果放在 `status` 中。
-
-### 7.2 本机内部通信
-
-当前采用 HTTP over Unix socket，复用 Execute/Status 协议。普通用户 Gateway 负责入口鉴权、校验与有界转发；root daemon 负责准入、执行与资源回收。独立 token、socket 权限、期限传播与部署方式见 [Gateway 说明](docs/gateway.md)。
-
-取消通过请求上下文与连接断开传播，执行请求不自动重放。独立 Cancel/GetExecution RPC、持久化结果查询与多节点身份认证仍属后续能力。
-
-### 7.3 去重与不确定结果
-
-发生超时或断线后，不自动跨节点重执行。只有确认任务尚未被接收时才可以安全改投。
-
-当前实现不对请求去重。`request_id` 仅用于关联日志和响应，相同 ID 的请求仍可能分别执行；客户端不得据此自动重放不确定结果。后续若实现同一 daemon 实例内的去重，需要定义冲突请求、在途请求、记录容量和保留时间，且不能宣称跨重启的 exactly-once。
-
-## 8. cgroups v2 资源隔离
-
-资源隔离必须先于动态控制存在。
-
-### 8.1 逻辑层级
-
-使用 systemd 明确委派的子树：
-
-```text
-受保护服务所在 cgroup
-├── Gateway
-└── Mock Core Service
-
-AgentBox 获得委派的子树
-├── manager
-│   └── daemon / controller
-└── sandboxes
-    ├── sandbox-a
-    ├── sandbox-b
-    └── sandbox-c
-```
-
-Daemon 和被保护服务都不放在动态压制的 `sandboxes` 下，否则过载时会连控制器一起限速。
-
-在 systemd 管理的机器上，通过 delegation 明确 cgroup 所有权，避免多个管理者同时修改同一层级。参见 [systemd cgroup 委派说明](https://systemd.io/CGROUP_DELEGATION/)。
-
-### 8.2 初始预算
-
-| 层级 | 资源预算建议 |
-|---|---|
-| 沙箱整体 CPU | 初始／默认最大 4 个 CPU 等效带宽；规划动态范围 1～4，扩大上限须由管理员显式配置 |
-| 沙箱整体内存 | `memory.high` 3 GiB，`memory.max` 4 GiB |
-| 单沙箱 CPU | 最多 1 个逻辑 CPU 等效带宽 |
-| 单沙箱内存 | `memory.high` 384 MiB，`memory.max` 512 MiB |
-| 沙箱 Swap | 初始设为 0，保证实验口径稳定 |
-| 工作目录 | `/workspace` 与 `/tmp` 合计建议上限 128 MiB |
-| 单沙箱 OOM 策略 | 作为整体失败并销毁 |
-
-512 MiB 包括执行环境和运行时开销，不能全部宣称为用户代码可用内存。
-
-`memory.high` 触发限速与回收压力；`memory.max` 是硬限制，无法回收时可触发该 cgroup 内的 OOM。它们不等于“主动换页通知”，也不能保证其他宿主负载永远不会引发全局 OOM。参见 [Linux 6.8 cgroup v2 文档](https://docs.kernel.org/6.8/admin-guide/cgroup-v2.html)。
-
-需要验证 Sentry、Gofer 及相关辅助进程的实际归属，不能只给 runsc 的启动命令设限制。
-
-## 9. 进程与内存限制的验证
-
-gVisor 内部进程不直接对应宿主进程，因此不能用宿主 `pids.current` 推断沙箱内已经 fork 了多少次。参见 [gVisor 资源模型](https://gvisor.dev/docs/architecture_guide/resources/)。
-
-分别设计三个层面：
-
-- **宿主层：** `pids.max` 限制运行时产生的宿主任务，数值按所选平台实际开销确定。
-- **沙箱层：** 非 root 用户运行，配置进程数等 rlimit，并验证固定 runsc 版本下的执行效果。
-- **兜底层：** CPU、内存、墙钟时限，以及完整沙箱终止。
-
-“最多 64 个应用进程”可以成为验收目标，但必须通过沙箱内观测和受控测试证明。
-
-内存优先观察完整 cgroup 的用量；gVisor 应用内存可能计入 shmem/file，不能只看 `anon`。参见 [gVisor 内存记账说明](https://gvisor.dev/docs/architecture_guide/resources/#limits)。
-
-## 10. PSI 反馈 QoS 控制
-
-CPU 配额、压力准入与补池门控初版现已实现，实际规则见 [QoS 调度](docs/qos.md#scheduling)，CPU 参数见 [CPU QoS](docs/qos.md#cpu)。下文保留设计推导与历史调研，内存压力联动仍为后续工作，动态库存已通过独立开关接入；不将功能实现等同于性能收益验证。
-
-当前支持 `off / observe / enforce`，默认 `off`；CPU 控制和压力调度分别启用，后者通过 `-qos-scheduling` 接入请求与补池。观察模式读取宿主、沙箱、受保护服务、manager 和可见祖先，计算实际间隔上的累计值差分，并暴露原始数据与有效性。另以低频采集 I/O/PID，按结果区分创建与排队耗时，记录拒绝原因及清理阶段，详见 [观测说明](docs/observability.md)。静态 CPU 对照与离线图表见 [实验说明](docs/static-cpu-experiment.md)。内存压力准入仍属后续设计；动态 READY 库存见[实现说明](docs/dynamic-inventory.md)。
-
-### 10.1 控制目标与信号
-
-控制以被保护服务为目标，PSI 作为反馈信号。
-
-只控制宿主 `CPU PSI some avg10 ≤ 15%` 存在两个问题：
-
-1. avg10 对短时突发不够敏感。
-2. 沙箱自身被限流后，也可能持续表现出等待压力，诱发重复降配额。
-
-同时观察以下信号：
-
-| 信号 | 作用 |
-|---|---|
-| 宿主 CPU PSI | 判断整体争用背景 |
-| 被保护服务 cgroup CPU PSI | 判断核心业务是否受到影响 |
-| 核心服务请求延迟、错误率 | 验证用户可见效果 |
-| 沙箱 CPU PSI 与 `cpu.stat` | 解释限流成本，辅助归因 |
-| 内存 PSI、内存用量和 OOM 事件 | 内存准入与熔断 |
-| READY 数量、队列深度 | 判断供给是否不足 |
-
-### 10.2 快速压力估计
-
-使用累计 stall 时间差：
-
-$$
-P_t =
-100\times
-\frac{\Delta \text{stall\_total\_us}}
-{\Delta \text{monotonic\_time\_us}}
-$$
-
-采样周期可配置，先比较 50、100、200 ms 的信号质量与采集开销，结合短窗口平滑值决策，avg10 留作趋势展示。差值分母使用实际单调时间间隔；首次采样只建立基线，计数器回退或 cgroup 重建时重置基线，采集失败不能记成零压力。内核文档说明 `total` 可用于捕获平均值中不明显的短时压力；读取采样、PSI 事件触发和业务恢复各有自己的时间尺度。参见 [Linux PSI 文档](https://docs.kernel.org/6.8/accounting/psi.html)。
-
-### 10.3 初始控制参数
-
-以下为 2026-10-16 调研后修订的候选实验参数，不表示各组均已实现和验证；当前实现默认值见 [CPU QoS](docs/qos.md#cpu)。原先的 50 ms 采样、100 ms 决策和 0.5 倍下降保留为候选对照，不作为已验证的默认策略；修订依据见 10.5 节。
-
-| 项目 | 待验证方案 |
-|---|---|
-| 采样周期 | 比较 50／100／200 ms，测量采集成本与信号噪声 |
-| 配额调整周期 | 首版从 500 ms～1 s 比较；100 ms 作为后续对照 |
-| CPU bandwidth 周期 | 20 ms，后续与 100 ms 对照 |
-| 下降动作 | AIMD 为首个候选，比较 0.5／0.8／0.9 等比例，不预先认定减半最优 |
-| 两次下降最小间隔 | 500 ms |
-| 恢复条件 | 有效压力样本持续降低至少 1 s；用核心服务延迟验证恢复效果 |
-| 恢复步长 | 每秒增加 0.25 个 CPU 等效带宽 |
-| 压力阈值 | 10%／20% 仅作为待校准起点 |
-
-所有配额动作均受最小、最大预算约束。只有达到最小变化幅度且满足冷却条件时才写入，避免每次采样重复写相同配额。保留 `off / observe / enforce` 三种模式，先记录建议动作，再显式开启执行。
-
-### 10.4 控制状态
-
-| 状态 | 触发与动作 |
-|---|---|
-| NORMAL | 正常接单与补池 |
-| PRESSURED | 受保护服务持续受影响；按启用的策略降低 CPU 预算、限制准入或暂停补池 |
-| RECOVERING | 压力解除后缓慢增加预算 |
-| EMERGENCY | 内存危险或保护指标严重恶化，停止接单并按策略回收 |
-| DEGRADED | 采集或控制失败，保留静态上限并停止扩容 |
-
-约束：
-
-- 不因为沙箱自己的 PSI 高就持续减半。
-- 写入失败不能被记录成“控制成功”，必须保留实际配额和错误状态。
-- `cpu.max` 限制一定周期内的 CPU 时间，不代表独占 CPU 核心。
-- 后续可以用 cpuset 做隔离对照实验，但不要混在同一组实验里，否则无法识别 AIMD 的贡献。
-
-### 10.5 设计演进：从一个直觉到可以验证的控制方案
-
-**调研时间：2026-10-16。以下记录解释设计选择，不代表动态 QoS 已实现，也不代表我们已经复现了这些项目的生产效果。**
-
-预热池和静态资源限制落地后，AgentBox 已经能限制沙箱数量、执行并发与资源消耗，但还不知道何时应该主动收缩预算。最初的直觉很直接：CPU 利用率不一定能反映等待，因此用 PSI 观察停顿；发现压力后快速减少沙箱配额，压力解除后缓慢恢复。由此提出了 50 ms 采样、100 ms 决策和非对称 AIMD。进入实现前，需要确认这条路线是否有实践依据，以及这些参数是否只是看起来合理。
-
-第一条证据来自 Kubernetes。官方在 2026-05-12 介绍了 v1.36 中 PSI 指标进入 GA，说明它仍是主流资源争用观测能力，并非已经过时的接口。但这一进展证明的是指标采集与暴露的成熟度，并没有替 AgentBox 证明自动调节 CPU 配额的控制律。我们因此保留 PSI 作为观测基础，同时把“信号可靠”和“控制有效”分成两个验收问题。[Kubernetes 官方说明](https://kubernetes.io/blog/2026/05/12/kubernetes-v1-36-psi-metrics-ga/)、[KEP 4205 状态](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/4205-psi-metric/kep.yaml)
-
-第二条证据来自 Koordinator，它最接近“压制低优先级任务、保护核心服务”的目标。CPU Suppress 实现会结合节点容量、高优先级负载用量和系统预留计算预算，再调整低优先级任务的 quota 或 cpuset；代码还设置了最低预算、较小变化的跳过条件和恢复幅度限制。这支持了用户态控制器协调内核资源约束的路线，也提醒我们不能忽视预算边界、写入执行和动作审计。该实现主要根据资源用量计算预算，不能被当作 PSI＋AIMD 已获验证的证据。[CPU Suppress 源码](https://github.com/koordinator-sh/koordinator/blob/v1.8.0/pkg/koordlet/qosmanager/plugins/cpusuppress/cpu_suppress.go)
-
-控制周期也需要重新看待。Koordinator 当前公开配置中的 CPU suppression 默认周期为 1 秒；与本机版本对应的 systemd 249 oomd 则根据内存压力窗口和持续超限时间采取动作，默认持续时间为 30 秒。另一方面，Envoy 的自适应并发示例确实使用 100 ms 的采样窗口，但它根据 HTTP 请求延迟相对基准的变化调整并发。三个项目处理的是不同对象，因此没有一个时间常数可以直接搬到 AgentBox。设计改为分别测量采样成本、控制动作延迟和业务恢复时间，并从较保守的配额调整周期开始。[Koordinator 配置](https://github.com/koordinator-sh/koordinator/blob/main/pkg/koordlet/qosmanager/framework/config.go)、[systemd 249 oomd 配置](https://github.com/systemd/systemd/blob/v249/man/oomd.conf.xml)、[Envoy 自适应并发](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/adaptive_concurrency_filter)
-
-Netflix concurrency-limits 为 AIMD 提供了直接的实现参考：它在请求丢弃或延迟超过阈值时减少并发预算，并设置上下限；当前实现的默认退让系数是 0.9。不过，它调整的是请求并发，不是 cgroup CPU 配额。这使 AIMD 成为一个便于解释和测试的候选，而不是可以直接复制的最终答案。0.5 与 0.9 等比例的 CPU 控制效果仍需要本地校准。[AIMDLimit 实现](https://github.com/Netflix/concurrency-limits/blob/main/concurrency-limits-core/src/main/java/com/netflix/concurrency/limits/limit/AIMDLimit.java)
-
-由这些实践进一步得到一个针对 AgentBox 的判断：任意用户代码的执行时间差异很大，任务变慢可能只是工作量变大，不能直接把任务总耗时当作机器拥塞。因此，首版用固定工作量的 Mock Core Service 验证用户可见效果，用受保护服务的 PSI 观察等待，用沙箱用量与节流统计解释资源成本，再用队列等待、库存和拒绝数观察供给。CPU 配额、准入与补池控制应能分别启用，逐项验证后再联动，避免同时调节多个参数却无法解释收益来源。
-
-调研也使实验问题变得更严格。仅比较“固定较高配额”和“动态降低配额”，即使核心服务变快，也不能说明自适应控制值得引入：固定较低配额可能已经提供相似保护。因此验收必须包括核心服务单独运行、固定较高配额、固定较低配额和动态配额四种条件，比较保护效果及沙箱吞吐代价。还可增加 `cpu.weight` 静态优先级对照，但要在实际竞争的同级 cgroup 上设置；权重与 `cpu.max` 的带宽上限是不同机制，改变深层沙箱权重不能自动等价于提高另一个独立服务的优先级。[cgroup v2 资源分配语义](https://docs.kernel.org/6.8/admin-guide/cgroup-v2.html)
-
-最后，“使用仍在演进的技术”也必须服从本机条件。本次检索时 systemd 发布页列出 v262，而项目宿主仍是已验收的 249；更前沿的 sched_ext 在主线 Linux 6.12 起获得支持，而本项目已验收环境是 Linux 6.8。首版继续使用现有 PSI 和 cgroups 接口，不把升级操作系统或替换 CPU 调度器作为前提。项目的价值放在可靠执行、可解释的控制和可复现的实验上，不把经典 AIMD 包装成新算法。[systemd 发布记录](https://github.com/systemd/systemd/releases)、[sched-ext 项目要求](https://github.com/sched-ext/scx)
-
-由此确定后续顺序：先交付采集与观察模式、Mock Core Service 和静态对照，再实现可单独开启的动态 CPU 配额控制，随后联动压力准入和补池暂停，最后研究请求速率驱动的库存增减。现有开源实践支撑了机制的可行性；AgentBox 的参数是否有效、能否比简单静态策略取得更好的保护与吞吐权衡，由本地实验回答。
-
-## 11. 文件系统与网络安全
-
-### 11.1 文件系统
-
-- 固定并记录镜像 digest。
-- 根文件系统只读。
-- `/workspace`、`/tmp` 独立且限额。
-- 沙箱内使用非 root 用户，清空 capabilities，设置 `no_new_privs`。
-- 不挂载宿主工作目录、Docker socket、Kubernetes 凭据。
-- 不继承 daemon 的全部环境变量。
-- 不向沙箱提供宿主 `/dev/kvm` 或 GPU 设备。
-
-第一版不需要让整个根文件系统可写，因此不必一开始引入宿主 OverlayFS 的完整生命周期管理。
-
-### 11.2 网络策略
-
-| 版本 | 策略 |
-|---|---|
-| V1 | 无外网，只保留沙箱内部所需通信 |
-| V2 | 指定代理出口＋实际数据路径上的网络过滤 |
-
-gVisor 默认 netstack 使用自己的网络栈，通过底层包接口收发流量。据此可推断，不能把宿主 `cgroup/connect4/connect6` 当成应用连接的通用拦截点。参见 [gVisor 网络架构](https://gvisor.dev/docs/architecture_guide/networking/)。
-
-后续如需实现 eBPF，采用沙箱独立网络命名空间和 veth，在宿主侧对应 veth 的 TC hook 上验证并过滤沙箱流量。
-
-策略需要覆盖 IPv4、IPv6、链路本地地址、宿主及实验网络段。若采用域名允许列表，还要处理解析结果、重定向与 DNS rebinding。
-
-不为了适配 socket hook，直接把默认网络换成 host networking。
-
-## 12. 退出、取消与崩溃恢复
-
-| 情况 | 系统行为 |
-|---|---|
-| 排队超时 | 从队列移除，保证后续不会执行 |
-| 执行超时 | 终止整个沙箱，等待资源回收 |
-| 客户端断开 | 默认取消任务，传播到 Worker |
-| 输出超限 | 标记 `output_limit` 并终止，宿主持续有界处理管道 |
-| 沙箱 OOM | 结合 cgroup 事件识别，销毁实例 |
-| runsc 异常退出 | 返回基础设施错误，不把实例重新投入池 |
-| 创建连续失败 | 退避并将节点标记为不可接单 |
-| 清理失败 | 实例继续占用总量预算，交给回收器处理 |
-| daemon 重启 | 枚举本项目资源并清理，不恢复使用旧 READY 实例 |
-
-“杀掉 runsc CLI”不能直接等同于“沙箱已终止”。验收必须检查执行进程和资源是否确实消失。
-
-Daemon 持有实例锁，资源带有本项目与 daemon 实例标识。清理器只处理能够确认归属的对象，避免通过模糊 PID 或目录匹配误清理其他项目。
-
-## 13. 可观测性
-
-观测数据同时服务于调试和实验。
-
-| 类别 | 关键指标 |
-|---|---|
-| 请求 | 接收、拒绝、排队、成功、超时、OOM、执行耗时 |
-| 预热池 | READY、RUNNING、CREATING、销毁中数量，创建耗时、补池失败 |
-| 资源 | CPU 用量和节流、内存用量、PSI、OOM 事件 |
-| 控制器 | 当前 CPU 预算、状态、增减动作、动作原因、写入失败 |
-
-每个请求至少记录以下时间点：
-
-- Gateway 接收；
-- Worker 接收；
-- 入队与出队；
-- 沙箱分配；
-- 输入发送；
-- 首字节输出；
-- 执行结束；
-- 清理完成。
-
-请求 ID 放在日志和 trace 中，不作为 Prometheus label，避免高基数。
-
-Prometheus 用于长期观察。50 ms 级控制实验额外输出本地 CSV 或事件文件，并使用单调时钟计算时间差；普通秒级抓取不足以证明 100 ms 的响应过程。
-
-## 14. 基准实验与验收
-
-### 14.1 实验 A：延迟分解
-
-使用相同 Python 环境、资源限制和输入，比较：
-
-| 方案 | 测量重点 |
-|---|---|
-| runc 冷启动 | 普通容器基线 |
-| runsc 冷启动 | 隔离运行时初始化成本 |
-| AgentBox 预热命中 | 已准备实例的请求路径 |
-| AgentBox 池耗尽 | 排队、拒绝和补池行为 |
-| Kubernetes Job/Pod | 完整编排路径成本，单独解释 |
-
-镜像预拉取，明确是否包含镜像下载。记录平台、runsc 版本、镜像 digest、CPU 温度和后台负载。
-
-指标包括 P50/P95/P99、成功率、排队时间、READY 命中率、创建耗时和清理耗时。
-
-`P99 < 50 ms` 可以先设为轻量 Python 任务、预热命中条件下的研究目标；不能作为所有任务的保证。
-
-### 14.2 实验 B：持续吞吐
-
-连续运行数分钟，使用不同到达率和任务类型：
-
-- 极短打印任务；
-- 固定 CPU 工作量；
-- 受控内存分配；
-- 工作目录 I/O；
-- 混合任务。
-
-同时报告 offered QPS、accepted QPS、completed QPS 和拒绝率。使用开放式发压，防止服务变慢时发压器也自动减速，掩盖排队问题。
-
-重点观察预热库存是否持续耗尽，以及销毁和补充能否稳定跟上。
-
-### 14.3 实验 C：QoS 收益
-
-根据 10.5 节的调研判断，至少比较四组：
-
-| 对照组 | 目的 |
-|---|---|
-| 核心服务单独运行 | 建立无沙箱干扰的基线 |
-| 沙箱固定较高 CPU 配额 | 观察资源竞争造成的影响 |
-| 沙箱固定较低 CPU 配额 | 判断简单静态保护是否已经足够 |
-| 静态上限＋动态 CPU 配额 | 验证压力时保护与空闲时恢复吞吐的综合收益 |
-
-Mock Core Service 使用固定 CPU 工作量，沙箱侧注入可控负载。记录核心服务延迟、错误率、完成数量，以及沙箱的到达率、完成率、拒绝率、排队和节流成本。首次动态对照只开启 CPU 配额控制，随后分别加入准入与补池控制，识别各项动作的贡献。
-
-CPU 范围、上级 cgroup 限制、负载、CPU bandwidth 周期及其他资源配置保持可比较；压力解除后继续观察恢复过程。可增加 `cpu.weight` 静态对照，但要记录真实竞争层级；cpuset 隔离或 bandwidth 周期变化应作为单独实验条件，不能只在动态组中额外开启。
-
-图中同时画出核心服务延迟、PSI、CPU 配额和任务吞吐。控制动作延迟与业务恢复时间分开计算；短窗口样本不足时，不应声称得到可靠的 P99。只有相较静态保护展示出更好的收益与代价权衡，才据此评价自适应策略有效。
-
-### 14.4 实验 D：隔离与恢复
-
-| 测试 | 验收内容 |
-|---|---|
-| 死循环 | 超时后整个沙箱终止 |
-| 内存持续分配 | 限制生效，核心服务可用 |
-| 受控 fork 测试 | 验证沙箱内限制与宿主限制的实际关系 |
-| 输出洪水 | 宿主内存有界、接口可终止 |
-| 文件污染 | 下一任务得到全新工作目录 |
-| 环境变量探测 | 无宿主秘密泄露 |
-| 后台子进程 | 主任务结束后无残留实例 |
-| 网络请求 | 与当前网络策略一致 |
-| daemon 重启 | 孤儿资源可识别并回收 |
-
-文件系统测试使用沙箱内专用测试目录和宿主哨兵文件校验。`rm -rf /` 不作为核心验收指标，因为命令保护和权限失败会使结果难以解释。
-
-这些用例证明已测试策略的效果，不能包装成“证明不存在逃逸漏洞”。
-
-## 15. 代码与操作入口
-
-当前主要结构如下，内部模块按职责拆分，操作脚本只暴露四个入口：
-
-```text
-cmd/          agentboxd、agentbox-gateway、agentbox-mcp、agentbox-agent、mockcore
-internal/     sandbox、cgroup、qos、httpapi、gateway、mcpserver、agent 等
-scripts/      setup.sh、deploy.py、container.py、experiment.py
-scripts/lib/  部署、观测、实验模块与容器引导
-tests/        integration、systemd、observation、scripts、benchmarks
-docs/         当前配置、机制、理论与统一验收
-artifacts/    近期关键证据及压缩原始数据（Git 忽略）
-```
-
-MCP 使用官方 Go SDK；eBPF 和多节点调度仍为后续能力。脚本迁移没有修改运行时策略或历史实验数值。
-
-单元测试重点覆盖状态机竞争、队列取消、配额边界、滞回和故障恢复。真实 runsc 集成测试单独运行；没有运行时能力的测试环境明确跳过，不能用 mock 的通过结果代替隔离验证。
-
-建议组件命名：
-
-- 项目与仓库：AgentBox / `agentbox`
-- Gateway 二进制：`agentbox-gateway`
-- Daemon 二进制：`agentboxd`
-
-## 16. 多节点与本地模型扩展
-
-### 16.1 多 Worker 路由
-
-先在本机启动几个 daemon 实例，每个拥有独立资源子树和运行目录，不必立即引入 kind。
-
-Gateway 根据以下信息筛选节点：
-
-- 状态是否新鲜、是否可接单；
-- READY 数量和队列深度；
-- 当前执行数和创建速度；
-- 可用资源预算；
-- QoS 状态。
-
-节点上报只是路由提示，最终准入仍由 Worker 原子完成，避免多个 Gateway 同时抢占同一个空闲名额。
-
-kind 可以验证注册、路由和故障处理，但多个容器节点仍共享宿主机的 CPU、内存和 PSI，不能替代独立物理节点的资源隔离实验。runsc 安装、KVM 设备暴露和 cgroup 委派也需要分别配置。
-
-### 16.2 模型工具接入
-
-本地模型或云端 API 模型通过 Agent/MCP 客户端访问执行工具，由 Agent 程序负责实际调用与结果回传：
-
-> 模型生成代码 → 调用执行接口 → 获取结果 → 继续推理。
-
-模型服务不进入任务沙箱，GPU 不暴露给任务。当前已提供 stdio MCP 与 DeepSeek 普通工具调用示例，详见 [MCP 与 DeepSeek](docs/mcp-deepseek.md)。自动回归使用模拟模型 API，真实 runsc 负责执行；真实模型联调需配置 API key 后单独记录。执行性能实验与模型演示分别记录。
-
-## 17. 开发阶段、验收门槛与工期
-
-| 阶段 | 交付物 | 进入下一阶段的条件 | 粗略工时 |
-|---|---|---|---:|
-| 环境验证 | runsc、平台、cgroup、无网执行验证 | 选定平台能实际运行且限制生效 | 3～6 h |
-| 单次执行 | Python 执行、超时、输出限制、完整销毁 | 无残留任务，异常可解释 | 6～10 h |
-| 预热池 | READY 库存、有界队列、后台补池 | 连续任务运行稳定 | 8～12 h |
-| QoS | 观察模式、静态对照、动态配额、准入与补池联动 | 控制边界正确，故障时保持约束，收益与代价可解释 | 8～12 h |
-| 实验与文档 | 原始数据、图表、对照实验 | 性能结论可复现 | 8～16 h |
-
-QoS 阶段按“采集与 Mock Core → 静态保护对照 → 独立 CPU 控制 → 准入／补池门控”的顺序交付；这些单机功能已有初版。需求驱动的有界库存扩缩容已接入；请求速率预测与多租户公平调度留待后续，性能收益另行验证。
-
-工期仅为规划估计：20～25 小时可以争取做出最小演示；包含故障处理和可信实验的完整第一版，更适合预留约 35～55 小时。这不包括 eBPF、多节点和模型服务调优。
-
-项目优先形成三项可验证成果：
-
-当前实施顺序见 [实现计划](docs/implementation-plan.md)：动态库存、普通用户 Gateway 和 MCP/DeepSeek 示例已交付，后续以独立 kind 环境模拟跨节点接入和故障，配套必要功能验证。以下是长期性能目标，长时间供给与 QoS 对照实验按需开展，不作为继续开发的前置条件。
-
-1. 一次性预热沙箱的低延迟执行。
-2. 包含补池成本的持续供给能力。
-3. 可量化收益和代价的 PSI 反馈控制。
-
-后续功能按实现计划推进；快照恢复、多节点路由和 eBPF 根据具体需求另行排期。上述性能收益需要独立数据支持。
+- [R1 · Kueue AdmissionCheck](https://kueue.sigs.k8s.io/docs/concepts/admission_check/)
+- [R2 · 开发 AdmissionCheck Controller](https://kueue.sigs.k8s.io/docs/tasks/dev/develop-acc/)
+- [R3 · Koordinator CPU Suppress](https://koordinator.sh/docs/user-manuals/cpu-suppress)
+- [R4 · Koordinator 资源模型](https://koordinator.sh/docs/architecture/resource-model)
+- [R5 · Koordinator SLO 配置](https://koordinator.sh/docs/user-manuals/slo-config)
+- [R6 · Kubernetes Job](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
+- [R7 · Kubernetes 资源管理](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
+- [R8 · Linux cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html)
+- [R9 · kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack)
+- [R10 · gVisor/containerd](https://gvisor.dev/docs/user_guide/containerd/quick_start/)
+- [R11 · Kueue 原生 Job](https://kueue.sigs.k8s.io/docs/tasks/run/jobs/)
+- [R12 · k6 到达模型](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/open-vs-closed/)

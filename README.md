@@ -1,62 +1,36 @@
 # AgentBox
 
-面向 AI Agent 的 Python 代码执行沙箱，使用 gVisor 隔离代码，以 cgroups v2 限制资源。已实现 cold/一次性 warm 池、有界 FIFO、动态 READY 库存、单机 CPU/压力 QoS、普通用户 Gateway、MCP 及 DeepSeek Tool Calls 示例。单机阶段已完成供给、预算及固定场景的保护验收；多 Worker 调度和 kind 跨节点验证在后续阶段。
+面向 AI Agent 的受控任务执行项目。目标由 Kubernetes Job、Kueue、containerd/gVisor 承担任务生命周期、队列和运行管理，AgentBox 聚焦 API/MCP 任务适配与在线健康感知 AdmissionCheck；后续评价 Koordinator 的节点压制。
 
-每个任务使用全新实例，用后销毁；Gateway 仅绑定 loopback，经受权限保护的 Unix socket 调用 root daemon。任务默认无外网、只读根文件系统、UID 1000。取消后由 daemon 独立清理，结果不确定时不自动重放。
+**已决定退役 agentboxd，目标只保留成熟平台执行链路。**当前源码仍是可构建的单机 Python 旧实现，包含 Cold/Warm、FIFO、清理和 Gateway/MCP；新平台、新接口及实际退役尚未完成。旧实现功能冻结，保留迁移期收尾和历史复现，不再规划长期双后端。
 
-## 开发与使用
+## 当前代码与迁移状态
 
-需要 Linux、Go 1.25+；真实运行另需 cgroups v2 委派、runsc、可信 Python rootfs 和 Docker。KVM 验收需可访问 /dev/kvm，也可显式使用 systrap。执行引擎和 Gateway 使用标准库，MCP 依赖固定版本的官方 Go SDK。
+下列命令只构建和检查尚未移除的旧实现，不能启动目标平台。需要 Linux、Go 1.25+；旧运行时复现另需 runsc、可信 Python rootfs、cgroups v2 委派及对应权限。
 
 ```bash
 make build
 make check
-
-# 准备项目本地依赖，不覆盖现有 .local 安装。
-bash scripts/setup.sh runsc
-bash scripts/setup.sh rootfs
-./bin/agentboxd -doctor -runsc .local/gvisor/runsc -platform kvm
-
-# 在独立容器内验证，不操作已有 kind 节点。
-python3 scripts/container.py runtime --platform systrap
-
-# MCP 短流程；API 使用本地模拟服务，不产生模型费用。
-AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
-  python3 scripts/container.py mcp --platform systrap
 ```
 
-MCP/DeepSeek 的环境变量、实际 API 联调和远端隧道见 [接入说明](docs/mcp-deepseek.md)。真实 deepseek-flash 已完成除零错误后修正为 42 的闭环；普通回归不依赖付费模型。
+新平台实施与旧链路退出条件见[路线图](docs/roadmap.md#retirement)。旧 systemd 操作只用于已有部署维护、收尾或复现，见[运维指南](docs/operations.md)；旧 HTTP/MCP 契约见[使用指南](docs/usage.md)。验证范围见[验证指南](docs/validation.md)。普通回归不调用付费模型。
 
-## 四个脚本入口
+## 文档导航
 
-| 入口 | 职责 |
+| 想了解什么 | 入口 |
 | --- | --- |
-| `bash scripts/setup.sh runsc\|rootfs` | 下载校验 runsc、导出可信 rootfs |
-| `python3 scripts/deploy.py base\|gateway\|smoke` | 安装/更新/回退/卸载与宿主验收；宿主操作需 sudo |
-| `python3 scripts/container.py --help` | runtime/qos/mcp/gateway/live/systemd/benchmark/observe/static 的隔离容器入口 |
-| `python3 scripts/experiment.py record\|analyze\|plot` | 记录已运行服务、离线分析与绘图 |
+| 总体架构、组件分工和关键取舍 | [DESIGN](DESIGN.md) |
+| 当前阶段、下一步交付和退出条件 | [路线图](docs/roadmap.md) |
+| 旧 HTTP/MCP 参考与新接口迁移边界 | [使用指南](docs/usage.md) |
+| 退役操作、旧配置与部署排障 | [运维指南](docs/operations.md) |
+| 待退役 Daemon 的原理与历史经验 | [旧运行时参考](docs/runtime.md) |
+| 核心健康准入扩展的状态与故障设计 | [AdmissionCheck](docs/admission-check.md) |
+| 测试入口、证据摘要和平台实验协议 | [验证指南](docs/validation.md) |
 
-`--help` 可查看各子命令；container 的 `--dry-run` 只显示计划，不构建、不操作 Docker、不调用 API。`scripts/lib` 为内部模块，不再保留旧包装脚本。Makefile 的 benchmark/observe/static-experiment/qos-integration/systemd-integration 可通过 PLATFORM=systrap 切换平台。
+历史资料按需查阅：[详细本地验收](docs/archive/local-validation.md)、[性能理论](docs/archive/performance-theory.md)、[引用索引](docs/archive/performance-references.md)。结构化数据与图表保留在 docs/data 和 docs/assets。
 
-依赖版本和 digest 保存在 .local；API 凭据文件也只保存在该忽略目录。完整旧产物已备份，artifacts 保留关键日志和压缩原始数据，恢复方式见 [验收汇总](docs/validation.md#evidence)。
+## 状态与使用边界
 
-## 文档
+旧同步任务采用一次性实例、默认禁网/只读根/非 root，结果不确定时不自动重放；其配置和运行历史仍可核对。新平台将任务实际放在 Job Pod 内执行，并独立验证隔离、重试、结果与清理，不承诺旧同步 API、Warm 时延或所有行为兼容。切换后不自动回落到 agentboxd。
 
-| 主题 | 入口 |
-| --- | --- |
-| 架构、隔离与组件边界 | [DESIGN](DESIGN.md) |
-| 单机执行与 FIFO/预热池 | [warm-pool](docs/warm-pool.md) |
-| 动态库存、开源机制和单调队列 | [dynamic-inventory](docs/dynamic-inventory.md) |
-| CPU 控制与压力准入 | [qos](docs/qos.md) |
-| 采样、诊断流程与测量边界 | [observability](docs/observability.md) |
-| daemon 部署 | [systemd-deployment](docs/systemd-deployment.md) |
-| 普通用户入口与配对部署 | [gateway](docs/gateway.md) |
-| MCP 与 DeepSeek | [mcp-deepseek](docs/mcp-deepseek.md) |
-| 功能验收与性能结果 | [validation](docs/validation.md) |
-| 静态 CPU 实验方法 | [static-cpu-experiment](docs/static-cpu-experiment.md) |
-| 性能模型与依据 | [performance-theory](docs/performance-theory.md)、[引用索引](docs/performance-theory-references.md) |
-| 下一阶段 | [implementation-plan](docs/implementation-plan.md) |
-
-功能通过、设计依据与收益分别陈述：Warm 在有空闲间隔的波次中降低典型等待，额外准备也会争用 CPU。两轮保护对照中，父组 1 CPU＋PSI 仅补池配置的 6,480 个 Core 请求全部在 50ms 内成功，但门控未触发，不能归因为动态收益；AIMD 组合未达到同一目标。该运行点限于共享 2 CPU 与指定负载，详见[验收](docs/validation.md)。动态库存独立收益仍未证明；tmpfs 通过不代表普通磁盘问题已修复，kind 不能代替物理跨机性能证据。
-
-面试讲解与已验证边界见 [interview](docs/interview.md)。
+现有结果支持限定场景下的预热等待改善与静态资源保护，不证明动态策略普遍更优。普通磁盘稳定性仍有缺口；Kubernetes 后端、多节点性能和生产就绪尚未验收。具体版本、数字与限制仅在验证文档维护。
