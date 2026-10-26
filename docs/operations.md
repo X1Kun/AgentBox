@@ -1,20 +1,96 @@
 # 运维指南
 
-状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。本文首先定义退役操作，其余章节保留旧服务配置、部署与排障，供已有部署收尾和历史复现，不作为新部署的推荐路径。新 Kubernetes 平台尚未提供可执行安装入口，交付要求见[路线图](roadmap.md)。
+状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前已提供独立 kind 普通 Job/containerd 功能入口；Agent Sandbox 会话、gVisor、Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
 
-按任务跳转：[退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。所有旧示例从对应代码版本的仓库根目录执行。
+按任务跳转：[新平台入口](#platform-lab) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
+
+<a id="platform-lab"></a>
+## 独立 Kubernetes 功能实验
+
+`scripts/platform_lab.py` 编排 kind 和 kubectl，固定一个 control-plane、一个专用 worker，可信 Python Job 在 worker 计算确定结果并校验终态、Pod 归属、输出与清理。它不依赖 agentboxd，不包含 gVisor、Agent Sandbox 会话、Kueue、网络隔离或性能验收。
+
+要求 Linux/amd64、Python 3.10+、Docker Engine 24+ 和 cgroup v2；Docker 可见至少 4 个逻辑 CPU、4GiB 内存只是启动最低条件，不是空闲资源保证。宿主 containerd、KVM、helm 和 k6 不是本入口的必需项。
+
+工具与镜像以 [versions.lock.json](../deploy/platform/versions.lock.json) 为准。kind/kubectl 固定版本及上游二进制 SHA-256，node/任务镜像固定 digest；containerd 随 node 镜像固定，实际版本从 Node status 记录。kind/node 组合来源见[官方发布](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0)。本配置采用 Kubernetes 1.36 的 kubeadm v1beta4；锁定的 kubectl 1.35 属于[官方允许的一小版本偏差](https://kubernetes.io/releases/version-skew-policy/#kubectl)。
+
+### 工具准备与执行
+
+从锁文件对应的官方资产下载 Linux/amd64 二进制，核对 SHA-256 后放到 `.local/platform-tools/kind`、`.local/platform-tools/kubectl` 并设置执行权限。入口优先使用这些本地工具，其次使用 PATH，也接受 AGENTBOX_KIND/AGENTBOX_KUBECTL/AGENTBOX_DOCKER 指定路径。版本正确但校验不匹配仍会拒绝。create 不隐式下载或安装工具。
+
+```bash
+# 离线计划：不调用外部工具、不写状态、不连接 Docker。
+python3 scripts/platform_lab.py create --dry-run
+
+make platform-preflight
+make platform-create
+make platform-smoke
+make platform-delete
+```
+
+preflight 只读主机/Docker 条件并保存结构化报告，区分缺失、超时、不可达和版本/校验错误。create 只创建 `agentbox-platform-lab`，拒绝接管已有同名且无归属记录的集群。所有 kubectl 显式使用 `.local/platform/kubeconfig` 和 `kind-agentbox-platform-lab` context，不读写默认 kubeconfig。
+
+操作使用本地文件锁；归属绑定仓库、Docker daemon ID、节点容器 ID 和 kubeconfig 哈希，变更时停止。凭据 0600，不进入报告。每次输出到新的 `artifacts/platform-动作-随机值/`，--output 也要求目录不存在；报告记录命令、耗时、实际来源和身份。smoke 另保存模板、Job/Pod UID、Node 版本与校验结果。
+
+kind 删除改用独立临时 kubeconfig，避免部分节点删除失败时清除真实凭据；确认节点容器消失后才移除原专用配置。失败保留 delete_failed 状态与原始节点身份，允许再次显式 delete，不放宽外来 kubeconfig/节点的归属检查。Docker 因内核等待暂时无法终止节点时报告失败，不返回虚假的清理成功。
+
+失败保留状态，并尽力导出本集群 kind 日志，不自动删现场。create 部分失败可按记录显式 delete；崩溃导致归属无法确认时人工核对，不盲目接管。成功 smoke 使用前台级联删除，随后在独立 60s 收敛窗口核对 Pod 消失；失败 Job 留待排障。集群删除后可再次创建，旧证据不覆盖。全局镜像缓存与共享网络不属于清理范围。
+
+### 下载源与超时
+
+工具可换国内下载源，但须匹配上游 SHA-256。create 的 --node-image-source 和 smoke 的 --smoke-image-source 仅允许改变 repository，必须保留锁定的 @sha256:digest；先以相同参数加 --dry-run 核对。canonical 镜像在锁文件，实际来源在报告中；不修改宿主 registry mirror 配置。
+
+此功能 profile 的节点直接访问镜像仓库。创建 kind 时只对子进程清空 HTTP/HTTPS/ALL 代理变量并设置 NO_PROXY=*，避免把宿主 127.0.0.1 代理带入节点。宿主设置保持原值；若必须使用受控出口代理，需要另行明确节点可达配置，不能直接复用宿主回环地址。
+
+节点镜像准备单独有界（pull 最多 600s），随后 kind 创建最多 420s、节点 Ready 检查最多 120s。共享磁盘冷启动曾超过 kubeadm 默认 1m API 引导预算，因此固定 InitConfiguration.timeouts.kubernetesAPICall=4m，并保留失败记录；这只影响集群引导，不改变工作负载时限。[kubeadm 超时定义](https://kubernetes.io/docs/reference/config-api/kubeadm-config.v1beta4/)
+
+Job 固定 activeDeadlineSeconds=120、backoffLimit=0；--timeout（30～600s）仅改变观察等待预算，不改 Job 期限。kind --retain 保留失败节点，超时或中断由归属记录及诊断日志处理。普通可信 smoke 不证明沙箱安全、自动重试或 SLO 收益。
 
 源码当前仍保留旧脚本入口：`scripts/setup.sh` 准备依赖；`scripts/deploy.py` 维护旧服务；`scripts/container.py` 运行旧验证；`scripts/experiment.py` 记录、分析和绘图。它们不是新平台安装器，专用入口将随 P2c 从活动发布清退。使用 --help 查看参数；container 的 --dry-run 只显示计划，不构建、不操作 Docker、不调用模型 API。
 
 Makefile 的 benchmark、observe、static-experiment、qos-integration、systemd-integration 是对应入口的快捷方式，可用 PLATFORM=systrap 显式切换。环境准备和测试条件见[验证指南](validation.md)。
 
+<a id="platform-plan"></a>
+## 会话与批任务平台部署计划
+
+以下为后续交付要求，尚无安装命令；不要把普通 Job smoke 当作完整平台安装器。顺序与验收门槛以[路线图](roadmap.md)为准。
+
+| 顺序 | 部署内容 | 运维必须核对 |
+| --- | --- | --- |
+| P1 运行时 | containerd 官方 runsc handler、RuntimeClass、支持策略的 CNI | 实际 gVisor 路径、资源归属和真实网络拒绝；kind 仅作功能环境 |
+| P1 会话 | Agent Sandbox CRD/控制器、必要执行服务与路由、单一模板 | 控制器/CRD/SDK/执行镜像版本匹配，先冷创建再固定 WarmPool |
+| P2 产品 | Go API/MCP、受限身份与会话访问 | 无宿主 runtime socket/cgroup 权限；密钥不进入任务；未知执行不重放 |
+| P3 批处理 | Kueue、固定图片 Job 模板、受控输入与产物 | 会话与批预算分开，Job attempt 输出隔离，提交/取消/TTL 可收敛 |
+| P4 策略 | 健康 AdmissionCheck | 最小 RBAC、指标新鲜度、恢复节奏、升级状态兼容 |
+
+Prometheus/Grafana 与最小会话指标从 P1/P2 配套引入，P3 补齐批任务和压测；不等到策略开发后才建立观测。Python 入口负责可重复安装/验收和记录，Go 服务与上游控制器负责长期运行。
+
+### 固定预热池与资源预算
+
+首版按管理员配置固定目标，上游控制器负责补充供给。记录空闲、已领取、创建中、终止中的 Pod 与实际资源；空闲池也消耗预算，不能只统计活动会话。会话 namespace 的 ResourceQuota、Pod requests/limits、批任务 ClusterQueue 配额和节点容量分别核对，配额上限不提供物理资源独占。
+
+池耗尽须有有限等待或明确失败；就绪探针不等于一定有可领取库存。使用过的会话关闭后销毁，不归还干净池。过期关闭与显式关闭按同一身份收敛；回收失败记录并告警，不能通过删除产品记录掩盖残留。总量上限与补池需要预留在途余量，并测试达到 namespace 配额时的行为。
+
+### 输入、产物与控制通道
+
+首版选一种有界存储机制，输入只读、工作目录按会话或 Job/attempt 隔离；镜像预装工具链，不在执行热路径联网安装。会话关闭前导出需保留产物；批任务验证并保存结果引用后再清理 Job，产物保留期单独执行。
+
+默认拒绝非必要网络，保留受限执行控制与必要输入/产物通道。NetworkPolicy 必须由所选 CNI 真实执行；同 Pod sidecar 不自动形成独立网络边界。控制器、产品层、执行 Pod 的 ServiceAccount/凭据分开，执行 Pod 不自动挂载 API token。按资源归属限制文件和结果访问，禁止任意宿主路径。
+
+### 版本、故障与卸载
+
+组件清单记录版本、镜像 digest、CRD API/storage 版本、内核/cgroup/CNI 及可用特性。上游 API 迁移按固定版本说明执行；已有对象不得在不兼容降级后丢失身份或权限。缺少必要能力时停留在已验收阶段，不叠加另一套沙箱控制面规避问题。
+
+故障现场保存 Claim/Sandbox/Pod 或 Job/Workload 的 UID、条件、事件和执行结果边界。命令超时/断线不表示终止成功，无法确认时关闭会话并核对 Pod/执行进程收敛；控制器重启与网络故障不自动重放命令。
+
+卸载先停止新领取/提交并处理活动会话/批任务，再按上游固定版本流程停止补池、清理对象与控制器。共享 CRD、RuntimeClass、节点组件和存储必须确认无其他使用者才移除；输入、产物、凭据与日志按各自保留要求处理。真实操作命令在对应实现验收后补入本页。
+
 <a id="retirement"></a>
 ## Daemon 退役流程（待执行）
 
-执行前置为 P1 平台和 P2 新入口验收完成、调用方已具备切换条件；本次文档更新没有执行任何启停或卸载。详细交付门槛见[路线图 P2c](roadmap.md#retirement)。
+执行前置为 P1 真实沙箱会话和 P2 新 API/MCP 验收完成、调用方已具备切换条件；不等待 P3 批任务、P4 策略或 Koordinator。详细交付门槛见[路线图 P2c](roadmap.md#retirement)。
 
 1. **盘点与留证。**确认旧服务、监听、调用方、配对配置、实例记录及依赖的实际归属，保存源码/构建版本和必要恢复信息；凭据不进入普通日志和公开归档。
-2. **停止旧提交。**先停止或切换所有受控调用方，阻止向旧入口新增请求。等待已接收任务结束，或明确取消并确认回收；未知执行结果不自动重放或迁入 Job。
+2. **停止旧提交。**先停止或切换所有受控调用方，阻止向旧入口新增请求。等待已接收任务结束，或明确取消并确认回收；未知执行结果不自动重放或迁入新会话/Job。
 3. **核对清理。**检查任务进程、bundle、cgroup 及残留状态。无法确认时保持旧记录并处理故障，不直接删除 owner/intent 宣告完成。
 4. **停止与移除服务。**按下文既有工具顺序先停配对服务、移除 Gateway，再卸载 base；不执行重新配对或重装步骤。不存在配对时只处理本部署的 base。
 5. **清退访问与依赖。**撤销旧端点访问和凭据分发，核对服务停止、无残留进程和监听；配置/状态的永久删除单独按保留要求处理，不默认 purge。不得删除新平台或其他服务共用的 runsc、镜像、容器存储及 cgroup。
@@ -22,7 +98,7 @@ Makefile 的 benchmark、observe、static-experiment、qos-integration、systemd
 
 退役完成须同时证明：新 API/MCP 在 agentboxd 未安装或未运行时工作；旧入口不再接收新执行；旧工作已回收或有明确未决处置；新平台只由 Kubernetes/containerd 管理运行时。历史文档和证据保留，不要求旧服务继续在线。
 
-目标 API/MCP 使用最小必要 Kubernetes RBAC，不挂载 containerd/CRI socket、不申请宿主 cgroup 控制权。新平台的安装、回退和卸载命令待实现后替代本页默认操作。
+目标 API/MCP 使用最小必要 Kubernetes RBAC 与受限上游执行接口，不挂载 containerd/CRI socket、不申请宿主 cgroup 控制权。上游沙箱内执行服务和节点 kubelet/containerd 继续运行，不等于保留 agentboxd。新平台的安装、回退和卸载命令待实现后替代本页默认操作。
 
 <a id="deployment"></a>
 ## 旧环境与安装参考

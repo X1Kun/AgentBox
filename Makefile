@@ -1,4 +1,4 @@
-.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration
+.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete
 
 PLATFORM ?= kvm
 
@@ -41,3 +41,16 @@ static-experiment: build
 
 qos-integration: build
 	python3 scripts/container.py qos --platform $(PLATFORM)
+
+# Functional Kubernetes lab; independent of the legacy daemon build.
+platform-preflight:
+	python3 scripts/platform_lab.py preflight
+
+platform-create:
+	python3 scripts/platform_lab.py create
+
+platform-smoke:
+	python3 scripts/platform_lab.py smoke
+
+platform-delete:
+	python3 scripts/platform_lab.py delete

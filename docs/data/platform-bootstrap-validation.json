@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "scope": "Trusted ordinary kind/containerd Job functional acceptance only",
+  "validated_at_utc": "2026-10-26T01:48:26.358922+00:00",
+  "base_commit": "cf87bdff2a9b76936016dfeb26fd943cbaf9a1d8",
+  "working_tree": "uncommitted implementation; verify source hashes",
+  "source_sha256": {
+    "scripts/platform_lab.py": "ffcd782764ceadc5388f31214cd58efaabc850145e6cc130587d2a746848d8b2",
+    "deploy/platform/versions.lock.json": "febfa9c0b30cb0dc5a4286a35b7041c242e66af08d02163b2e2ea0d2446dbd26",
+    "deploy/platform/kind.yaml": "d05a77df48d7cb236594932c65c7d4a31283a5d3c11ab9d68e6adfe4bb5181ab",
+    "deploy/platform/smoke-job.yaml": "62d2aebe415af439af802a2b6515f92fe485a6f5d02d0ff34bb53b5f83e92b91",
+    "tests/scripts/platform_test.py": "f451d3603c37b05f1772d63aa8580b713e906230948fb443e21a226e34a18b59",
+    "tests/scripts/platform_test.go": "18d032a6b7220152b870e18d5dc0338a86376947e7f919fc3a1407c8320c826e",
+    "Makefile": "33856e1057443b40bac26e66175d9a755ffcea9bc4b6526794fd193fbb32ec7b"
+  },
+  "versions_lock": {
+    "schema_version": 1,
+    "profile": "kind-functional",
+    "platform": "linux/amd64",
+    "kind": {
+      "version": "v0.33.0",
+      "sha256": "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d",
+      "source": "https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0"
+    },
+    "kubectl": {
+      "version": "v1.35.8",
+      "sha256": "874d5e72dbb819f43cff16bcd1e4f8bac5b7f2361fe1e55049b0a6c676fb0cbf",
+      "source": "https://dl.k8s.io/release/v1.35.8/bin/linux/amd64/kubectl"
+    },
+    "kubernetes": {
+      "version": "v1.36.4",
+      "node_image": "kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed",
+      "source": "https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0",
+      "compatibility": "kind v0.33.0 emits kubeadm v1beta4 for Kubernetes >=1.36, required by this profile's bootstrap timeout patch. kubectl v1.35 is within the supported one-minor skew.",
+      "skew_policy": "https://kubernetes.io/releases/version-skew-policy/"
+    },
+    "smoke": {
+      "image": "docker.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "source": "Existing verified Python rootfs image digest; docker image inspect must confirm the same digest before local preload.",
+      "expected_result": 333833500
+    },
+    "docker": {
+      "minimum_major": 24,
+      "minimum_cpus": 4,
+      "minimum_memory_bytes": 4294967296
+    },
+    "scope": "Trusted ordinary Job lifecycle only; no gVisor, Kueue or performance acceptance yet. The node image pins containerd transitively; its observed version is recorded from Kubernetes Node status."
+  },
+  "checks": {
+    "make_check": "passed",
+    "platform_regression_cases": 22,
+    "completed_cycles": 3,
+    "dedicated_cluster_deleted": true,
+    "unrelated_kind_clusters_preserved": true
+  },
+  "cycles": [
+    {
+      "completed_at_utc": "2026-10-26T01:23:25.862520+00:00",
+      "create_report": {
+        "path": "artifacts/platform-create-3e8928b6e9e0/report.json",
+        "sha256": "820423516b62af95c9ff51ff5d0124bcb35c5898cb14df43f5538ae70fcb4386"
+      },
+      "smoke_report": {
+        "path": "artifacts/platform-smoke-4a780f98a4eb/report.json",
+        "sha256": "9699abb914661a6de34ca64d26e31f6c551660ed8d66d5cceefec7ff1db97b0a"
+      },
+      "delete_report": {
+        "path": "artifacts/platform-delete-b0b9897cf189/report.json",
+        "sha256": "419baf00a200be9ff3cedf0cb905d2fb778de266b4141a4fc7b8dc6de9b09efb"
+      },
+      "job_uid": "5aa247a9-10b1-4694-98e9-2d2e6024e7ad",
+      "pod_uid": "226abe33-c618-4549-afd9-3604e4ca29b0",
+      "worker": "agentbox-platform-lab-worker",
+      "image_source": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "output": {
+        "result": 333833500
+      },
+      "cleanup_complete": true,
+      "implementation_sha256": {
+        "create": null,
+        "smoke": null,
+        "delete": null
+      },
+      "nodes": [
+        {
+          "name": "agentbox-platform-lab-control-plane",
+          "kubelet": "v1.36.4",
+          "runtime": "containerd://2.3.4"
+        },
+        {
+          "name": "agentbox-platform-lab-worker",
+          "kubelet": "v1.36.4",
+          "runtime": "containerd://2.3.4"
+        }
+      ]
+    },
+    {
+      "completed_at_utc": "2026-10-26T01:39:33.904601+00:00",
+      "create_report": {
+        "path": "artifacts/platform-create-2c67b34b1778/report.json",
+        "sha256": "f71ee1ede738cbc09f115e35f9ac5b79a84d1b99c0cd4f8912827031494fcb84"
+      },
+      "smoke_report": {
+        "path": "artifacts/platform-smoke-b5d040cf4153/report.json",
+        "sha256": "e95001382da687264fef5d5cea8680187807294af5db94970222491dc6a3935f"
+      },
+      "delete_report": {
+        "path": "artifacts/platform-delete-8417393f3f69/report.json",
+        "sha256": "5a4f505441eed3af3878f57656c3dbcc7cdb83762a1a361d89b4fb137c5e2020"
+      },
+      "job_uid": "3d1f2394-9e98-49fd-8e92-76557c14f535",
+      "pod_uid": "cf54d6ba-f193-4c37-b433-77d117f2233a",
+      "worker": "agentbox-platform-lab-worker",
+      "image_source": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "output": {
+        "result": 333833500
+      },
+      "cleanup_complete": true,
+      "implementation_sha256": {
+        "create": "157aae98f1b5a65c0b3be8c9d5977e69c0810e5b8664bcb7a3b461b617e3916e",
+        "smoke": "157aae98f1b5a65c0b3be8c9d5977e69c0810e5b8664bcb7a3b461b617e3916e",
+        "delete": "ffcd782764ceadc5388f31214cd58efaabc850145e6cc130587d2a746848d8b2"
+      },
+      "nodes": [
+        {
+          "name": "agentbox-platform-lab-control-plane",
+          "kubelet": "v1.36.4",
+          "runtime": "containerd://2.3.4"
+        },
+        {
+          "name": "agentbox-platform-lab-worker",
+          "kubelet": "v1.36.4",
+          "runtime": "containerd://2.3.4"
+        }
+      ]
+    },
+    {
+      "completed_at_utc": "2026-10-26T01:48:26.358922+00:00",
+      "create_report": {
+        "path": "artifacts/platform-create-48142fb6f49e/report.json",
+        "sha256": "b1704d002ad5776e918bb027fa6a34eb79b8b5cbadd9981fc5994021c7de737a"
+      },
+      "smoke_report": {
+        "path": "artifacts/platform-smoke-21a1bab10f29/report.json",
+        "sha256": "226c24d113caa7651c50a656a3f328b93b896c5f2e59fb07f11eb229bb4fe9e7"
+      },
+      "delete_report": {
+        "path": "artifacts/platform-delete-9e730bd560f3/report.json",
+        "sha256": "15c20b41840508dedaeae01a6c6ad0f68e82a4e3e2c930e833e4858c7f924175"
+      },
+      "job_uid": "732bd004-e225-40db-b4d8-755b5d341bb7",
+      "pod_uid": "53aeb973-2a81-44dd-a8ae-48ce13932d5c",
+      "worker": "agentbox-platform-lab-worker",
+      "image_source": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "output": {
+        "result": 333833500
+      },
+      "cleanup_complete": true,
+      "implementation_sha256": {
+        "create": "ffcd782764ceadc5388f31214cd58efaabc850145e6cc130587d2a746848d8b2",
+        "smoke": "ffcd782764ceadc5388f31214cd58efaabc850145e6cc130587d2a746848d8b2",
+        "delete": "ffcd782764ceadc5388f31214cd58efaabc850145e6cc130587d2a746848d8b2"
+      },
+      "nodes": [
+        {
+          "name": "agentbox-platform-lab-control-plane",
+          "kubelet": "v1.36.4",
+          "runtime": "containerd://2.3.4"
+        },
+        {
+          "name": "agentbox-platform-lab-worker",
+          "kubelet": "v1.36.4",
+          "runtime": "containerd://2.3.4"
+        }
+      ]
+    }
+  ],
+  "failed_attempts": [
+    {
+      "path": "artifacts/platform-create-106318f29d5a/report.json",
+      "sha256": "f3bc7fdb550b273c1f0d05275e37e6ebb2ef393f6b8323624ad62c01276a5742",
+      "action": "create",
+      "reason": "command_failed"
+    },
+    {
+      "path": "artifacts/platform-create-8b1014ef9ebe/report.json",
+      "sha256": "7c241ce46e047947d361a81577cdf8c147bc7b771464781319b66f5d8fdeff96",
+      "action": "create",
+      "reason": "operation_in_progress"
+    },
+    {
+      "path": "artifacts/platform-create-a78d02204120/report.json",
+      "sha256": "d192d4c5f147b21ea108598ba63f9c8af8331a32f7861e8358f7a9c115d197aa",
+      "action": "create",
+      "reason": "command_failed"
+    },
+    {
+      "path": "artifacts/platform-create-e421fc02b013/report.json",
+      "sha256": "31a4dcfaf71f29b679dfdd5d6f088e1b5b2976dd940e5ce70ed8ce2d02eea733",
+      "action": "create",
+      "reason": "command_timeout"
+    },
+    {
+      "path": "artifacts/platform-create-eab147a1e42b/report.json",
+      "sha256": "d4e6c8657ffb5f46af1ce33af2cbb6df0f3d4f8576d1095c04c0d08c7894e81f",
+      "action": "create",
+      "reason": "command_failed"
+    },
+    {
+      "path": "artifacts/platform-delete-2a8e7f1d86bd/report.json",
+      "sha256": "2710afcefcad9376d22559cf7cffa199c848fa74744af2ab3c78f9262041f84e",
+      "action": "delete",
+      "reason": "command_failed"
+    },
+    {
+      "path": "artifacts/platform-delete-942b16149747/report.json",
+      "sha256": "08173312cd3c545a74a7090e4a2b6e3c3812b0dd0af9e2363653731d60d55f03",
+      "action": "delete",
+      "reason": "kubeconfig_changed"
+    },
+    {
+      "path": "artifacts/platform-smoke-54d79450626a/report.json",
+      "sha256": "928d4ff461b9adb9ad03e065ba63f91b3cf03c0092e3bb1f04f38e26e96767c0",
+      "action": "smoke",
+      "reason": "cleanup_incomplete"
+    },
+    {
+      "path": "artifacts/platform-smoke-c3763f6a8159/report.json",
+      "sha256": "612998c3d8fb40d58ee32e522c3ea8fd7d11b5b18ddb3726e8f9df92dfd08e10",
+      "action": "smoke",
+      "reason": "job_failed"
+    }
+  ],
+  "observations": [
+    "Initial node image transfer exhausted the shared bootstrap budget; image preparation is now a separate bounded phase.",
+    "Cold file-page waits were observed in containerd/etcd. kind v0.33 uses kubeadm v1beta4 only for Kubernetes >=1.36; the locked 1.36.4 profile uses a 4m API bootstrap budget.",
+    "A host loopback proxy inherited by nodes caused ImagePullBackOff. Only the kind child proxy environment is changed; host settings remain untouched.",
+    "A Job delete response did not guarantee Pod deletion. Foreground propagation and a bounded Pod convergence check are required.",
+    "kind could alter its kubeconfig even when a node deletion failed. Deletion now uses a separate empty kubeconfig and retains retryable ownership; a prototype-state recovery was recorded separately.",
+    "Earlier attempts used evolving code/configuration. Every phase of the last completed cycle records the current implementation hash."
+  ],
+  "development_recoveries": [
+    {
+      "path": "artifacts/platform-delete-repair-b4383d1067a3/recovery.json",
+      "sha256": "9f00416307299ff24c6c2060e539425a587743044b7657312d5e76ea4be693a5"
+    }
+  ],
+  "not_validated": [
+    "gVisor RuntimeClass",
+    "Kueue",
+    "NetworkPolicy enforcement",
+    "business performance",
+    "production reliability"
+  ],
+  "raw_evidence": "Full reports and logs are kept under gitignored artifacts; paths and SHA-256 above identify the original files."
+}
