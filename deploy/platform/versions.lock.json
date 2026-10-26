@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "profile": "kind-functional",
+  "platform": "linux/amd64",
+  "kind": {
+    "version": "v0.33.0",
+    "sha256": "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d",
+    "source": "https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0"
+  },
+  "kubectl": {
+    "version": "v1.35.8",
+    "sha256": "874d5e72dbb819f43cff16bcd1e4f8bac5b7f2361fe1e55049b0a6c676fb0cbf",
+    "source": "https://dl.k8s.io/release/v1.35.8/bin/linux/amd64/kubectl"
+  },
+  "kubernetes": {
+    "version": "v1.36.4",
+    "node_image": "kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed",
+    "source": "https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0",
+    "compatibility": "kind v0.33.0 emits kubeadm v1beta4 for Kubernetes >=1.36, required by this profile's bootstrap timeout patch. kubectl v1.35 is within the supported one-minor skew.",
+    "skew_policy": "https://kubernetes.io/releases/version-skew-policy/"
+  },
+  "smoke": {
+    "image": "docker.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+    "source": "Existing verified Python rootfs image digest; docker image inspect must confirm the same digest before local preload.",
+    "expected_result": 333833500
+  },
+  "docker": {
+    "minimum_major": 24,
+    "minimum_cpus": 4,
+    "minimum_memory_bytes": 4294967296
+  },
+  "scope": "Trusted ordinary Job lifecycle only; no gVisor, Kueue or performance acceptance yet. The node image pins containerd transitively; its observed version is recorded from Kubernetes Node status."
+}

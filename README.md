@@ -1,36 +1,50 @@
 # AgentBox
 
-面向 AI Agent 的受控任务执行项目。目标由 Kubernetes Job、Kueue、containerd/gVisor 承担任务生命周期、队列和运行管理，AgentBox 聚焦 API/MCP 任务适配与在线健康感知 AdmissionCheck；后续评价 Koordinator 的节点压制。
+面向 AI Agent 的隔离会话与受控批任务项目。目标在同一 Kubernetes 平台上，用 **Agent Sandbox 管理会话和固定预热池，Job＋Kueue 管理批任务，containerd＋gVisor 提供运行与隔离**。Go API/MCP 负责产品适配，首个研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
-**已决定退役 agentboxd，目标只保留成熟平台执行链路。**当前源码仍是可构建的单机 Python 旧实现，包含 Cold/Warm、FIFO、清理和 Gateway/MCP；新平台、新接口及实际退役尚未完成。旧实现功能冻结，保留迁移期收尾和历史复现，不再规划长期双后端。
+**继续演进现有项目，已决定退役 agentboxd。**会话可执行多次命令，批任务按有限输入完成；不要求每次工具调用都创建 Job。当前仍保留可构建的单机旧实现，新的会话平台、新接口和实际退役尚未完成。
 
 ## 当前代码与迁移状态
 
-下列命令只构建和检查尚未移除的旧实现，不能启动目标平台。需要 Linux、Go 1.25+；旧运行时复现另需 runsc、可信 Python rootfs、cgroups v2 委派及对应权限。
+已实现独立 kind 功能实验：固定版本预检、两节点集群、可信普通 Python Job smoke 和受归属限制的清理。
+
+```bash
+python3 scripts/platform_lab.py create --dry-run
+make platform-preflight
+make platform-create
+make platform-smoke
+make platform-delete
+```
+
+先按[环境与工具要求](docs/operations.md#platform-lab)准备工具。本入口不依赖 agentboxd；不包含 gVisor、Agent Sandbox、Kueue 或新产品 API。已有闭环证据见[验证指南](docs/validation.md#platform-bootstrap)。
+
+后续顺序：真实 gVisor 路径 → 上游会话与固定预热池 → Go API/MCP 与 Daemon 退役 → 图片批任务/Kueue → 健康准入对照。只有在途竞争成为明确瓶颈时，再评价 Koordinator。阶段与门槛见[路线图](docs/roadmap.md)。
+
+Go 用于产品服务和自研 Controller；Python 用于环境验收、实验分析及执行负载。当前检查仍覆盖尚未移除的旧代码，不能通过下列命令启动目标平台：
 
 ```bash
 make build
 make check
 ```
 
-新平台实施与旧链路退出条件见[路线图](docs/roadmap.md#retirement)。旧 systemd 操作只用于已有部署维护、收尾或复现，见[运维指南](docs/operations.md)；旧 HTTP/MCP 契约见[使用指南](docs/usage.md)。验证范围见[验证指南](docs/validation.md)。普通回归不调用付费模型。
+需要 Linux、Go 1.25+；旧运行时复现另需 runsc/rootfs、cgroup v2 与权限。旧 systemd 操作只用于已有部署收尾或历史复现，见[运维指南](docs/operations.md#retirement)。普通回归不调用付费模型。
 
 ## 文档导航
 
 | 想了解什么 | 入口 |
 | --- | --- |
-| 总体架构、组件分工和关键取舍 | [DESIGN](DESIGN.md) |
-| 当前阶段、下一步交付和退出条件 | [路线图](docs/roadmap.md) |
-| 旧 HTTP/MCP 参考与新接口迁移边界 | [使用指南](docs/usage.md) |
-| 退役操作、旧配置与部署排障 | [运维指南](docs/operations.md) |
-| 待退役 Daemon 的原理与历史经验 | [旧运行时参考](docs/runtime.md) |
-| 核心健康准入扩展的状态与故障设计 | [AdmissionCheck](docs/admission-check.md) |
-| 测试入口、证据摘要和平台实验协议 | [验证指南](docs/validation.md) |
+| 目标架构、会话/批任务边界和选型 | [DESIGN](DESIGN.md) |
+| 开发顺序、范围与验收门槛 | [路线图](docs/roadmap.md) |
+| 拟议新契约与当前旧 HTTP/MCP 用法 | [使用指南](docs/usage.md) |
+| 平台入口、部署计划、排障与退役 | [运维指南](docs/operations.md) |
+| 待退役 Daemon 的机制与历史经验 | [旧运行时参考](docs/runtime.md) |
+| 保护交互体验的批任务准入策略 | [AdmissionCheck](docs/admission-check.md) |
+| 已有证据、会话验收与策略实验 | [验证指南](docs/validation.md) |
 
-历史资料按需查阅：[详细本地验收](docs/archive/local-validation.md)、[性能理论](docs/archive/performance-theory.md)、[引用索引](docs/archive/performance-references.md)。结构化数据与图表保留在 docs/data 和 docs/assets。
+历史资料：[本地验收](docs/archive/local-validation.md)、[性能理论](docs/archive/performance-theory.md)、[引用索引](docs/archive/performance-references.md)。现有 data/assets 保留原口径，不转写为新平台成绩。
 
-## 状态与使用边界
+## 交付边界
 
-旧同步任务采用一次性实例、默认禁网/只读根/非 root，结果不确定时不自动重放；其配置和运行历史仍可核对。新平台将任务实际放在 Job Pod 内执行，并独立验证隔离、重试、结果与清理，不承诺旧同步 API、Warm 时延或所有行为兼容。切换后不自动回落到 agentboxd。
+首版一个 Worker 资源域、一种受控 CPU/Python 模板、固定池规模和一份图片数据集。会话保留文件不等于保留 Python 内存变量；批任务采用显式提交/查询/取消与产物校验。旧同步 API、Warm 时延和取消语义不作等价迁移，切换后不自动回落 agentboxd。
 
-现有结果支持限定场景下的预热等待改善与静态资源保护，不证明动态策略普遍更优。普通磁盘稳定性仍有缺口；Kubernetes 后端、多节点性能和生产就绪尚未验收。具体版本、数字与限制仅在验证文档维护。
+第一轮比较仅会话、会话＋静态批配额、相同预算＋健康准入；同时报告交互延迟、批任务有效产出、等待和预热成本。新运行路径、生产稳定性和策略收益均需独立验证；历史普通磁盘故障不因换平台就视为解决。
