@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "release": "20261005.0",
+  "platform": "systrap",
+  "architecture": "x86_64",
+  "containerd_version": "2.3.4",
+  "archive": "gvisor-20261005.0-x86_64.tar.bz2",
+  "url": "https://storage.googleapis.com/gvisor/releases/release/20261005.0/x86_64/gvisor.tar.bz2",
+  "checksum_url": "https://storage.googleapis.com/gvisor/releases/release/20261005.0/x86_64/gvisor.tar.bz2.sha512",
+  "sha512": "79869ae9a589355a46d46fdac068d9a954e741741ffe77c64e38c56ea955498c1cb04e9bce44e1cce5155333e6b76bee72347c6661bb7c78fd2fe3aad198c8fe",
+  "required_files": [
+    "runsc",
+    "containerd-shim-runsc-v1",
+    "gvisor-bin/gvisor_sentry",
+    "gvisor-bin/runsc-fd-parking",
+    "gvisor-bin/runsc-metric-server",
+    "gvisor-bin/checkpointgofer",
+    "gvisor-bin/gvisor-sentry-prewarmer"
+  ],
+  "scope": "Owned kind worker only; trusted runtime lifecycle probes, not full network isolation or production acceptance",
+  "swap_policy": {
+    "unit": "kubelet.slice",
+    "MemorySwapMax": 0,
+    "scope": "All Pods in this owned kind worker; no host or other-cluster changes"
+  }
+}

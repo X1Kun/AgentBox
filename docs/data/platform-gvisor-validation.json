@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "scope": "Trusted kind/containerd/gVisor runtime lifecycle acceptance only",
+  "base_commit": "9cd1b2c27f41f1b500e19e34a4e56484f05ea4f6",
+  "validated_at_utc": "2026-10-26T13:46:10.193119+00:00",
+  "working_tree": "Uncommitted implementation; source hashes identify acceptance",
+  "source_sha256": {
+    "scripts/platform_lab.py": "19afe4bac2ecf41eb0037bf955fdeec68b109d421444212d907e2f38288cbe54",
+    "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+    "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "tests/scripts/platform_test.py": "3445a0ae7af0ae2041634fe0599e6d3eef7904129ed1beee9161decf6f00ea66",
+    "tests/scripts/platform_gvisor_test.py": "736d23923d2a498f407b14f02429becb593a1aa32621054e8c9ab5e76510dec5",
+    "tests/scripts/platform_test.go": "d9023c7969e0ad87a43d18d332e14082c344185b7e53fcd324c43f1347cbb95f",
+    "Makefile": "424c9b1079af2b02351273f78e4cb588ef6d359aaaf7ec8a98f472b599b5d0cc",
+    "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+    "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+    "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+    "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+    "deploy/platform/kind.yaml": "d05a77df48d7cb236594932c65c7d4a31283a5d3c11ab9d68e6adfe4bb5181ab",
+    "deploy/platform/smoke-job.yaml": "62d2aebe415af439af802a2b6515f92fe485a6f5d02d0ff34bb53b5f83e92b91",
+    "deploy/platform/versions.lock.json": "febfa9c0b30cb0dc5a4286a35b7041c242e66af08d02163b2e2ea0d2446dbd26"
+  },
+  "gvisor_lock": {
+    "schema_version": 1,
+    "release": "20261005.0",
+    "platform": "systrap",
+    "architecture": "x86_64",
+    "containerd_version": "2.3.4",
+    "archive": "gvisor-20261005.0-x86_64.tar.bz2",
+    "url": "https://storage.googleapis.com/gvisor/releases/release/20261005.0/x86_64/gvisor.tar.bz2",
+    "checksum_url": "https://storage.googleapis.com/gvisor/releases/release/20261005.0/x86_64/gvisor.tar.bz2.sha512",
+    "sha512": "79869ae9a589355a46d46fdac068d9a954e741741ffe77c64e38c56ea955498c1cb04e9bce44e1cce5155333e6b76bee72347c6661bb7c78fd2fe3aad198c8fe",
+    "required_files": [
+      "runsc",
+      "containerd-shim-runsc-v1",
+      "gvisor-bin/gvisor_sentry",
+      "gvisor-bin/runsc-fd-parking",
+      "gvisor-bin/runsc-metric-server",
+      "gvisor-bin/checkpointgofer",
+      "gvisor-bin/gvisor-sentry-prewarmer"
+    ],
+    "scope": "Owned kind worker only; trusted runtime lifecycle probes, not full network isolation or production acceptance",
+    "swap_policy": {
+      "unit": "kubelet.slice",
+      "MemorySwapMax": 0,
+      "scope": "All Pods in this owned kind worker; no host or other-cluster changes"
+    }
+  },
+  "phases": {
+    "create": {
+      "path": "artifacts/platform-create-c5a0d192b1f3/report.json",
+      "sha256": "d9711483512ae7f067bd9245f25ea85999934d1e6dd9d0381ccc14af4eedd790"
+    },
+    "install": {
+      "path": "artifacts/platform-gvisor-install-83dadfbd1685/report.json",
+      "sha256": "11f498605b906a1283eb125ac41a652c857cb43c2aa180320885aeb7af022158"
+    },
+    "idempotent_install": {
+      "path": "artifacts/platform-gvisor-install-34bbc3236a6f/report.json",
+      "sha256": "a8acb4956b4afe16c8925ca2e7cb856a28b06f9121ef8a890c88cf0556353bfa"
+    },
+    "runtime_suite": {
+      "path": "artifacts/platform-gvisor-test-9ec476c9b26d/report.json",
+      "sha256": "e0528210cc7ae8648ec3ce9f3b992e0d70aba925e06d985534980de4128eb500"
+    },
+    "ordinary_smoke": {
+      "path": "artifacts/platform-smoke-79ca9d4f966c/report.json",
+      "sha256": "64f4934ed17a2edadad31da318696a303b3f8e01efabb360ee3abb12ab1e4732"
+    },
+    "delete": {
+      "path": "artifacts/platform-delete-3a04f5de3a4a/report.json",
+      "sha256": "240ecf973818239a590205d7349a90d001c82e937bbc651fda4fc291f23edc13"
+    }
+  },
+  "phase_sources": {
+    "create": {
+      "source_sha256": {
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/platform_gvisor.py": "4d673899f3e39c647d3fced2880a823be73b887bf78f0a4fc7f274769d9fabad",
+        "scripts/platform_lab.py": "19afe4bac2ecf41eb0037bf955fdeec68b109d421444212d907e2f38288cbe54"
+      },
+      "different_from_final": [
+        "scripts/lib/platform_gvisor.py"
+      ]
+    },
+    "install": {
+      "source_sha256": {
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/platform_gvisor.py": "4d673899f3e39c647d3fced2880a823be73b887bf78f0a4fc7f274769d9fabad",
+        "scripts/platform_lab.py": "19afe4bac2ecf41eb0037bf955fdeec68b109d421444212d907e2f38288cbe54"
+      },
+      "different_from_final": [
+        "scripts/lib/platform_gvisor.py"
+      ]
+    },
+    "idempotent_install": {
+      "source_sha256": {
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/platform_lab.py": "19afe4bac2ecf41eb0037bf955fdeec68b109d421444212d907e2f38288cbe54"
+      },
+      "different_from_final": []
+    },
+    "runtime_suite": {
+      "source_sha256": {
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/platform_lab.py": "19afe4bac2ecf41eb0037bf955fdeec68b109d421444212d907e2f38288cbe54"
+      },
+      "different_from_final": []
+    },
+    "ordinary_smoke": {
+      "source_sha256": {
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/platform_lab.py": "19afe4bac2ecf41eb0037bf955fdeec68b109d421444212d907e2f38288cbe54"
+      },
+      "different_from_final": []
+    },
+    "delete": {
+      "source_sha256": {
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/platform_lab.py": "19afe4bac2ecf41eb0037bf955fdeec68b109d421444212d907e2f38288cbe54"
+      },
+      "different_from_final": []
+    }
+  },
+  "runtime_configuration": {
+    "ContainerAnnotations": null,
+    "PodAnnotations": null,
+    "baseRuntimeSpec": "",
+    "cgroupWritable": false,
+    "cniConfDir": "",
+    "cniMaxConfNum": 0,
+    "io_type": "",
+    "options": {
+      "ConfigPath": "/etc/containerd/agentbox-runsc.toml",
+      "TypeUrl": "io.containerd.runsc.v1.options"
+    },
+    "privileged_without_host_devices": false,
+    "privileged_without_host_devices_all_devices_allowed": false,
+    "runtimePath": "/opt/agentbox-gvisor/containerd-shim-runsc-v1",
+    "runtimeType": "io.containerd.runsc.v1",
+    "sandboxer": "podsandbox",
+    "snapshotter": ""
+  },
+  "workload_swap_policy": {
+    "MemorySwapMax": 0,
+    "original": "infinity",
+    "unit": "kubelet.slice"
+  },
+  "cases": [
+    {
+      "case": "success",
+      "job_uid": "4bc63954-d82e-4be3-88b9-48e534ed7596",
+      "pod_uid": "b310f93f-1b26-456c-948f-5f4f01201e3a",
+      "runtime_handler": "agentbox-gvisor",
+      "sandbox_id": "91b2a4e92a7b8f4329a194ee3c8b05574fbdb573052ef79c3149f084fa63ded3",
+      "termination": {
+        "containerID": "containerd://1aa60ed98d4a9f0428586c00cd28791c32670af92977495eab015549cdc8d82c",
+        "exitCode": 0,
+        "finishedAt": "2026-10-26T13:39:06Z",
+        "reason": "Completed",
+        "startedAt": "2026-10-26T13:39:04Z"
+      },
+      "oom_kill_delta": null,
+      "terminal_evidence": null,
+      "outside_pod_processes": [
+        "containerd-shim-runsc-v1",
+        "runsc"
+      ],
+      "expected_failure_events": null,
+      "cleanup_complete": true
+    },
+    {
+      "case": "failure",
+      "job_uid": "e74d2714-eafc-4afe-95f3-94b8dec3b068",
+      "pod_uid": "2c37630a-e802-4b18-b405-99c8acb11566",
+      "runtime_handler": "agentbox-gvisor",
+      "sandbox_id": "a164587634ea37d9d58ad17f1e74b99934becde144f3017e16933cf5a055e542",
+      "termination": {
+        "containerID": "containerd://d8e79edee16ff6d72e2df1842bc810de9723eb0d196469ebb114fc9ef999e139",
+        "exitCode": 23,
+        "finishedAt": "2026-10-26T13:39:54Z",
+        "reason": "Error",
+        "startedAt": "2026-10-26T13:39:52Z"
+      },
+      "oom_kill_delta": null,
+      "terminal_evidence": null,
+      "outside_pod_processes": [
+        "containerd-shim-runsc-v1",
+        "runsc"
+      ],
+      "expected_failure_events": null,
+      "cleanup_complete": true
+    },
+    {
+      "case": "cancel",
+      "job_uid": "fc308296-9a23-4b8f-9384-893fe4e878fb",
+      "pod_uid": "ae82c45a-4736-4c8b-93bf-12f9b5733fd2",
+      "runtime_handler": "agentbox-gvisor",
+      "sandbox_id": "473a966cdb35839205b1e09373c9889e6fbb243a0856ab0ff208131a34c70e91",
+      "termination": null,
+      "oom_kill_delta": null,
+      "terminal_evidence": null,
+      "outside_pod_processes": [
+        "containerd-shim-runsc-v1",
+        "runsc"
+      ],
+      "expected_failure_events": null,
+      "cleanup_complete": true
+    },
+    {
+      "case": "deadline",
+      "job_uid": "eee44777-75a1-4772-9a6a-08ca62e03862",
+      "pod_uid": "a5e5f51b-b9fe-435f-bae4-4a86e027930a",
+      "runtime_handler": "agentbox-gvisor",
+      "sandbox_id": "d524ca8e9ddc6cc1257ee761165019cb5a15a60dd6127d277918dbd4eaa4772a",
+      "termination": null,
+      "oom_kill_delta": null,
+      "terminal_evidence": "DeadlineExceeded; Pod removed by Job controller",
+      "outside_pod_processes": [
+        "containerd-shim-runsc-v1",
+        "runsc"
+      ],
+      "expected_failure_events": null,
+      "cleanup_complete": true
+    },
+    {
+      "case": "oom",
+      "job_uid": "372f6a1c-8340-4822-b389-aad8c2f8661b",
+      "pod_uid": "43c898f0-6abe-43ad-afc2-0a14aba091a7",
+      "runtime_handler": "agentbox-gvisor",
+      "sandbox_id": "4bbffbb0b5f67f3e6402f0ada9788fbd8e223ee2f71b1427e67fb1312cb03e92",
+      "termination": {
+        "containerID": "containerd://9d739373cafa3fd94df255478013f485d15428998b89a4672af0ec9f018eee2e",
+        "exitCode": 128,
+        "finishedAt": "2026-10-26T13:42:56Z",
+        "reason": "OOMKilled",
+        "startedAt": "2026-10-26T13:42:53Z"
+      },
+      "oom_kill_delta": 1,
+      "terminal_evidence": null,
+      "outside_pod_processes": [
+        "containerd-shim-runsc-v1",
+        "runsc"
+      ],
+      "expected_failure_events": null,
+      "cleanup_complete": true
+    },
+    {
+      "case": "missing",
+      "job_uid": "04a4c515-3e9b-4e4a-9488-88d8763b6e32",
+      "pod_uid": "811a2020-feee-4b2f-aab8-e0439c24f2b6",
+      "runtime_handler": null,
+      "sandbox_id": null,
+      "termination": null,
+      "oom_kill_delta": null,
+      "terminal_evidence": null,
+      "outside_pod_processes": [],
+      "expected_failure_events": [
+        "Failed to create pod sandbox: rpc error: code = Unknown desc = unable to get OCI runtime for sandbox \"9ef86ba511d995034b04ce3fece551773a2ae8f7866010ffec9284a15106fade\": no runtime for \"agentbox-missing-976c7b74\" is configured"
+      ],
+      "cleanup_complete": true
+    }
+  ],
+  "checks": {
+    "make_check": "passed",
+    "base_platform_regressions": 22,
+    "gvisor_regressions": 17,
+    "full_runtime_cases": 6,
+    "ordinary_smoke_output": {
+      "result": 333833500
+    },
+    "cluster_deleted": true,
+    "dedicated_kubeconfig_removed": true,
+    "unrelated_kind_clusters_preserved": true
+  },
+  "failed_development_attempts": [
+    {
+      "path": "artifacts/platform-delete-3930cd0c6764/report.json",
+      "sha256": "0c25362a4fe3c698fd8d67c46be88b2a135b690f2db6a5e41e742d197861ab80",
+      "action": "delete",
+      "reason": "command_failed"
+    },
+    {
+      "path": "artifacts/platform-gvisor-install-f1c6f4a30b79/report.json",
+      "sha256": "c1c501a3fc5e0f292e3979ab20b2841c1dc230c40904551f9e24995a13f5b5cb",
+      "action": "gvisor-install",
+      "reason": "command_failed"
+    },
+    {
+      "path": "artifacts/platform-gvisor-test-1bde9cd3d9e7/report.json",
+      "sha256": "fd1cf8e2ef6fed458df5789d258b907319e43a56ee30aeec799a5b46625c2c1a",
+      "action": "gvisor-test",
+      "reason": "probe_ended_early"
+    },
+    {
+      "path": "artifacts/platform-gvisor-test-243bf715be54/report.json",
+      "sha256": "70f740f38479f651e9a7423112cbe27bf7e5926e3e147ae5f982c50eefce79b9",
+      "action": "gvisor-test",
+      "reason": "probe_terminal_timeout"
+    },
+    {
+      "path": "artifacts/platform-gvisor-test-37629cdfc829/report.json",
+      "sha256": "f81285e9843f3330066e6620a661c967392ac1940accc1a215b89a51a9812161",
+      "action": "gvisor-test",
+      "reason": "swap_limit_missing"
+    },
+    {
+      "path": "artifacts/platform-gvisor-test-4441a2e6d029/report.json",
+      "sha256": "b5a9e0b7aa482a38b76e88f615a23eba7ab8a0f4e4c1764dc445b369fb6ed521",
+      "action": "gvisor-test",
+      "reason": "invalid_state"
+    },
+    {
+      "path": "artifacts/platform-gvisor-test-597ab89421d6/report.json",
+      "sha256": "41335b14f3f22c323a11bd51253c9f0dbea8484df69fce6bbe0c786f2cbf59b0",
+      "action": "gvisor-test",
+      "reason": "unexpected_probe_result"
+    },
+    {
+      "path": "artifacts/platform-gvisor-test-6379a55b909b/report.json",
+      "sha256": "7461ddf046121b1b86c6c1ef4401f3ae508d0ae067ef208cc56223c8d99e7469",
+      "action": "gvisor-test",
+      "reason": "unexpected_probe_result"
+    },
+    {
+      "path": "artifacts/platform-gvisor-test-702cda592cf3/report.json",
+      "sha256": "4e4a661069cbaba2cb090675cfb69654049825e5391902bdfb175de8ac4fba59",
+      "action": "gvisor-test",
+      "reason": "invalid_probe_output"
+    },
+    {
+      "path": "artifacts/platform-gvisor-test-9413e1ab9c0f/report.json",
+      "sha256": "dbbe0773e4c609246b6125c0ff01d7a7b81cdb0bbaaeffd96b0f1b8af43d0df9",
+      "action": "gvisor-test",
+      "reason": "unexpected_probe_result"
+    }
+  ],
+  "observations": [
+    "The complete official archive includes runsc, the shim, and gvisor-bin helpers. kind lacks bzip2, so the validated archive is decompressed locally before transfer.",
+    "Guest root readonly is verified by mount flags and a denied write. /tmp and /work use an explicit per-Pod memory-backed volume.",
+    "The Job controller removes active Pods at their deadline; deadline acceptance uses the Job terminal condition plus independent runtime cleanup evidence.",
+    "A 256 MiB memory.max alone allowed the guest allocation to spill into swap. systemd now sets MemorySwapMax=0 on the owned worker kubelet.slice, applying to all its Pods. Live ancestor cgroup evidence verifies it.",
+    "An intermediate OCI base-spec approach was discarded: kind-specific runc hooks caused a start error, and CRI sandbox generation replaced the injected resource fields. The final handler uses its normal CRI-generated spec.",
+    "Creation and initial installation preceded the final OOM observation refinement; their source hashes are preserved. Runtime definitions match, and the full suite plus idempotent installation verify the final source.",
+    "Some shim/helper processes can live in containerd.service, outside the Pod cgroup. Their existence and cleanup are recorded; Pod usage is not complete runtime cost.",
+    "An intermediate Docker node deletion failed to receive an exit event; ownership and credentials were retained, and a subsequent bounded retry succeeded."
+  ],
+  "not_validated": [
+    "NetworkPolicy enforcement",
+    "Agent Sandbox sessions and warm pools",
+    "Kueue",
+    "new Go product APIs",
+    "exact emptyDir sizeLimit enforcement",
+    "production reliability",
+    "business performance or latency SLO"
+  ],
+  "raw_evidence": "Full reports, manifests and per-Pod runtime evidence remain in gitignored artifacts; paths and SHA-256 above identify the originals."
+}

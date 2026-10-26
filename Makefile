@@ -1,4 +1,4 @@
-.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete
+.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test
 
 PLATFORM ?= kvm
 
@@ -18,7 +18,7 @@ check: test
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal tests)"
 	git diff --check
-	bash -n scripts/setup.sh scripts/lib/container-entrypoint.sh
+	bash -n scripts/setup.sh scripts/lib/container-entrypoint.sh scripts/lib/gvisor_node_processes.sh
 	python3 -c 'import ast,pathlib; [ast.parse(p.read_text(), filename=str(p)) for base in ("scripts", "tests") for p in pathlib.Path(base).rglob("*.py")]'
 
 doctor: build
@@ -54,3 +54,9 @@ platform-smoke:
 
 platform-delete:
 	python3 scripts/platform_lab.py delete
+
+platform-gvisor-install:
+	python3 scripts/platform_lab.py gvisor-install
+
+platform-gvisor-test:
+	python3 scripts/platform_lab.py gvisor-test

@@ -1,6 +1,6 @@
 # AgentBox 系统设计
 
-版本：V3.0｜更新：2026-10-26｜方向已确定；当前只完成 kind/containerd 普通 Job 功能基线，会话平台、gVisor、新接口与 agentboxd 实际退役仍待实现。
+版本：V3.0｜更新：2026-10-26｜方向已确定；当前提供 kind/containerd 普通 Job 与 gVisor 运行时验收入口；会话平台、完整网络边界、新接口与 agentboxd 实际退役仍待实现。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
@@ -16,7 +16,7 @@ AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 
 
 先完成真实平台、Go 接口与故障验收，再写一个资源策略。动态预热池、Koordinator、Firecracker 快照、GPU、多节点放置、多租户公平、Argo/Ray/KEDA 和额外消息队列均不同时进入首轮。性能改善允许被实验否定；不承诺旧 Warm 时延或任意运行环境兼容。
 
-已实现的本地 Cold/Warm、FIFO、PSI/AIMD、Gateway/MCP 保留为迁移收尾和历史复现。独立 kind 普通 Job 已运行并回收；它不证明 gVisor 隔离、上游沙箱生命周期、新 API/MCP 或策略收益。
+已实现的本地 Cold/Warm、FIFO、PSI/AIMD、Gateway/MCP 保留为迁移收尾和历史复现。普通 Job 基线和新 gVisor 运行时子步骤分别留证；运行时探针不证明完整网络隔离、上游会话生命周期、新 API/MCP 或策略收益。
 
 ## 2. 组件职责与所有权
 

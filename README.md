@@ -6,7 +6,7 @@
 
 ## 当前代码与迁移状态
 
-已实现独立 kind 功能实验：固定版本预检、两节点集群、可信普通 Python Job smoke 和受归属限制的清理。
+已实现独立 kind 功能实验：固定版本预检、两节点集群、可信普通 Python Job smoke、gVisor 运行时验收和受归属限制的清理。
 
 ```bash
 python3 scripts/platform_lab.py create --dry-run
@@ -16,9 +16,11 @@ make platform-smoke
 make platform-delete
 ```
 
-先按[环境与工具要求](docs/operations.md#platform-lab)准备工具。本入口不依赖 agentboxd；不包含 gVisor、Agent Sandbox、Kueue 或新产品 API。已有闭环证据见[验证指南](docs/validation.md#platform-bootstrap)。
+先按[环境与工具要求](docs/operations.md#platform-lab)准备工具。普通 smoke 不依赖 agentboxd，也不验证 gVisor。Agent Sandbox、Kueue 与新产品 API 尚未接入。已有闭环证据见[验证指南](docs/validation.md#platform-bootstrap)。
 
-后续顺序：真实 gVisor 路径 → 上游会话与固定预热池 → Go API/MCP 与 Daemon 退役 → 图片批任务/Kueue → 健康准入对照。只有在途竞争成为明确瓶颈时，再评价 Koordinator。阶段与门槛见[路线图](docs/roadmap.md)。
+gVisor 运行时使用独立的 `make platform-gvisor-install` / `make platform-gvisor-test` 入口；包准备、运行方式和验收边界见[运维指南](docs/operations.md#gvisor-runtime)。它只验证可信探针，不表示完整网络隔离或沙箱产品已经交付。
+
+后续顺序：上游会话与固定预热池 → Go API/MCP 与 Daemon 退役 → 图片批任务/Kueue → 健康准入对照。只有在途竞争成为明确瓶颈时，再评价 Koordinator。阶段与门槛见[路线图](docs/roadmap.md)。
 
 Go 用于产品服务和自研 Controller；Python 用于环境验收、实验分析及执行负载。当前检查仍覆盖尚未移除的旧代码，不能通过下列命令启动目标平台：
 
