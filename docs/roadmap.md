@@ -6,7 +6,7 @@
 
 ## 1. 当前状态与总体顺序
 
-已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。gVisor、Agent Sandbox、Kueue、真实图片任务、新 API/MCP、AdmissionCheck 与实际退役均未完成。
+已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 安装与运行时验收入口；Agent Sandbox、Kueue、真实图片任务、新 API/MCP、AdmissionCheck 与实际退役仍未完成。
 
 | 阶段 | 主要交付 | 进入下一阶段的条件 |
 | --- | --- | --- |
@@ -25,11 +25,13 @@
 - [x] 独立集群/context、归属保护、有限超时、失败诊断与清理。
 - [x] 可信普通 Job 在专用 worker 计算固定结果，核对 Pod 与最终回收。
 - [x] 平台回归与真实成功/失败记录已保留；最后完整循环匹配实现哈希。
-- [ ] 将当前可审阅的功能基线完成提交，后续改造按独立验收项推进。
+- [x] 普通功能基线已通过 PR #13 合并（9cd1b2c）；后续改造按独立验收项推进。
 
 本阶段脚本只做实验编排；不承担常驻任务服务。后续组件的版本兼容、CNI 策略和生产环境条件不由普通 Job 验收替代。
 
 ## 3. P1：真实 gVisor 与上游会话
+
+运行时子步骤提供固定发布包、官方 shim/RuntimeClass、运行身份/资源与终止回收验证，见[验收记录](validation.md#gvisor-runtime)。这不等于 P1 的会话、预热池和网络边界全部完成。
 
 按顺序实施：
 

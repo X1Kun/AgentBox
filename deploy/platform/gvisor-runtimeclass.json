@@ -1,0 +1,18 @@
+{
+  "apiVersion": "node.k8s.io/v1",
+  "kind": "RuntimeClass",
+  "metadata": {
+    "name": "agentbox-gvisor",
+    "labels": {
+      "app.kubernetes.io/managed-by": "agentbox-platform",
+      "agentbox.dev/session": "__SESSION__"
+    }
+  },
+  "handler": "agentbox-gvisor",
+  "scheduling": {
+    "nodeSelector": {
+      "agentbox.dev/lab": "agentbox-platform-lab",
+      "agentbox.dev/role": "worker"
+    }
+  }
+}

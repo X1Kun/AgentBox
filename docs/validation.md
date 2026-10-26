@@ -10,18 +10,45 @@
 | 旧 Warm 与库存 | READY 命中和有空闲波次的典型等待下降，库存机制可运行 | 新平台同等启动时延或持续吞吐 |
 | 旧 CPU/QoS | 静态预算有局部保护价值，动态机制有真实接线与动作 | AIMD 支配静态配置或保证业务 SLO |
 | 旧 Gateway/MCP | 普通用户转发、取消、无自动重放和模型错误修正闭环 | 新会话/批任务接口兼容或相同取消语义 |
-| 新平台基线 | 已实现 kind 预检与普通 Job smoke 入口，真实记录见下节 | gVisor/Agent Sandbox/Kueue 集成、生产就绪或性能改善 |
+| 普通平台基线 | kind 预检与普通 Job 创建/执行/清理，记录见下节 | 会话/预热池、生产就绪或性能改善 |
+| gVisor 运行时子步骤 | 新增固定发布包、RuntimeClass 和六项可信生命周期探针，范围见下节 | 完整网络隔离、Agent Sandbox、Kueue 或新产品 API |
 
 <a id="platform-bootstrap"></a>
 ## kind/containerd 功能基线
 
 入口见[运维指南](operations.md#platform-lab)。tests/scripts/platform_test.py 经 Go 包装纳入 make check，覆盖 context 隔离、归属缺失/变化、部分创建失败、工具校验、镜像 digest、超时、错误输出及清理；普通回归不连接 Docker。
 
-2026-10-26 已完成三次创建/任务/删除闭环，固定结果均为 333833500，任务在专用 worker 执行，Pod 和实验集群最终回收。节点为 Kubernetes v1.36.4、containerd 2.3.4；工具为 kind v0.33.0、kubectl v1.35.8。前两轮属于集成修正过程，最后一轮创建、smoke、删除均匹配最终脚本哈希。make check 及 22 个平台回归用例通过，原有三个 kind 集群列表保持不变。
+2026-10-26 已完成三次创建/任务/删除闭环，固定结果均为 333833500，任务在专用 worker 执行，Pod 和实验集群最终回收。节点为 Kubernetes v1.36.4、containerd 2.3.4；工具为 kind v0.33.0、kubectl v1.35.8。前两轮属于集成修正过程，该阶段最后一轮创建、smoke、删除均匹配当时脚本哈希（已合入 dff78ed）；当前脚本后续扩展不回写旧记录。make check 及 22 个平台回归用例通过，原有三个 kind 集群列表保持不变。
 
 开发中保留了冷文件页等待、kubeadm 配置版本不匹配、节点回环代理、异步 Pod 回收及 kind 部分删除改写 kubeconfig 等失败记录；一次旧开发状态的恢复也单独留证。脱敏摘要、逐阶段源码/报告哈希及边界见[平台验收 JSON](data/platform-bootstrap-validation.json)，完整日志仍在忽略的 artifacts 目录，不将这些功能结果解读为生产稳定性或性能收益。
 
 此阶段仅可信普通 Python 容器的 Kubernetes/containerd/Job 路径，不证明 gVisor 隔离、会话/预热池、Kueue 准入或批任务性能；它无需构建或启动 agentboxd。
+
+<a id="gvisor-runtime"></a>
+## kind/containerd/gVisor 运行时子步骤
+
+入口与安装范围见[运维指南](operations.md#gvisor-runtime)。固定 gVisor release-20261005.0 完整包、systrap、containerd 2.3.4，在本项目拥有的 Worker 中配置官方 shim 和 RuntimeClass；默认普通 runtime 保留。此阶段使用可信探针，尚未开放不可信代码服务。
+
+2026-10-26 已完成新建集群、首次安装、只验证不重启的重复安装、全部六项运行时用例、普通 Job 回归和最终集群删除。六项均确认清理完成；make check、22 个基础平台和 17 个 gVisor 回归通过，原有三个 kind 集群保留。首次安装与最终验收的源码差异在逐阶段哈希中明示，未回写早期报告。
+
+验收用例与证据边界：
+
+| 用例 | 核对内容 |
+| --- | --- |
+| success | UID 1000、根挂载只读/拒绝写、无 ServiceAccount token、独立可写目录、正确计算结果 |
+| failure | 已真实运行的程序退出 23，不能误判为启动失败或 OOM |
+| cancel | 在父子进程忽略 TERM 的运行状态取消整个 Job，检查 Pod、CRI sandbox 与匹配运行时进程消失 |
+| deadline | Job `DeadlineExceeded`；Pod 被原生控制器删除时不虚构退出码，另验资源回收 |
+| oom | 逐页写入的有界内存负载、实际祖先内存/swap 限制、CRI OOM 原因或本 Pod 新增 `oom_kill` 事件 |
+| missing | 不存在的 handler 产生明确的创建 sandbox 失败事件，没有运行中的容器，不静默回落 runc |
+
+运行身份通过 Pod UID → CRI sandbox handler/ID → runsc state → Sentry PID/cgroup 联合核对。资源读取覆盖进程 cgroup 和祖先，验证 Pod 的 500m CPU/256MiB 内存约束及有效的零 swap 上限。部分 shim/辅助进程处于 containerd 服务组，独立记录并检查回收，不能把 Pod 用量称为全部运行时成本。
+
+中间失败揭示了以下边界，原始报告保留：kind 节点没有 bzip2；非 root 写入错误与只读挂载应分别核对，`/tmp` 需要显式临时卷；Job deadline 可能删除 Pod；内存限制不包含 swap 上限；OCI base spec 的资源项会被 CRI sandbox 生成覆盖。最终 swap 策略由 systemd 在实验 Worker 的 `kubelet.slice` 设置 `MemorySwapMax=0`，作用于该节点全部 Pod，不改宿主机或其他集群，也不自行写 cgroup。一次中间 Docker 节点删除未收到退出事件，保留身份后重试完成，不计为首次清理成功。
+
+结构化结果与逐阶段源码/报告哈希见[运行时验收 JSON](data/platform-gvisor-validation.json)。创建、首次安装和后续验收的源码版本分别记录；不能把开发中失败轮次改写为最终版本成功。普通 Job 基线的历史 JSON 保持原样。
+
+NetworkPolicy 执行、精确 emptyDir sizeLimit 边界、Agent Sandbox 会话/预热池、Kueue、新 Go API/MCP、生产稳定性和性能 SLO 均不在这份验收结论内。后续完整会话验收仍按下面计划进行。
 
 <a id="runtime"></a>
 <a id="warm"></a>

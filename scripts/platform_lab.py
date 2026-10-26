@@ -19,6 +19,8 @@ import tempfile
 import time
 import uuid
 
+from lib.platform_gvisor import CASES, GVisor, GVisorError
+
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 CLUSTER = "agentbox-platform-lab"
@@ -141,6 +143,9 @@ class Lab:
         for image in (self.lock["kubernetes"]["node_image"], self.lock["smoke"]["image"]):
             pinned_source(image, None)
         self.tools = {name: self.tool(name) for name in ("kind", "kubectl", "docker")}
+
+    def write_state(self, state):
+        atomic_json(self.state_path, state)
 
     def tool(self, name):
         override = os.environ.get("AGENTBOX_" + name.upper())
@@ -457,17 +462,23 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test"))
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
     parser.add_argument("--node-image-source", help="mirror repository with the SAME locked node digest (create)")
-    parser.add_argument("--smoke-image-source", help="mirror repository with the SAME locked task digest (smoke)")
-    parser.add_argument("--timeout", type=int, default=180, help="Job completion budget, 30..600 seconds")
+    parser.add_argument("--smoke-image-source", help="mirror repository with the SAME locked task digest (smoke/gvisor-test)")
+    parser.add_argument("--gvisor-case", choices=CASES, help="run only one gvisor-test case; default runs all")
+    parser.add_argument("--gvisor-archive", type=Path, help="verified complete gVisor tar.bz2 (gvisor-install only)")
+    parser.add_argument("--timeout", type=int, default=180, help="Job/probe observation budget per startup or terminal phase, 30..600 seconds")
     args = parser.parse_args(argv)
     if args.node_image_source and args.action != "create":
         parser.error("--node-image-source applies only to create")
-    if args.smoke_image_source and args.action != "smoke":
-        parser.error("--smoke-image-source applies only to smoke")
+    if args.smoke_image_source and args.action not in ("smoke", "gvisor-test"):
+        parser.error("--smoke-image-source applies only to smoke or gvisor-test")
+    if args.gvisor_case and args.action != "gvisor-test":
+        parser.error("--gvisor-case applies only to gvisor-test")
+    if args.gvisor_archive and args.action != "gvisor-install":
+        parser.error("--gvisor-archive applies only to gvisor-install")
     if not 30 <= args.timeout <= 600:
         parser.error("--timeout must be 30..600 seconds")
     return args
@@ -477,7 +488,8 @@ def main(argv=None):
     args = arguments(argv)
     if args.dry_run:
         lock = json.loads((ROOT / "deploy/platform/versions.lock.json").read_text())
-        print(json.dumps({"action": args.action, "cluster": CLUSTER, "context": CONTEXT,
+        runtime = json.loads((ROOT / "deploy/platform/gvisor.lock.json").read_text()) if args.action.startswith("gvisor-") else None
+        print(json.dumps({"action": args.action, "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
                           "kubeconfig": str(ROOT / ".local/platform/kubeconfig"),
                           "node_image": pinned_source(lock["kubernetes"]["node_image"], args.node_image_source),
                           "smoke_image": pinned_source(lock["smoke"]["image"], args.smoke_image_source),
@@ -486,10 +498,15 @@ def main(argv=None):
     output = args.output or ROOT / "artifacts" / ("platform-" + args.action + "-" + uuid.uuid4().hex[:12])
     output.mkdir(parents=True, exist_ok=False)
     runner = Runner(output)
+    source_root = Path(__file__).resolve().parents[1]
     report = {"schema_version": 1, "action": args.action, "started_at": utc(), "ok": False,
               "implementation_sha256": file_hash(__file__), "python_version": platform.python_version(),
               "kernel": platform.release(),
-              "scope": "trusted kind/containerd functional smoke; not sandbox or performance acceptance"}
+              "scope": "trusted platform functional probes; not full isolation or performance acceptance",
+              "source_sha256": {str(p.relative_to(source_root)): file_hash(p) for p in
+                                [Path(__file__).resolve(), source_root / "scripts/lib/platform_gvisor.py",
+                                 source_root / "scripts/lib/gvisor_guest_probe.py", source_root / "scripts/lib/gvisor_node_processes.sh",
+                                 *sorted((source_root / "deploy/platform").glob("gvisor*"))]}}
     lab = None
     try:
         lab = Lab(ROOT, runner)
@@ -507,13 +524,22 @@ def main(argv=None):
         elif args.action == "smoke":
             report["result"] = lab.smoke(args.smoke_image_source, args.timeout)
             report["ok"] = True
+        elif args.action == "gvisor-install":
+            runtime = GVisor(lab)
+            archive = args.gvisor_archive or ROOT / ".local/platform-tools" / runtime.lock["archive"]
+            report["result"] = runtime.install(archive)
+            report["ok"] = True
+        elif args.action == "gvisor-test":
+            image = pinned_source(lab.lock["smoke"]["image"], args.smoke_image_source)
+            report["result"] = GVisor(lab).test(image, args.timeout, [args.gvisor_case] if args.gvisor_case else None)
+            report["ok"] = True
         else:
             report["result"] = lab.delete()
             report["ok"] = True
-    except (LabError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
+    except (LabError, GVisorError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
         reason = "interrupted" if isinstance(error, KeyboardInterrupt) else getattr(error, "reason", "invalid_state")
         report.update(reason=reason, detail=str(error))
-        if lab and args.action in ("create", "smoke") and reason not in {
+        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test") and reason not in {
                 "operation_in_progress", "existing_state", "unowned_cluster", "preflight_failed",
                 "image_digest_mismatch", "invalid_image", "tool_unavailable"}:
             lab.diagnostics()
@@ -529,6 +555,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (LabError, OSError, ValueError) as error:
+    except (LabError, GVisorError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

@@ -1,8 +1,8 @@
 # 运维指南
 
-状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前已提供独立 kind 普通 Job/containerd 功能入口；Agent Sandbox 会话、gVisor、Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
+状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供独立 kind 普通 Job 与 gVisor 运行时验收入口；Agent Sandbox 会话、Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
 
-按任务跳转：[新平台入口](#platform-lab) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
+按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
 
 <a id="platform-lab"></a>
 ## 独立 Kubernetes 功能实验
@@ -49,10 +49,52 @@ Job 固定 activeDeadlineSeconds=120、backoffLimit=0；--timeout（30～600s）
 
 Makefile 的 benchmark、observe、static-experiment、qos-integration、systemd-integration 是对应入口的快捷方式，可用 PLATFORM=systrap 显式切换。环境准备和测试条件见[验证指南](validation.md)。
 
+<a id="gvisor-runtime"></a>
+## 独立 Worker 的 gVisor 运行时验收
+
+这是 P1 的运行时子步骤，仍只执行可信测试代码。`gvisor-install` 在已确认归属的 kind Worker 内安装完整发布包、配置官方 shim/handler 并创建 RuntimeClass；`gvisor-test` 验证真实运行与回收。两者不调用 agentboxd，不修改宿主 Docker/containerd，也不部署 Agent Sandbox 或 Kueue。
+
+版本与官方 SHA-512 见 [gvisor.lock.json](../deploy/platform/gvisor.lock.json)。当前固定 release-20261005.0、linux/x86_64、systrap、节点 containerd 2.3.4。runsc、shim 和 gvisor-bin 辅助文件来自同一完整包；仅复制 runsc 不满足安装要求。依据：[官方安装](https://gvisor.dev/docs/user_guide/install/)、[shim 配置](https://gvisor.dev/docs/user_guide/containerd/configuration/)。
+
+先准备普通平台工具，再下载固定资产到本地缓存。下载可替换传输源，安装器始终按锁定校验值验证内容；它本身不自动联网下载。
+
+```bash
+mkdir -p .local/platform-tools
+curl --fail --location --retry 2 --connect-timeout 15 --max-time 300 \
+  https://storage.googleapis.com/gvisor/releases/release/20261005.0/x86_64/gvisor.tar.bz2 \
+  -o .local/platform-tools/gvisor-20261005.0-x86_64.tar.bz2
+
+make platform-create
+make platform-gvisor-install
+make platform-gvisor-test
+make platform-smoke
+make platform-delete
+```
+
+已有本项目完整 ready 集群时从 install 开始，不重复 create。安装失败保留 `cluster.json` 中的 gvisor 安装阶段及原/目标配置哈希，修正原因后可重试同一版本；已就绪安装只验证，不重启 containerd。外部配置改动、RuntimeClass 归属/身份变化或版本定义变化会拒绝继续，不能靠覆盖状态强行接管；更换运行时版本使用新建实验集群。
+
+`--gvisor-archive PATH` 可为 install 指定包位置。镜像网络受限时，可以在 test 使用与普通 smoke 相同的 digest 镜像源：
+
+```bash
+python3 scripts/platform_lab.py gvisor-install --dry-run
+python3 scripts/platform_lab.py gvisor-test --smoke-image-source \
+  docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+```
+
+安装器在宿主用 Python 标准库校验完整包、拒绝链接/越界或不完整成员，并解压成 tar 后复制至 Worker；kind 节点无需额外安装 bzip2。完整文件安装到 `/opt/agentbox-gvisor`，runsc 使用明确链接；保留节点原配置 schema 和 runc 默认 handler，通过 containerd 自身解析验证，再核对 CRI 生效配置。该 profile 通过 systemd 为实验 Worker 的 `kubelet.slice` 设置 `MemorySwapMax=0`，禁止这个 Worker 全部 Pod 使用 swap；不改变宿主或其他节点/集群，不直接写 cgroup。仅声明 Pod memory limit 不限制 swap，而 OCI base spec 的资源字段会被 CRI 覆盖，因此不用基础 spec 注入该策略。重启仅作用于该 Worker 内的 containerd，不能在有业务负载的共享生产节点照搬此入口。
+
+验收包括正常输出、用户退出码、运行中取消、Job deadline、内存超限和不存在的 handler。每个已运行用例先等待受控 ready 标记，核对 CRI sandbox、runsc state、Sentry PID、Pod cgroup 的 500m CPU/256MiB 限制，以及有效的零 swap 上限，再触发计算/故障。取消用例包含忽略 TERM 的父子进程；完成后除 API 对象外，还检查 CRI sandbox 与匹配运行时进程消失。缺失 handler 必须明确启动失败，不能回落 runc。`--gvisor-case success|failure|cancel|deadline|oom|missing` 可单项排障；单项通过不等于六项整套验收通过。
+
+探针 Job 默认 activeDeadlineSeconds=180，deadline 用例为 45；`--timeout` 仅改变每个启动/终态观察阶段的等待预算，不修改 Job 期限。Job deadline 用例的 Pod 可能由 Job controller 主动删除，此时以 `DeadlineExceeded` 和独立资源收敛证据判定，不编造已丢失的退出码。命令/观察超时和清理未确认分别报错。失败 Job 留在本实验集群供排障，最终由 `platform-delete` 限定范围清理。
+
+根文件系统只读由挂载标志与负向写入共同验证；`/tmp` 和 `/work` 显式使用独立 Pod 的内存卷。声明的 emptyDir sizeLimit 尚不等于已验证的精确文件容量界限，本轮内存约束以 Pod cgroup 为依据。部分 shim/辅助进程可能处于 containerd 服务组，证据单列，不能把 Pod 指标称为全部运行时成本。
+
+每次输出到独立 artifacts 目录，报告包含源码/配置哈希、版本、Job/Pod/CRI 身份、进程与资源证据及逐项清理结果。运行时功能与范围见[验证指南](validation.md#gvisor-runtime)。NetworkPolicy 执行、对外不可信代码服务、会话 API、预热池和生产 SLO 尚未验收。
+
 <a id="platform-plan"></a>
 ## 会话与批任务平台部署计划
 
-以下为后续交付要求，尚无安装命令；不要把普通 Job smoke 当作完整平台安装器。顺序与验收门槛以[路线图](roadmap.md)为准。
+gVisor 运行时入口见上节，以下列出完整会话/批任务平台的后续交付要求；不要把运行时 smoke 当作完整平台安装器。顺序与验收门槛以[路线图](roadmap.md)为准。
 
 | 顺序 | 部署内容 | 运维必须核对 |
 | --- | --- | --- |
