@@ -21,3 +21,11 @@ func TestPlatformGVisor(t *testing.T) {
 		t.Fatalf("gVisor platform regression suite: %v\n%s", err, output)
 	}
 }
+
+func TestPlatformNetwork(t *testing.T) {
+	cmd := exec.Command("python3", "platform_network_test.py", "-v")
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("network platform regression suite: %v\n%s", err, output)
+	}
+}

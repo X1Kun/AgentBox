@@ -1,0 +1,1416 @@
+{
+  "schema_version": 1,
+  "scope": "Calico IPv4 NetworkPolicy TCP/HTTP and DNS acceptance on owned kind nodes",
+  "base_commit": "ff0a612254dac0982fe5066b21897d51461e3c9e",
+  "validated_at_utc": "2026-10-27T02:35:10.443377+00:00",
+  "working_tree": "Uncommitted implementation; verify per-phase source hashes",
+  "source_sha256": {
+    "scripts/platform_lab.py": "823171533ad8b184008930f285ab5bc8a48e06df1d0039721a1d0f8aa66d7ae9",
+    "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+    "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+    "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+    "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+    "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "tests/scripts/platform_network_test.py": "e35f39fa73abf3a2a2c35fdaf1fa0cbc30e819026764de17760345d712911c03",
+    "tests/scripts/platform_test.py": "3445a0ae7af0ae2041634fe0599e6d3eef7904129ed1beee9161decf6f00ea66",
+    "tests/scripts/platform_gvisor_test.py": "736d23923d2a498f407b14f02429becb593a1aa32621054e8c9ab5e76510dec5",
+    "tests/scripts/platform_test.go": "bf33b8dddfd5cf8171409d4cba81d6cba7c97eddf1fe08ec7f6b43c530aae586",
+    "Makefile": "5428dbcd98f1092a49aceceaf8f36a37b2fc7ea12c6cd58cddf6554fa096541b",
+    "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+    "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+    "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+    "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+    "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+    "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+    "deploy/platform/kind.yaml": "d05a77df48d7cb236594932c65c7d4a31283a5d3c11ab9d68e6adfe4bb5181ab",
+    "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+    "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+    "deploy/platform/smoke-job.yaml": "62d2aebe415af439af802a2b6515f92fe485a6f5d02d0ff34bb53b5f83e92b91",
+    "deploy/platform/versions.lock.json": "febfa9c0b30cb0dc5a4286a35b7041c242e66af08d02163b2e2ea0d2446dbd26"
+  },
+  "calico_lock": {
+    "schema_version": 1,
+    "provider": "calico",
+    "version": "v3.33.0",
+    "mode": "VXLAN",
+    "pod_cidr": "10.244.0.0/16",
+    "manifest": "calico-vxlan-v3.33.0.yaml",
+    "url": "https://raw.githubusercontent.com/projectcalico/calico/v3.33.0/manifests/calico-vxlan.yaml",
+    "sha256": "202d70b43e38b60ebc60736c96e64e6de683053aab2e89da84ea9d904a9ef24c",
+    "object_count": 38,
+    "images": {
+      "quay.io/calico/calico:v3.33.0": "quay.io/calico/calico@sha256:4ebc20730127bc9e8bf1db5f5a2d8b58cf37fe0e891b3c7b5471992221d213e5",
+      "quay.io/calico/node:v3.33.0": "quay.io/calico/node@sha256:565d8db3200e443955557f8f28ff44ab8a4a456754bc74a19c4f2f3444af9b1c",
+      "quay.io/calico/third-party-cni-plugins:v3.33.0": "quay.io/calico/third-party-cni-plugins@sha256:0f32f48279484c0d6f0e0d0e767b2d0e1a6c6ca34cb3421a61b989d992f3df41"
+    },
+    "sources": [
+      "https://docs.tigera.io/calico/latest/getting-started/kubernetes/kind",
+      "https://docs.tigera.io/calico/latest/getting-started/kubernetes/requirements"
+    ],
+    "scope": "Fresh owned kind cluster only; no CNI replacement in existing clusters; standard Kubernetes NetworkPolicy TCP/DNS functional acceptance"
+  },
+  "phases": {
+    "create": {
+      "path": "artifacts/platform-create-5cee9a39832c/report.json",
+      "sha256": "db48d9c73ba93cc0a0f1395cff99fe30fd5b1b1eadb7ffe1226a858e93f468c7"
+    },
+    "calico_install": {
+      "path": "artifacts/platform-network-install-eee329976ed0/report.json",
+      "sha256": "e46261858406222c27102ad935b7e14117c52986b02b31b3e7bdae8a5bb20c55"
+    },
+    "idempotent_install": {
+      "path": "artifacts/platform-network-install-106dd8c8ad78/report.json",
+      "sha256": "58aa77ece07e238fb57ad22c1a2d9256e2fb49b27664ca0518812b1e8eb0b458"
+    },
+    "gvisor_install": {
+      "path": "artifacts/platform-gvisor-install-5d013597f1ef/report.json",
+      "sha256": "76d8d126bcd256bd932d66bd684d463aa295d09dab04f2eb15f1a44af33f38fb"
+    },
+    "network_test": {
+      "path": "artifacts/platform-network-test-1a231534f60f/report.json",
+      "sha256": "df2d97e017fc3414f0e17cccd2c94251851b9d6147a3a6800f18b5573edb54c7"
+    },
+    "ordinary_smoke": {
+      "path": "artifacts/platform-smoke-f05bc80f22ea/report.json",
+      "sha256": "396c6072e08df1a33bd6240d2f2bf4dc0aa70721ef012d0dbf3354351e08166e"
+    },
+    "gvisor_cancel": {
+      "path": "artifacts/platform-gvisor-test-d7f811fa84d3/report.json",
+      "sha256": "b6e95f446d57fb44db2dbd20b34c4499786a045425b06793e19f29414c88c78c"
+    },
+    "delete": {
+      "path": "artifacts/platform-delete-5a56f114cfcd/report.json",
+      "sha256": "6dfa7c0cb66a864d72309448b93b09c554698aa9eb16f59b0c8a83c720312abc"
+    }
+  },
+  "phase_sources": {
+    "create": {
+      "source_sha256": {
+        "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/lib/platform_network.py": "b8b8a2ea1136d0739b0e503f5ee72ae1c1dedcdeda01832ad373f736b15f3c0f",
+        "scripts/platform_lab.py": "6a83ae3735f60e75f0ec929cbbe3f343b14226deec7661ccdb6e76d1506dc3b1"
+      },
+      "different_from_final": [
+        "scripts/lib/platform_network.py",
+        "scripts/platform_lab.py"
+      ],
+      "not_recorded_in_phase": [
+        "scripts/lib/network_client.py",
+        "scripts/lib/network_server.py",
+        "tests/scripts/platform_network_test.py",
+        "tests/scripts/platform_test.py",
+        "tests/scripts/platform_gvisor_test.py",
+        "tests/scripts/platform_test.go",
+        "Makefile",
+        "deploy/platform/kind.yaml",
+        "deploy/platform/network-pod.json",
+        "deploy/platform/network-policies.json",
+        "deploy/platform/smoke-job.yaml",
+        "deploy/platform/versions.lock.json"
+      ]
+    },
+    "calico_install": {
+      "source_sha256": {
+        "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+        "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+        "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+        "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+        "scripts/platform_lab.py": "d9a3a91a0aadc9d6f12e5b3e34f04901ce421d9f5ada3dc6450cd5d1cb3008a0"
+      },
+      "different_from_final": [
+        "scripts/platform_lab.py"
+      ],
+      "not_recorded_in_phase": [
+        "tests/scripts/platform_network_test.py",
+        "tests/scripts/platform_test.py",
+        "tests/scripts/platform_gvisor_test.py",
+        "tests/scripts/platform_test.go",
+        "Makefile",
+        "deploy/platform/kind.yaml",
+        "deploy/platform/smoke-job.yaml",
+        "deploy/platform/versions.lock.json"
+      ]
+    },
+    "idempotent_install": {
+      "source_sha256": {
+        "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+        "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+        "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+        "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+        "scripts/platform_lab.py": "d9a3a91a0aadc9d6f12e5b3e34f04901ce421d9f5ada3dc6450cd5d1cb3008a0"
+      },
+      "different_from_final": [
+        "scripts/platform_lab.py"
+      ],
+      "not_recorded_in_phase": [
+        "tests/scripts/platform_network_test.py",
+        "tests/scripts/platform_test.py",
+        "tests/scripts/platform_gvisor_test.py",
+        "tests/scripts/platform_test.go",
+        "Makefile",
+        "deploy/platform/kind.yaml",
+        "deploy/platform/smoke-job.yaml",
+        "deploy/platform/versions.lock.json"
+      ]
+    },
+    "gvisor_install": {
+      "source_sha256": {
+        "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+        "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+        "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+        "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+        "scripts/platform_lab.py": "d9a3a91a0aadc9d6f12e5b3e34f04901ce421d9f5ada3dc6450cd5d1cb3008a0"
+      },
+      "different_from_final": [
+        "scripts/platform_lab.py"
+      ],
+      "not_recorded_in_phase": [
+        "tests/scripts/platform_network_test.py",
+        "tests/scripts/platform_test.py",
+        "tests/scripts/platform_gvisor_test.py",
+        "tests/scripts/platform_test.go",
+        "Makefile",
+        "deploy/platform/kind.yaml",
+        "deploy/platform/smoke-job.yaml",
+        "deploy/platform/versions.lock.json"
+      ]
+    },
+    "network_test": {
+      "source_sha256": {
+        "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+        "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+        "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+        "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+        "scripts/platform_lab.py": "d9a3a91a0aadc9d6f12e5b3e34f04901ce421d9f5ada3dc6450cd5d1cb3008a0"
+      },
+      "different_from_final": [
+        "scripts/platform_lab.py"
+      ],
+      "not_recorded_in_phase": [
+        "tests/scripts/platform_network_test.py",
+        "tests/scripts/platform_test.py",
+        "tests/scripts/platform_gvisor_test.py",
+        "tests/scripts/platform_test.go",
+        "Makefile",
+        "deploy/platform/kind.yaml",
+        "deploy/platform/smoke-job.yaml",
+        "deploy/platform/versions.lock.json"
+      ]
+    },
+    "ordinary_smoke": {
+      "source_sha256": {
+        "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+        "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+        "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+        "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+        "scripts/platform_lab.py": "d9a3a91a0aadc9d6f12e5b3e34f04901ce421d9f5ada3dc6450cd5d1cb3008a0"
+      },
+      "different_from_final": [
+        "scripts/platform_lab.py"
+      ],
+      "not_recorded_in_phase": [
+        "tests/scripts/platform_network_test.py",
+        "tests/scripts/platform_test.py",
+        "tests/scripts/platform_gvisor_test.py",
+        "tests/scripts/platform_test.go",
+        "Makefile",
+        "deploy/platform/kind.yaml",
+        "deploy/platform/smoke-job.yaml",
+        "deploy/platform/versions.lock.json"
+      ]
+    },
+    "gvisor_cancel": {
+      "source_sha256": {
+        "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+        "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+        "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+        "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+        "scripts/platform_lab.py": "823171533ad8b184008930f285ab5bc8a48e06df1d0039721a1d0f8aa66d7ae9"
+      },
+      "different_from_final": [],
+      "not_recorded_in_phase": [
+        "tests/scripts/platform_network_test.py",
+        "tests/scripts/platform_test.py",
+        "tests/scripts/platform_gvisor_test.py",
+        "tests/scripts/platform_test.go",
+        "Makefile",
+        "deploy/platform/kind.yaml",
+        "deploy/platform/smoke-job.yaml",
+        "deploy/platform/versions.lock.json"
+      ]
+    },
+    "delete": {
+      "source_sha256": {
+        "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+        "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+        "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+        "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+        "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+        "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+        "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+        "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+        "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+        "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+        "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+        "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+        "scripts/lib/platform_gvisor.py": "a17950fb4776d87f329e51a31c57b96aae3d6e0c1e438510d94743b8101e7485",
+        "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+        "scripts/platform_lab.py": "823171533ad8b184008930f285ab5bc8a48e06df1d0039721a1d0f8aa66d7ae9"
+      },
+      "different_from_final": [],
+      "not_recorded_in_phase": [
+        "tests/scripts/platform_network_test.py",
+        "tests/scripts/platform_test.py",
+        "tests/scripts/platform_gvisor_test.py",
+        "tests/scripts/platform_test.go",
+        "Makefile",
+        "deploy/platform/kind.yaml",
+        "deploy/platform/smoke-job.yaml",
+        "deploy/platform/versions.lock.json"
+      ]
+    }
+  },
+  "matrix_cases": [
+    {
+      "allowed": true,
+      "id": "sandbox-runc:control",
+      "ip": "10.244.161.65",
+      "port": 8000,
+      "protocol": "http",
+      "source": "caller",
+      "target_uid": "2f7ad3c4-f0ee-4c84-89f6-1f7fea1050bd"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-runc:wrong-ingress-port",
+      "ip": "10.244.161.65",
+      "port": 8001,
+      "protocol": "http",
+      "source": "caller",
+      "target_uid": "2f7ad3c4-f0ee-4c84-89f6-1f7fea1050bd"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-runc:wrong-source-label",
+      "ip": "10.244.161.65",
+      "port": 8000,
+      "protocol": "http",
+      "source": "intruder",
+      "target_uid": "2f7ad3c4-f0ee-4c84-89f6-1f7fea1050bd"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-runc:wrong-source-namespace",
+      "ip": "10.244.161.65",
+      "port": 8000,
+      "protocol": "http",
+      "source": "foreign-caller",
+      "target_uid": "2f7ad3c4-f0ee-4c84-89f6-1f7fea1050bd"
+    },
+    {
+      "allowed": true,
+      "id": "sandbox-runc:data",
+      "ip": "10.244.134.200",
+      "port": 8080,
+      "protocol": "http",
+      "source": "sandbox-runc",
+      "target_uid": "b68b65aa-7260-423b-b1cb-97f4ac975641"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-runc:wrong-egress-port",
+      "ip": "10.244.134.200",
+      "port": 8081,
+      "protocol": "http",
+      "source": "sandbox-runc",
+      "target_uid": "b68b65aa-7260-423b-b1cb-97f4ac975641"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-runc:wrong-target-label",
+      "ip": "10.244.134.201",
+      "port": 8080,
+      "protocol": "http",
+      "source": "sandbox-runc",
+      "target_uid": "75b634d0-36af-4c9b-b382-7c30dcb60d04"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-runc:wrong-target-namespace",
+      "ip": "10.244.134.202",
+      "port": 8080,
+      "protocol": "http",
+      "source": "sandbox-runc",
+      "target_uid": "1fa84606-6e47-40e3-b796-c155c6ba7d7c"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-runc:api",
+      "ip": "10.96.0.1",
+      "port": 443,
+      "protocol": "tcp",
+      "source": "sandbox-runc"
+    },
+    {
+      "allowed": true,
+      "expected_ip": "10.96.0.1",
+      "id": "sandbox-runc:dns-udp",
+      "name": "kubernetes.default.svc.cluster.local",
+      "protocol": "dns-udp",
+      "source": "sandbox-runc"
+    },
+    {
+      "allowed": true,
+      "expected_ip": "10.96.0.1",
+      "id": "sandbox-runc:dns-tcp",
+      "name": "kubernetes.default.svc.cluster.local",
+      "protocol": "dns-tcp",
+      "source": "sandbox-runc"
+    },
+    {
+      "allowed": true,
+      "id": "sandbox-gvisor:control",
+      "ip": "10.244.161.66",
+      "port": 8000,
+      "protocol": "http",
+      "source": "caller",
+      "target_uid": "c4234296-4243-4a6b-b0a1-daa4d775f0b5"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-gvisor:wrong-ingress-port",
+      "ip": "10.244.161.66",
+      "port": 8001,
+      "protocol": "http",
+      "source": "caller",
+      "target_uid": "c4234296-4243-4a6b-b0a1-daa4d775f0b5"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-gvisor:wrong-source-label",
+      "ip": "10.244.161.66",
+      "port": 8000,
+      "protocol": "http",
+      "source": "intruder",
+      "target_uid": "c4234296-4243-4a6b-b0a1-daa4d775f0b5"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-gvisor:wrong-source-namespace",
+      "ip": "10.244.161.66",
+      "port": 8000,
+      "protocol": "http",
+      "source": "foreign-caller",
+      "target_uid": "c4234296-4243-4a6b-b0a1-daa4d775f0b5"
+    },
+    {
+      "allowed": true,
+      "id": "sandbox-gvisor:data",
+      "ip": "10.244.134.200",
+      "port": 8080,
+      "protocol": "http",
+      "source": "sandbox-gvisor",
+      "target_uid": "b68b65aa-7260-423b-b1cb-97f4ac975641"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-gvisor:wrong-egress-port",
+      "ip": "10.244.134.200",
+      "port": 8081,
+      "protocol": "http",
+      "source": "sandbox-gvisor",
+      "target_uid": "b68b65aa-7260-423b-b1cb-97f4ac975641"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-gvisor:wrong-target-label",
+      "ip": "10.244.134.201",
+      "port": 8080,
+      "protocol": "http",
+      "source": "sandbox-gvisor",
+      "target_uid": "75b634d0-36af-4c9b-b382-7c30dcb60d04"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-gvisor:wrong-target-namespace",
+      "ip": "10.244.134.202",
+      "port": 8080,
+      "protocol": "http",
+      "source": "sandbox-gvisor",
+      "target_uid": "1fa84606-6e47-40e3-b796-c155c6ba7d7c"
+    },
+    {
+      "allowed": false,
+      "id": "sandbox-gvisor:api",
+      "ip": "10.96.0.1",
+      "port": 443,
+      "protocol": "tcp",
+      "source": "sandbox-gvisor"
+    },
+    {
+      "allowed": true,
+      "expected_ip": "10.96.0.1",
+      "id": "sandbox-gvisor:dns-udp",
+      "name": "kubernetes.default.svc.cluster.local",
+      "protocol": "dns-udp",
+      "source": "sandbox-gvisor"
+    },
+    {
+      "allowed": true,
+      "expected_ip": "10.96.0.1",
+      "id": "sandbox-gvisor:dns-tcp",
+      "name": "kubernetes.default.svc.cluster.local",
+      "protocol": "dns-tcp",
+      "source": "sandbox-gvisor"
+    }
+  ],
+  "traffic_phases": {
+    "allow": {
+      "samples": 2,
+      "observations": 44,
+      "transient_mismatches": 0,
+      "last_two_complete_matches": true,
+      "last_results": [
+        {
+          "case": "sandbox-runc:control",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-ingress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:control",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-ingress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:data",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-egress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:api",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-udp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-tcp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:data",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-egress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:api",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-udp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-tcp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        }
+      ]
+    },
+    "baseline": {
+      "samples": 2,
+      "observations": 44,
+      "transient_mismatches": 0,
+      "last_two_complete_matches": true,
+      "last_results": [
+        {
+          "case": "sandbox-runc:control",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-ingress-port",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:control",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-ingress-port",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-namespace",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-namespace",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-label",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-label",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:data",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-egress-port",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-label",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-namespace",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:api",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-udp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-tcp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:data",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-egress-port",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-label",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-namespace",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:api",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-udp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-tcp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        }
+      ]
+    },
+    "deny": {
+      "samples": 2,
+      "observations": 44,
+      "transient_mismatches": 0,
+      "last_two_complete_matches": true,
+      "last_results": [
+        {
+          "case": "sandbox-runc:control",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-ingress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:control",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-ingress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:data",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-egress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:api",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-udp",
+          "expected_allowed": false,
+          "kind": "dns_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-tcp",
+          "expected_allowed": false,
+          "kind": "dns_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:data",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-egress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:api",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-udp",
+          "expected_allowed": false,
+          "kind": "dns_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-tcp",
+          "expected_allowed": false,
+          "kind": "dns_timeout",
+          "matches": true
+        }
+      ]
+    },
+    "restored": {
+      "samples": 2,
+      "observations": 44,
+      "transient_mismatches": 0,
+      "last_two_complete_matches": true,
+      "last_results": [
+        {
+          "case": "sandbox-runc:control",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-ingress-port",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:control",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-ingress-port",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-namespace",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-namespace",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-label",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-label",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:data",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-egress-port",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-label",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-namespace",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:api",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-udp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-tcp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:data",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-egress-port",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-label",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-namespace",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:api",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-udp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-tcp",
+          "expected_allowed": true,
+          "kind": "allowed",
+          "matches": true
+        }
+      ]
+    },
+    "revoked": {
+      "samples": 2,
+      "observations": 44,
+      "transient_mismatches": 0,
+      "last_two_complete_matches": true,
+      "last_results": [
+        {
+          "case": "sandbox-runc:control",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-ingress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:control",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-ingress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-source-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-source-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:data",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-egress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:wrong-target-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:api",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-udp",
+          "expected_allowed": false,
+          "kind": "dns_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-gvisor:dns-tcp",
+          "expected_allowed": false,
+          "kind": "dns_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:data",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-egress-port",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-label",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:wrong-target-namespace",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:api",
+          "expected_allowed": false,
+          "kind": "connect_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-udp",
+          "expected_allowed": false,
+          "kind": "dns_timeout",
+          "matches": true
+        },
+        {
+          "case": "sandbox-runc:dns-tcp",
+          "expected_allowed": false,
+          "kind": "dns_timeout",
+          "matches": true
+        }
+      ]
+    }
+  },
+  "probe_pods": {
+    "approved": {
+      "image": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "ip": "10.244.134.200",
+      "name": "approved",
+      "namespace": "agentbox-net-b6e9b70511-data",
+      "node": "agentbox-platform-lab-control-plane",
+      "role": "approved",
+      "run": "b6e9b70511",
+      "runtime": null,
+      "uid": "b68b65aa-7260-423b-b1cb-97f4ac975641"
+    },
+    "blocked": {
+      "image": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "ip": "10.244.134.201",
+      "name": "blocked",
+      "namespace": "agentbox-net-b6e9b70511-data",
+      "node": "agentbox-platform-lab-control-plane",
+      "role": "blocked",
+      "run": "b6e9b70511",
+      "runtime": null,
+      "uid": "75b634d0-36af-4c9b-b382-7c30dcb60d04"
+    },
+    "caller": {
+      "image": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "ip": "10.244.134.197",
+      "name": "caller",
+      "namespace": "agentbox-net-b6e9b70511-control",
+      "node": "agentbox-platform-lab-control-plane",
+      "role": "caller",
+      "run": "b6e9b70511",
+      "runtime": null,
+      "uid": "8f6adbc9-75b7-4756-babb-f08906372471"
+    },
+    "foreign-caller": {
+      "image": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "ip": "10.244.134.199",
+      "name": "foreign-caller",
+      "namespace": "agentbox-net-b6e9b70511-foreign",
+      "node": "agentbox-platform-lab-control-plane",
+      "role": "caller",
+      "run": "b6e9b70511",
+      "runtime": null,
+      "uid": "37d68491-6207-4562-8cf3-0a32d64bc461"
+    },
+    "foreign-data": {
+      "image": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "ip": "10.244.134.202",
+      "name": "foreign-data",
+      "namespace": "agentbox-net-b6e9b70511-foreign",
+      "node": "agentbox-platform-lab-control-plane",
+      "role": "approved",
+      "run": "b6e9b70511",
+      "runtime": null,
+      "uid": "1fa84606-6e47-40e3-b796-c155c6ba7d7c"
+    },
+    "intruder": {
+      "image": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "ip": "10.244.134.198",
+      "name": "intruder",
+      "namespace": "agentbox-net-b6e9b70511-control",
+      "node": "agentbox-platform-lab-control-plane",
+      "role": "intruder",
+      "run": "b6e9b70511",
+      "runtime": null,
+      "uid": "430a93f5-0a77-430c-bd88-0236596cbc9e"
+    },
+    "sandbox-gvisor": {
+      "image": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "ip": "10.244.161.66",
+      "name": "sandbox-gvisor",
+      "namespace": "agentbox-net-b6e9b70511-sandbox",
+      "node": "agentbox-platform-lab-worker",
+      "role": "sandbox",
+      "run": "b6e9b70511",
+      "runtime": "agentbox-gvisor",
+      "uid": "c4234296-4243-4a6b-b0a1-daa4d775f0b5"
+    },
+    "sandbox-runc": {
+      "image": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "ip": "10.244.161.65",
+      "name": "sandbox-runc",
+      "namespace": "agentbox-net-b6e9b70511-sandbox",
+      "node": "agentbox-platform-lab-worker",
+      "role": "sandbox",
+      "run": "b6e9b70511",
+      "runtime": null,
+      "uid": "2f7ad3c4-f0ee-4c84-89f6-1f7fea1050bd"
+    }
+  },
+  "gvisor_runtime": {
+    "handler": "agentbox-gvisor",
+    "sandbox_id": "ce44aa263215027e36044a1fdca8dab500d4a2d5be4f28a8f5786883eb958119",
+    "sentry_pid": 10560
+  },
+  "checks": {
+    "make_check": "passed",
+    "base_platform_regressions": 22,
+    "gvisor_regressions": 17,
+    "network_regressions": 19,
+    "matrix_cases": 22,
+    "traffic_phase_count": 5,
+    "observations_including_convergence": 220,
+    "network_test_cleanup_complete": true,
+    "gvisor_cancel_cleanup_complete": true,
+    "ordinary_smoke_output": {
+      "result": 333833500
+    },
+    "cluster_deleted": true,
+    "dedicated_kubeconfig_removed": true,
+    "unrelated_clusters_before": [
+      "dev-cluster",
+      "orion-live",
+      "simplecache-stage4"
+    ],
+    "unrelated_clusters_after": [
+      "dev-cluster",
+      "orion-live",
+      "simplecache-stage4"
+    ],
+    "unrelated_clusters_preserved": true
+  },
+  "failed_development_attempts": [
+    {
+      "path": "artifacts/platform-network-install-65736b17a076/report.json",
+      "sha256": "5bd118fbbb2a9ca3aab10008bac044df9009f595eb5a6d9c4b3333361d64e582",
+      "action": "network-install",
+      "reason": "invalid_state"
+    },
+    {
+      "path": "artifacts/platform-network-install-d999dcbbeb25/report.json",
+      "sha256": "e2947844850305abcacaedef3e98a69140f7667ce061f83df7c1cc08a886005a",
+      "action": "network-install",
+      "reason": "command_failed"
+    }
+  ],
+  "observations": [
+    "The Calico profile is created with kindnet disabled. Control-plane bootstrap finishes as network_pending; ordinary Jobs and runtime probes remain gated until CNI readiness.",
+    "Upstream YAML is checksum-verified, parsed by pinned kubectl, then rendered to digest-pinned JSON with owned labels and explicit IPv4 VXLAN settings. No extra Python runtime dependency is needed.",
+    "kubectl client dry-run emits a JSON stream for multiple YAML documents; the parser accepts both streams and Lists.",
+    "CoreDNS can exceed its historical rollout deadline while CNI is absent. Readiness uses its current Available condition without changing its configuration or restarting it.",
+    "Both ordinary and gVisor Pods pass the same cross-node 22-case matrix through baseline, default deny, selected allow, revoke and restore. New connections and target identity prevent closed listeners, stale replies or local DNS caches from counting as successful policy enforcement.",
+    "Creation and installation used evolving development code. Each phase source hash is retained; final traffic probe programs, policies, topology and CNI definition match accepted inputs. The last host-side change permits owned cleanup after desired kind configuration changes and is covered by regression.",
+    "The existing gVisor worker-wide systemd MemorySwapMax policy remains explicit. CNI verification does not claim complete runtime accounting or production reliability.",
+    "Policy fixtures exist only in run-scoped test namespaces and are removed after acceptance; this does not install default-deny rules for ordinary tasks or future sessions."
+  ],
+  "not_validated": [
+    "Agent Sandbox sessions or warm pools",
+    "new Go APIs or MCP integration",
+    "ICMP or IPv6",
+    "hostNetwork and node/cloud-metadata endpoint isolation",
+    "arbitrary Internet destinations",
+    "malicious cluster administrators or adversarial multi-tenancy",
+    "production reliability or latency SLO"
+  ],
+  "raw_evidence": "Reports, the verified upstream manifest, rendered JSON and per-Pod runtime evidence remain in gitignored artifacts; refs above identify original files.",
+  "artifact_refs": {
+    "upstream_manifest": {
+      "path": "artifacts/platform-network-install-eee329976ed0/calico-upstream.yaml",
+      "sha256": "202d70b43e38b60ebc60736c96e64e6de683053aab2e89da84ea9d904a9ef24c"
+    },
+    "rendered_calico": {
+      "path": "artifacts/platform-network-install-eee329976ed0/calico-rendered.json",
+      "sha256": "47e1673bbff2b73734b8d06423999f79705e35918305fc7e68ea8a4519ceebc5"
+    },
+    "traffic_results": {
+      "path": "artifacts/platform-network-test-1a231534f60f/network-test.json",
+      "sha256": "78539691dbdd8ef9065f45a888d5922b0f0a51efddf63f95709587a34038d3d2"
+    },
+    "applied_policy_fixtures": {
+      "path": "artifacts/platform-network-test-1a231534f60f/network-policies.json",
+      "sha256": "f4325f3138ba06e2292d805bef64e27ccab21e50d50af5ec912e0266d7e3c963"
+    },
+    "gvisor_runtime_evidence": {
+      "path": "artifacts/platform-network-test-1a231534f60f/sandbox-gvisor-runtime.json",
+      "sha256": "22faa7a9a3e3c536546a11e1005abd0b0d5a520672e90edf14f258a0e640abf2"
+    }
+  }
+}

@@ -1,12 +1,12 @@
 # 路线图与阶段验收
 
-更新：2026-10-26｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
+更新：2026-10-27｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
 
 在现有 AgentBox 内演进，优先复用 Agent Sandbox 管理会话，Job/Kueue 管理批任务，共用 containerd/gVisor。agentboxd 进入退役，不扩展本地运行后端；两类 Kubernetes 工作负载不等于长期维护新旧双后端。
 
 ## 1. 当前状态与总体顺序
 
-已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 安装与运行时验收入口；Agent Sandbox、Kueue、真实图片任务、新 API/MCP、AdmissionCheck 与实际退役仍未完成。
+已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；Agent Sandbox、Kueue、真实图片任务、新 API/MCP、AdmissionCheck 与实际退役仍未完成。
 
 | 阶段 | 主要交付 | 进入下一阶段的条件 |
 | --- | --- | --- |
@@ -31,7 +31,7 @@
 
 ## 3. P1：真实 gVisor 与上游会话
 
-运行时子步骤提供固定发布包、官方 shim/RuntimeClass、运行身份/资源与终止回收验证，见[验收记录](validation.md#gvisor-runtime)。这不等于 P1 的会话、预热池和网络边界全部完成。
+运行时子步骤提供固定发布包、官方 shim/RuntimeClass、运行身份/资源与终止回收验证，见[验收记录](validation.md#gvisor-runtime)。另有显式新建的 Calico 网络策略 profile，验证范围见[网络记录](validation.md#network-policy)。P1 的会话、预热池及完整产品安全边界仍待完成。
 
 按顺序实施：
 
