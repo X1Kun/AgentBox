@@ -21,6 +21,7 @@ import uuid
 
 from lib.platform_gvisor import CASES, GVisor, GVisorError
 from lib.platform_network import Network, NetworkError
+from lib.platform_sessions import Sessions, SessionError, checked_source as session_source
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -144,6 +145,8 @@ class Lab:
         for image in (self.lock["kubernetes"]["node_image"], self.lock["smoke"]["image"]):
             pinned_source(image, None)
         self.tools = {name: self.tool(name) for name in ("kind", "kubectl", "docker")}
+
+    write_json = staticmethod(atomic_json)
 
     def write_state(self, state):
         atomic_json(self.state_path, state)
@@ -475,7 +478,7 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test"))
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
     parser.add_argument("--node-image-source", help="mirror repository with the SAME locked node digest (create)")
@@ -483,6 +486,9 @@ def arguments(argv=None):
     parser.add_argument("--network-profile", choices=("kindnet", "calico"), default="kindnet", help="CNI profile at cluster creation only")
     parser.add_argument("--calico-manifest", type=Path, help="pinned upstream VXLAN YAML (network-install)")
     parser.add_argument("--calico-image-prefix", help="digest-preserving registry/repository mirror (network-install)")
+    parser.add_argument("--session-controller-source", help="digest-preserving controller image source (session-build)")
+    parser.add_argument("--session-python-source", help="digest-preserving Python base source (session-build)")
+    parser.add_argument("--session-manifest", type=Path, help="fixed upstream release YAML (session-install)")
     parser.add_argument("--gvisor-case", choices=CASES, help="run only one gvisor-test case; default runs all")
     parser.add_argument("--gvisor-archive", type=Path, help="verified complete gVisor tar.bz2 (gvisor-install only)")
     parser.add_argument("--timeout", type=int, default=180, help="Job/probe observation budget per startup or terminal phase, 30..600 seconds")
@@ -495,6 +501,10 @@ def arguments(argv=None):
         parser.error("--network-profile applies only to create")
     if (args.calico_manifest or args.calico_image_prefix) and args.action != "network-install":
         parser.error("Calico source options apply only to network-install")
+    if (args.session_controller_source or args.session_python_source) and args.action != "session-build":
+        parser.error("session image sources apply only to session-build")
+    if args.session_manifest and args.action != "session-install":
+        parser.error("--session-manifest applies only to session-install")
     if args.gvisor_case and args.action != "gvisor-test":
         parser.error("--gvisor-case applies only to gvisor-test")
     if args.gvisor_archive and args.action != "gvisor-install":
@@ -509,11 +519,15 @@ def main(argv=None):
     if args.dry_run:
         lock = json.loads((ROOT / "deploy/platform/versions.lock.json").read_text())
         runtime = json.loads((ROOT / "deploy/platform/gvisor.lock.json").read_text()) if args.action.startswith("gvisor-") else None
+        sessions = json.loads((ROOT / "deploy/platform/session.lock.json").read_text()) if args.action.startswith("session-") else None
+        session_sources = ({"controller": session_source(sessions["controller_image"], args.session_controller_source),
+                            "python": session_source(lock["smoke"]["image"], args.session_python_source)} if sessions else None)
         print(json.dumps({"action": args.action, "network_profile": args.network_profile if args.action == "create" else "recorded lab profile", "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
                           "kubeconfig": str(ROOT / ".local/platform/kubeconfig"),
                           "node_image": pinned_source(lock["kubernetes"]["node_image"], args.node_image_source),
                           "smoke_image": pinned_source(lock["smoke"]["image"], args.smoke_image_source),
-                          "mutates_cluster": args.action != "preflight", "dry_run": True}, indent=2))
+                          "sessions": sessions, "session_sources": session_sources,
+                          "mutates_cluster": args.action not in ("preflight", "session-build"), "dry_run": True}, indent=2))
         return 0
     output = args.output or ROOT / "artifacts" / ("platform-" + args.action + "-" + uuid.uuid4().hex[:12])
     output.mkdir(parents=True, exist_ok=False)
@@ -529,7 +543,11 @@ def main(argv=None):
                                  source_root / "scripts/lib/platform_network.py", *sorted((source_root / "scripts/lib").glob("network_*.py")),
                                  *sorted((source_root / "deploy/platform").glob("calico*")),
                                  source_root / "deploy/platform/kind-calico.yaml", *sorted((source_root / "deploy/platform").glob("network*")),
-                                 *sorted((source_root / "deploy/platform").glob("gvisor*"))]}}
+                                 *sorted((source_root / "deploy/platform").glob("gvisor*")),
+                                 source_root / "scripts/lib/platform_sessions.py",
+                                 *sorted((source_root / "deploy/platform").glob("session*")), source_root / "deploy/platform/sandbox-runtime.Dockerfile",
+                                 *sorted((source_root / "cmd/agentbox-session-smoke").glob("*.go")),
+                                 *sorted((source_root / "internal/sessionprobe").glob("*.go")), source_root / "go.mod", source_root / "go.sum"]}}
     lab = None
     try:
         lab = Lab(ROOT, runner)
@@ -565,13 +583,24 @@ def main(argv=None):
             image = pinned_source(lab.lock["smoke"]["image"], args.smoke_image_source)
             report["result"] = Network(lab).test(image)
             report["ok"] = True
+        elif args.action == "session-build":
+            report["result"] = Sessions(lab).build(args.session_controller_source, args.session_python_source)
+            report["ok"] = True
+        elif args.action == "session-install":
+            sessions = Sessions(lab)
+            source = args.session_manifest or ROOT / ".local/platform-tools" / sessions.lock["manifest"]
+            report["result"] = sessions.install(source)
+            report["ok"] = True
+        elif args.action == "session-test":
+            report["result"] = Sessions(lab).test()
+            report["ok"] = True
         else:
             report["result"] = lab.delete()
             report["ok"] = True
-    except (LabError, GVisorError, NetworkError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
+    except (LabError, GVisorError, NetworkError, SessionError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
         reason = "interrupted" if isinstance(error, KeyboardInterrupt) else getattr(error, "reason", "invalid_state")
         report.update(reason=reason, detail=str(error))
-        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test") and reason not in {
+        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-install", "session-test") and reason not in {
                 "operation_in_progress", "existing_state", "unowned_cluster", "preflight_failed",
                 "image_digest_mismatch", "invalid_image", "tool_unavailable", "calico_checksum_mismatch",
                 "invalid_image_prefix", "wrong_network_profile", "network_definition_changed"}:
@@ -589,6 +618,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (LabError, GVisorError, NetworkError, OSError, ValueError) as error:
+    except (LabError, GVisorError, NetworkError, SessionError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

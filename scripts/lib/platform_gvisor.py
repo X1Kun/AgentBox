@@ -322,7 +322,7 @@ systemctl restart containerd
             result.append({'pid': int(pid), 'start_ticks': ticks, 'cgroup': group, 'exe': exe, 'args': args})
         return result
 
-    def runtime_evidence(self, pod):
+    def runtime_evidence(self, pod, memory_bytes=256 * 1024 * 1024, cpu_milli=500):
         if pod['spec'].get('nodeName') != self.worker_name:
             raise GVisorError('wrong_worker', 'probe did not run on the dedicated worker')
         uid = pod['metadata']['uid']
@@ -353,10 +353,10 @@ systemctl restart containerd
                 current = current.parent
         pod_limits = [r['limits'] for r in resources
                       if uid.replace('-', '_') in r['cgroup'] or uid in r['cgroup']]
-        if not any('memory.max\n268435456\n' in value and
-                   any(int(q) * 2 == int(period) for q, period in
+        if not any(f'memory.max\n{memory_bytes}\n' in value and
+                   any(int(q) * 1000 == cpu_milli * int(period) for q, period in
                        re.findall(r'cpu.max\n(\d+) (\d+)\n', value)) for value in pod_limits):
-            raise GVisorError('resource_limits_mismatch', 'Pod ancestor must enforce 500m CPU and 256 MiB')
+            raise GVisorError('resource_limits_mismatch', f'Pod ancestor must enforce {cpu_milli}m CPU and {memory_bytes} memory bytes')
         if not any('memory.swap.max\n0\n' in r['limits'] for r in resources):
             raise GVisorError('swap_limit_missing', 'gVisor process must have swap disabled by an ancestor')
         outside = [p for p in processes if p not in owned]

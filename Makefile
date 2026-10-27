@@ -1,4 +1,5 @@
 .PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test platform-network-create platform-network-install platform-network-test
+.PHONY: platform-session-build platform-session-install platform-session-test
 
 PLATFORM ?= kvm
 
@@ -9,6 +10,7 @@ build:
 	go build -trimpath -o bin/agentbox-mcp ./cmd/agentbox-mcp
 	go build -trimpath -o bin/agentbox-agent ./cmd/agentbox-agent
 	go build -trimpath -o bin/mockcore ./cmd/mockcore
+	go build -trimpath -o bin/agentbox-session-smoke ./cmd/agentbox-session-smoke
 
 test:
 	go test -race -count=1 ./...
@@ -69,3 +71,13 @@ platform-network-install:
 
 platform-network-test:
 	python3 scripts/platform_lab.py network-test
+
+# Trusted in-cluster Go SDK acceptance; not the product API.
+platform-session-build:
+	python3 scripts/platform_lab.py session-build
+
+platform-session-install:
+	python3 scripts/platform_lab.py session-install
+
+platform-session-test:
+	python3 scripts/platform_lab.py session-test
