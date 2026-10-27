@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "version": "v1.0.8",
+  "go_toolchain": "go1.27.1",
+  "go_minimum": "1.26.0",
+  "module": "sigs.k8s.io/agent-sandbox",
+  "module_sum": "h1:gkRAGiwGpINiilIbbO+aQTWx3fFdXQLCrI22m5oALVQ=",
+  "manifest": "agent-sandbox-v1.0.8.yaml",
+  "manifest_url": "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.8/sandbox-with-extensions.yaml",
+  "manifest_sha256": "e68bfae0bd9b6ff717745a4be04bcc909594ba32011b6a0891b77c4d7b5bf58a",
+  "object_count": 12,
+  "controller_image": "registry.k8s.io/agent-sandbox/agent-sandbox-controller@sha256:e1d96312487eba7d8f001e848a9d4e644b7deea8c2a4564ccc318abb729be731",
+  "promotion_source": "https://raw.githubusercontent.com/kubernetes/k8s.io/main/registry.k8s.io/images/k8s-staging-agent-sandbox/images.yaml",
+  "promotion_sha256": "a7a475a61603f874d95026eb674335950fd43503fa208d652178041ef962c9b0",
+  "source_archive_sha256": "bed43c4919e946354e176c685ee44a854e6f7f1c2622d6b5b484184e9797ece5",
+  "runtime": "sandboxd (built from the checksum-verified Go module)",
+  "connectivity": "in-cluster-service",
+  "warm_replicas": 0,
+  "scope": "Trusted in-cluster Go acceptance client; no public API, product auth, dynamic warm capacity or idle strategy"
+}

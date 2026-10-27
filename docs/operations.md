@@ -1,8 +1,8 @@
 # 运维指南
 
-状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供普通 Job、gVisor 运行时及 Calico NetworkPolicy 实验入口；Agent Sandbox 会话、Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
+状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供普通 Job、gVisor 运行时及 Calico NetworkPolicy 实验入口；已增加上游冷会话与 Go SDK 验收；固定预热池、Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
 
-按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
+按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [冷会话验收](#cold-sessions) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
 
 <a id="platform-lab"></a>
 ## 独立 Kubernetes 功能实验
@@ -129,6 +129,50 @@ python3 scripts/platform_lab.py network-test --smoke-image-source \
 成功后按 namespace UID/run/归属核对并清理探针，检查 gVisor 进程回收；失败保留现场，最终 `platform-delete` 清理整个本项目实验集群。Calico 系统对象与测试对象分别记录，不能使用此入口卸载已有生产集群的网络组件。结果见[网络验证](validation.md#network-policy)。探针策略随测试 namespace 清理，不自动覆盖普通任务 namespace；真实会话使用的控制端口、namespace 与策略需在接入上游执行协议时另行配置并验收。
 
 本轮只验证受控 IPv4 TCP/HTTP、DNS 与所列 Kubernetes NetworkPolicy 路径，不构成 ICMP/IPv6、hostNetwork、节点/云元数据、任意公网目的地或对抗性多租户安全证明。NetworkPolicy 不代替 Kubernetes RBAC、执行 API 鉴权或产物权限；后续会话层仍需独立验收。
+
+<a id="cold-sessions"></a>
+## 上游冷会话与 Go SDK 验收
+
+此入口依赖 **ready 的 Calico profile 和 gVisor 安装**。普通 kindnet 集群需先按归属流程删除再新建。固定组件及校验值见 [session.lock.json](../deploy/platform/session.lock.json)：Agent Sandbox controller/CRD/Go SDK v1.0.8，WarmPool replicas=0，仅验证冷创建。项目 Go 最低版本随上游 SDK 提升为 1.26，固定工具链 go1.27.1；`go` 可按 go.mod 自动选择，无需替换系统 Go。
+
+```bash
+# 先准备前述 kind/kubectl、Calico 清单和 gVisor 完整包。
+curl --fail --location --retry 2 --connect-timeout 15 --max-time 120 \
+  https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.8/sandbox-with-extensions.yaml \
+  -o .local/platform-tools/agent-sandbox-v1.0.8.yaml
+
+make platform-network-create
+make platform-network-install
+make platform-gvisor-install
+make platform-session-build
+make platform-session-install
+make platform-session-test
+make platform-delete
+```
+
+若已有本项目 ready 的 Calico/gVisor 实验集群，从 build 开始。Go 模块可使用受信任的 GOPROXY 镜像，保留 go.sum 校验。镜像源只允许改变 repository 并保留 digest，例如：
+
+```bash
+GOPROXY=https://goproxy.cn,direct python3 scripts/platform_lab.py session-build \
+  --session-controller-source k8s.m.daocloud.io/agent-sandbox/agent-sandbox-controller@sha256:e1d96312487eba7d8f001e848a9d4e644b7deea8c2a4564ccc318abb729be731 \
+  --session-python-source docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+```
+
+build 核对上游模块版本/校验与工具链，用 `go build -mod=readonly` 构建上游 sandboxd 和本项目的 Go 验收客户端，再将二进制放入固定 Python 基镜像。上游 controller 使用官方发布 digest。Docker 构建只发送临时最小上下文，不发送仓库或凭据；本地镜像按输入哈希命名，bundle 记录来源、二进制 SHA-256、Docker daemon ID 和实际 image ID。变更 Go/镜像输入后必须重新 build，镜像别名被替换时拒绝继续。
+
+install 校验官方 release YAML，再由固定 kubectl 解析；部署上游合并控制器及四个 CRD，不自研会话控制器。只增加归属、固定镜像/节点及有界资源配置；现有外来对象拒绝接管。控制器安装后改变版本/模板定义需新建实验环境，不能直接覆盖运行中的 profile。`--session-manifest PATH` 可指定同校验值的本地清单。三个 session 动作支持 `--dry-run`；build 只变更本地构建产物，不变更集群。
+
+会话 Pod 在 Worker 经 containerd/runsc 运行，sandboxd 与 Python 在同一容器；非 root、只读根、无 SA token，500m CPU/512MiB 内存，工作目录/tmp 使用独立内存卷。可信 Go 客户端是控制面节点上的一次性普通 Job，通过 headless Service 使用上游 REST 8080 和 gRPC 9090，不使用 gVisor 不支持的 Pod port-forward。该 Job 只是验收客户端，实际脚本在会话 Pod 内执行，其资源与客户端分开记录。
+
+Template 使用上游 Managed 自定义 NetworkPolicy：仅允许本轮独立客户端 namespace **且** Pod 标签访问两个控制端口；会话出口只允许 CoreDNS UDP/TCP 53。客户端有单独策略，只允许 DNS、会话控制端口和精确 Kubernetes API 地址/端口。其 SA 仅能在本轮工作 namespace 创建/读取/删除 Claim 及只读关联资源，不能读 Secret、创建 Pod 或修改模板。任务和 observer 不挂载集群凭据，也不接收模型密钥。
+
+Go 客户端通过官方 SDK 顺序执行：A 写入输入和脚本→计算→读取产物→后续命令读取同一文件；B 校验文件隔离；再验证非零退出后可继续执行、新解释器不保留变量、文件 API 越界拒绝、会话间/API 出口拒绝、关闭、30s 到期和运行中关闭。命令超时只证明调用截止，结果不确定时不重放，随后关闭整个会话并等待资源收敛。host 在检查点独立核对 Claim/Sandbox/Pod/Service UID、CRI handler、runsc/Sentry 和真实 cgroup 限制，并从第三个 namespace 验证非授权入口不可达。最后确认 API 对象、对应 CRI sandbox/运行时进程和本轮 namespace 清理。
+
+输出位于独立 artifacts 目录，包括 JSONL Go 事件、控制器清单、Template/策略、资源身份与运行时证据。失败保留现场，成功清理本轮 namespace；控制器、CRD 和已安装 runtime 保留到 `platform-delete`。Claim 有硬期限，失败清理不能只依赖 Go 进程退出。重跑使用新的 run namespace，不接管旧会话。
+
+本阶段只验证行为，不执行压测或大量测量实验。报告耗时用于诊断，不形成性能结论。
+
+这是可信集群内验收，尚无对外执行 API 鉴权、用户身份关联、产品并发拒绝/输出截断、固定非零预热池、持久化产物或生产 SLO。sandboxd 的文件接口限制在工作目录，但命令仍可读取其镜像内可访问文件，不能把文件接口边界称为 Pod 内的第二层隔离；emptyDir sizeLimit 也未做精确容量验收。工作文件保留不等于 Python 内存状态保留，模型等待期间仍占用会话资源。暂不决定 idle、暂停或动态会话容量策略。
 
 <a id="platform-plan"></a>
 ## 会话与批任务平台部署计划

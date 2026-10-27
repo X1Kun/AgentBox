@@ -1,0 +1,42 @@
+{
+  "apiVersion": "v1", "kind": "List", "items": [
+    {
+      "apiVersion": "extensions.agents.x-k8s.io/v1beta1", "kind": "SandboxTemplate",
+      "metadata": {"name": "python", "namespace": "__WORK_NS__", "labels": {"agentbox.dev/session": "__OWNER__", "agentbox.dev/session-run": "__RUN__"}},
+      "spec": {
+        "service": true,
+        "networkPolicyManagement": "Managed",
+        "envVarsInjectionPolicy": "Disallowed",
+        "networkPolicy": {
+          "ingress": [{"from": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "__CLIENT_NS__"}}, "podSelector": {"matchLabels": {"agentbox.dev/session-role": "client", "agentbox.dev/session-run": "__RUN__"}}}], "ports": [{"protocol": "TCP", "port": 8080}, {"protocol": "TCP", "port": 9090}]}],
+          "egress": [{"to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}, "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}}}], "ports": [{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}]}]
+        },
+        "podTemplate": {
+          "metadata": {"labels": {"agentbox.dev/session": "__OWNER__", "agentbox.dev/session-run": "__RUN__", "agentbox.dev/session-role": "runtime"}},
+          "spec": {
+            "runtimeClassName": "agentbox-gvisor",
+            "automountServiceAccountToken": false,
+            "enableServiceLinks": false,
+            "terminationGracePeriodSeconds": 3,
+            "nodeSelector": {"agentbox.dev/lab": "agentbox-platform-lab", "agentbox.dev/role": "worker"},
+            "securityContext": {"runAsNonRoot": true, "runAsUser": 1000, "runAsGroup": 1000, "fsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
+            "containers": [{
+              "name": "sandboxd", "image": "__RUNTIME_IMAGE__", "imagePullPolicy": "Never",
+              "ports": [{"containerPort": 8080}, {"containerPort": 9090}],
+              "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}, "limits": {"cpu": "500m", "memory": "512Mi"}},
+              "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": {"drop": ["ALL"]}},
+              "readinessProbe": {"httpGet": {"path": "/v1/health", "port": 8080}, "periodSeconds": 2, "failureThreshold": 30},
+              "volumeMounts": [{"name": "workspace", "mountPath": "/workspace"}, {"name": "tmp", "mountPath": "/tmp"}]
+            }],
+            "volumes": [{"name": "workspace", "emptyDir": {"medium": "Memory", "sizeLimit": "32Mi"}}, {"name": "tmp", "emptyDir": {"medium": "Memory", "sizeLimit": "16Mi"}}]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "extensions.agents.x-k8s.io/v1beta1", "kind": "SandboxWarmPool",
+      "metadata": {"name": "python-cold", "namespace": "__WORK_NS__", "labels": {"agentbox.dev/session": "__OWNER__", "agentbox.dev/session-run": "__RUN__"}},
+      "spec": {"replicas": 0, "sandboxTemplateRef": {"name": "python"}}
+    }
+  ]
+}

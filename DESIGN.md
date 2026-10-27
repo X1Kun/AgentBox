@@ -1,6 +1,6 @@
 # AgentBox 系统设计
 
-版本：V3.0｜更新：2026-10-27｜方向已确定；当前提供普通 Job、gVisor 运行时与 Calico 网络策略实验入口；会话平台、完整产品安全边界、新接口与 agentboxd 实际退役仍待实现。
+版本：V3.0｜更新：2026-10-27｜方向已确定；当前提供普通 Job、gVisor 运行时与 Calico 网络策略实验入口；已增加上游冷会话/Go SDK 验收入口；固定预热池、完整产品安全边界、新接口与 agentboxd 实际退役仍待实现。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
@@ -74,6 +74,8 @@ flowchart TD
 - 命令截止、会话期限和资源清理预算分开。断线不代表命令已停止；执行协议须明确取消/终止能力，不能确认任务结束时关闭整个会话并等待回收，不能直接继续执行。
 - 关闭后拒绝新命令，确认对应 Pod 及临时资源收敛；使用过的会话不得归还为干净预热成员。首版工作目录随会话清理，需保留的产物先导出。
 - 不将模型 API key、集群凭据或宿主路径传给任务。会话归属和文件访问范围由 Go 产品层检查，不能只凭用户提供的 sandbox ID 访问。
+
+冷会话实现固定 Agent Sandbox v1.0.8，使用上游 sandboxd（同版本 Go 模块构建）与 Go SDK。可信客户端通过集群内 headless Service 访问 REST 8080/执行 gRPC 9090；gVisor 不依赖 Pod port-forward。Template 管理自定义 NetworkPolicy，仅放行独立客户端 namespace/Pod，任务出口只允许 DNS，控制凭据只在受限客户端。当前为单次运行的验收程序，WarmPool replicas=0，不表示产品鉴权或固定预热池已交付，见[操作边界](docs/operations.md#cold-sessions)。
 
 具体端点、字段和工具名在实现时版本化定义，当前没有新会话 API。新链路验收通过前保留旧调用方，切换与退役见[路线图](docs/roadmap.md#retirement)。
 

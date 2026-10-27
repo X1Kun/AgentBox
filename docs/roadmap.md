@@ -6,7 +6,7 @@
 
 ## 1. 当前状态与总体顺序
 
-已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；Agent Sandbox、Kueue、真实图片任务、新 API/MCP、AdmissionCheck 与实际退役仍未完成。
+已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；固定预热池、Kueue、真实图片任务、新 API/MCP、AdmissionCheck 与实际退役仍未完成。
 
 | 阶段 | 主要交付 | 进入下一阶段的条件 |
 | --- | --- | --- |
@@ -31,7 +31,11 @@
 
 ## 3. P1：真实 gVisor 与上游会话
 
-运行时子步骤提供固定发布包、官方 shim/RuntimeClass、运行身份/资源与终止回收验证，见[验收记录](validation.md#gvisor-runtime)。另有显式新建的 Calico 网络策略 profile，验证范围见[网络记录](validation.md#network-policy)。P1 的会话、预热池及完整产品安全边界仍待完成。
+运行时子步骤提供固定发布包、官方 shim/RuntimeClass、运行身份/资源与终止回收验证，见[验收记录](validation.md#gvisor-runtime)。另有显式新建的 Calico 网络策略 profile，验证范围见[网络记录](validation.md#network-policy)。冷会话子步骤固定上游 v1.0.8，使用同版本 sandboxd/Go SDK 和 replicas=0 的池进行冷分配，独立入口见[运维指南](operations.md#cold-sessions)，13 项真实行为检查与清理已通过，见[验收记录](validation.md#cold-sessions)。固定预热池及完整产品安全边界仍待完成。
+
+本阶段只做行为验收，不安排压测、延迟分位数或资源收益对照；日志耗时仅用于排障。
+
+本次冷会话范围：多次命令和文件保留、双会话隔离、稳定资源身份、失败后继续执行、显式关闭/到期、未知执行不重放及运行中关闭。预热供给、池耗尽与产品鉴权按后续项独立交付；暂不确定空闲回收或动态容量策略。
 
 按顺序实施：
 

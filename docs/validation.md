@@ -75,6 +75,21 @@ NetworkPolicy 执行、精确 emptyDir sizeLimit 边界、Agent Sandbox 会话/�
 
 本轮不证明 ICMP/IPv6、hostNetwork、节点/云元数据、任意公网目的地、恶意管理员或对抗性多租户场景。网络规则不提供执行 API 鉴权、产物权限或跨用户身份保证，Agent Sandbox 会话与 Go 产品层仍需独立实现和验收。
 
+<a id="cold-sessions"></a>
+## 上游冷会话行为验收
+
+入口见[运维指南](operations.md#cold-sessions)，固定 Agent Sandbox v1.0.8 的 controller/CRD、sandboxd 和 Go SDK，在 Calico/gVisor profile 中冷创建会话（WarmPool replicas=0）。本阶段只验证行为，不做压测、延迟分位数统计或性能收益实验；日志耗时仅用于诊断。
+
+Go 客户端在独立受限控制 namespace 逐次调用上游接口，实际 Python 在 gVisor 会话 Pod 执行。验收覆盖同一 Claim/Sandbox/Pod/Service 身份下连续命令与文件保留、两会话文件隔离、程序失败后继续执行、新 Python 进程不保留变量、非 root/只读根/无集群凭据、文件 API 越界拒绝、会话间及 Kubernetes API 出口拒绝。host 另从第三个 namespace 验证未经授权的入口无法连接，并核对真实运行时与 500m/512MiB cgroup 约束。
+
+关闭/到期分别检查 Claim、Sandbox、Pod、Service 删除；命令截止后不自动重放，关闭整个会话以收敛未知执行；关闭运行中忽略 TERM 的父子进程后拒绝新调用。host 最后检查对应 CRI sandbox、捕获的 gVisor 进程及本轮 namespace 清理，不能只凭 SDK Close 或客户端 Job Complete 宣告清理成功。
+
+2026-10-27 单轮真实行为验收已通过：Go SDK 的 13 项检查、独立 namespace 的入口拒绝检查，以及 Pod→CRI→runsc/Sentry→cgroup 运行身份核对均通过；四个会话的 API/CRI 清理与三组捕获的运行时进程回收已确认，本轮三个 namespace 和临时实验集群已删除，原有三个 kind 集群保留。`make check` 通过，平台脚本回归共 70 项（22 基础、17 gVisor、19 网络、12 会话）。构建、安装及行为结果见[冷会话验收 JSON](data/platform-session-validation.json)，未生成性能图表或性能结论。
+
+准备阶段首次 Calico rollout 和首次镜像导入超时；原始失败报告保留，同一校验/期限下重试成功，没有放宽工作负载时限。最终会话验收源码与报告分别留哈希，历史三份平台 JSON 不回写。
+
+可信客户端的 namespace Role 不允许读 Secret、创建 Pod 或修改 Template；任务 Pod 没有 SA token。执行服务依赖受控客户端与 NetworkPolicy，尚无产品级用户鉴权。固定非零预热池、池耗尽、控制器重启/Pod 故障恢复、新产品 API/MCP、持久化产物、精确磁盘容量和对外不可信用户服务不在此轮结论内，空闲回收/动态会话容量也未定策。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>
@@ -308,6 +323,6 @@ P3 完成 R/B 和多档静态批配额扫描；P4 比较 B/A；P5 仅在必要�
 
 每个不可变 run 保存源码/组件版本、配置与镜像 hash、资源域、有效开关、输入 manifest/种子/输出规则；客户端结果、Claim/Sandbox/Pod 身份与领取/执行/关闭事件、Job/Workload/attempt 与产物记录；健康样本、决策、准入与资源轨迹、validity 和 summary。对象/run/request ID 放日志，不作为无界 Prometheus 标签。
 
-正式图从原始数据生成，至少分面展示会话延迟/及时成功、批产出/等待、池状态/空闲成本、实际 CPU/预算和健康/准入。Grafana 用于运行观测，不能替代原始记录。会话、批队列与策略实验命令随 P1/P3/P4 实现后补入；当前平台脚本提供普通 Job、gVisor 及 Calico 网络功能验收，旧本地命令仍按历史口径使用。
+正式图从原始数据生成，至少分面展示会话延迟/及时成功、批产出/等待、池状态/空闲成本、实际 CPU/预算和健康/准入。Grafana 用于运行观测，不能替代原始记录。批队列与策略实验命令随 P3/P4 实现后补入；当前平台脚本提供普通 Job、gVisor、Calico 网络及上游冷会话/Go SDK 功能验收，旧本地命令仍按历史口径使用。
 
 报告给出环境、对手配置、独立运行数、收益/代价和失效场景。可接受结论包括“静态配额已足够”“准入保护后续命令但加剧批等待”“在途竞争限制准入作用，需要单独评价节点控制”。不宣称未验证的生产 SLO、绝对安全、跨机或 GPU 收益。

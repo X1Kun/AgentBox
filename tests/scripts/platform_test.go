@@ -29,3 +29,11 @@ func TestPlatformNetwork(t *testing.T) {
 		t.Fatalf("network platform regression suite: %v\n%s", err, output)
 	}
 }
+
+func TestPlatformSessions(t *testing.T) {
+	cmd := exec.Command("python3", "platform_sessions_test.py", "-v")
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("session platform regression suite: %v\n%s", err, output)
+	}
+}
