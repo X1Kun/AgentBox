@@ -1,8 +1,8 @@
 # 运维指南
 
-状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供独立 kind 普通 Job 与 gVisor 运行时验收入口；Agent Sandbox 会话、Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
+状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供普通 Job、gVisor 运行时及 Calico NetworkPolicy 实验入口；Agent Sandbox 会话、Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
 
-按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
+按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
 
 <a id="platform-lab"></a>
 ## 独立 Kubernetes 功能实验
@@ -91,10 +91,49 @@ python3 scripts/platform_lab.py gvisor-test --smoke-image-source \
 
 每次输出到独立 artifacts 目录，报告包含源码/配置哈希、版本、Job/Pod/CRI 身份、进程与资源证据及逐项清理结果。运行时功能与范围见[验证指南](validation.md#gvisor-runtime)。NetworkPolicy 执行、对外不可信代码服务、会话 API、预热池和生产 SLO 尚未验收。
 
+<a id="network-policy"></a>
+## Calico NetworkPolicy 实验 profile
+
+默认 `platform-create` 仍使用原 kindnet 功能 profile。网络策略实验必须新建 Calico profile，不能向已有 kindnet 集群叠加 CNI；若本项目已有实验集群，先按归属保护流程清理，再创建。所有入口复用独立 context/kubeconfig、节点身份和本地操作锁，不接管其他集群。
+
+Calico v3.33.0 的官方 VXLAN manifest、SHA-256、三个镜像 digest 和来源见 [calico.lock.json](../deploy/platform/calico.lock.json)。所选版本官方测试覆盖 Kubernetes 1.36，[kind 安装说明](https://docs.tigera.io/calico/latest/getting-started/kubernetes/kind)要求禁用默认 CNI。本 profile 固定 IPv4 Pod CIDR 10.244.0.0/16、VXLAN Always、无 IPIP/BGP、非 eBPF 数据面；保留原生 kube-proxy。
+
+```bash
+curl --fail --location --retry 2 --connect-timeout 15 --max-time 120 \
+  https://raw.githubusercontent.com/projectcalico/calico/v3.33.0/manifests/calico-vxlan.yaml \
+  -o .local/platform-tools/calico-vxlan-v3.33.0.yaml
+
+make platform-network-create
+make platform-network-install
+make platform-gvisor-install
+make platform-network-test
+make platform-delete
+```
+
+先按前文准备固定工具和 gVisor 完整发布包。创建完成的 `network_pending` 表示控制面已启动，尚不允许普通任务或 gVisor 验收；安装并验证 Calico、CoreDNS、节点 Ready 后才进入 ready。创建与安装可分开执行，CoreDNS 在无 CNI 时发生的历史 rollout 进度超时不等同于当前不可用，安装器检查其实际 Available 状态，不重启或放宽其期限。
+
+`network-install --calico-manifest PATH` 可指定本地原始 manifest，校验内容后由固定 kubectl 解析 YAML；Python 无新增第三方运行依赖。原始清单和渲染结果都留证，渲染仅增加归属标签、固定镜像 digest 及明确的 VXLAN/IPv4 参数。清单、live 对象归属或已记录 CNI 定义不匹配时拒绝覆盖。ready 状态重复安装只核对，不触发 rollout。
+
+初次安装可使用 `--calico-image-prefix REGISTRY/REPOSITORY` 替换镜像传输前缀，所有组件 digest 保持锁定；已记录的来源变化需重建实验 profile，不在线替换运行中的 CNI。测试镜像可继续使用固定 digest 的镜像源：
+
+```bash
+python3 scripts/platform_lab.py create --network-profile calico --dry-run
+python3 scripts/platform_lab.py network-test --smoke-image-source \
+  docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+```
+
+验收在四个按本次 run 标识创建的 namespace 中部署可信探针。普通和 gVisor 目标放在 Worker，调用方与数据端点放在控制面节点的普通 Pod 中，验证跨节点流量。每个响应携带 run、Pod UID 和监听端口，所有监听在 baseline 先确认可达。
+
+随后按 baseline → 默认拒绝 → 控制/数据/DNS 定向放行 → 撤销放行 → 恢复基线验证。namespaceSelector 与 podSelector 在同一 peer 中组合，覆盖错误 namespace、标签和端口；DNS 单独验证 UDP/TCP，对 Kubernetes API Service 只做无凭据 TCP 连接探测。策略异步生效采用有限收敛窗口与连续两次完整匹配，使用新连接；拒绝场景只认可相应连接/DNS 超时，服务拒绝连接、读取超时、错误响应或 Pod 故障不能算通过。
+
+成功后按 namespace UID/run/归属核对并清理探针，检查 gVisor 进程回收；失败保留现场，最终 `platform-delete` 清理整个本项目实验集群。Calico 系统对象与测试对象分别记录，不能使用此入口卸载已有生产集群的网络组件。结果见[网络验证](validation.md#network-policy)。探针策略随测试 namespace 清理，不自动覆盖普通任务 namespace；真实会话使用的控制端口、namespace 与策略需在接入上游执行协议时另行配置并验收。
+
+本轮只验证受控 IPv4 TCP/HTTP、DNS 与所列 Kubernetes NetworkPolicy 路径，不构成 ICMP/IPv6、hostNetwork、节点/云元数据、任意公网目的地或对抗性多租户安全证明。NetworkPolicy 不代替 Kubernetes RBAC、执行 API 鉴权或产物权限；后续会话层仍需独立验收。
+
 <a id="platform-plan"></a>
 ## 会话与批任务平台部署计划
 
-gVisor 运行时入口见上节，以下列出完整会话/批任务平台的后续交付要求；不要把运行时 smoke 当作完整平台安装器。顺序与验收门槛以[路线图](roadmap.md)为准。
+运行时与 Calico 网络入口见上节，以下列出完整会话/批任务平台的后续交付要求；不要把运行时 smoke 当作完整平台安装器。顺序与验收门槛以[路线图](roadmap.md)为准。
 
 | 顺序 | 部署内容 | 运维必须核对 |
 | --- | --- | --- |

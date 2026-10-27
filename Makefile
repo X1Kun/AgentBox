@@ -1,4 +1,4 @@
-.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test
+.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test platform-network-create platform-network-install platform-network-test
 
 PLATFORM ?= kvm
 
@@ -60,3 +60,12 @@ platform-gvisor-install:
 
 platform-gvisor-test:
 	python3 scripts/platform_lab.py gvisor-test
+
+platform-network-create:
+	python3 scripts/platform_lab.py create --network-profile calico
+
+platform-network-install:
+	python3 scripts/platform_lab.py network-install
+
+platform-network-test:
+	python3 scripts/platform_lab.py network-test

@@ -20,6 +20,7 @@ import time
 import uuid
 
 from lib.platform_gvisor import CASES, GVisor, GVisorError
+from lib.platform_network import Network, NetworkError
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -255,9 +256,13 @@ class Lab:
         if complete and (not self.kubeconfig.is_file() or state["lock_sha256"] !=
                          file_hash(self.config / "versions.lock.json")):
             raise LabError("baseline_changed", "kubeconfig is missing or the version lock changed; recreate the lab")
+        if complete and state.get("kind_config_sha256"):
+            config = self.config / ("kind-calico.yaml" if state.get("network_profile") == "calico" else "kind.yaml")
+            if file_hash(config) != state["kind_config_sha256"]:
+                raise LabError("baseline_changed", "kind configuration changed; recreate the lab")
         return state, actual
 
-    def node_report(self):
+    def node_report(self, require_ready=True):
         data = json.loads(self.kubectl("get", "nodes", "-o", "json"))
         items = data["items"]
         expected = {CLUSTER + "-control-plane", CLUSTER + "-worker"}
@@ -268,7 +273,7 @@ class Lab:
             info = node["status"]["nodeInfo"]
             ready = any(c["type"] == "Ready" and c["status"] == "True"
                         for c in node["status"].get("conditions", []))
-            if (not ready or info["kubeletVersion"] != self.lock["kubernetes"]["version"] or
+            if ((require_ready and not ready) or info["kubeletVersion"] != self.lock["kubernetes"]["version"] or
                     not info["containerRuntimeVersion"].startswith("containerd://")):
                 raise LabError("node_baseline_mismatch", "node readiness/version/runtime differs from the baseline")
             result.append({"name": node["metadata"]["name"], "uid": node["metadata"]["uid"],
@@ -290,8 +295,11 @@ class Lab:
         if not any(d.endswith("@" + image.rsplit("@", 1)[1]) for d in digests):
             raise LabError("image_digest_mismatch", "Docker did not confirm the requested repository digest")
 
-    def create(self, source=None):
+    def create(self, source=None, network_profile="kindnet"):
         image = pinned_source(self.lock["kubernetes"]["node_image"], source)
+        if network_profile not in ("kindnet", "calico"):
+            raise LabError("invalid_network_profile", "select kindnet or calico")
+        kind_config = self.config / ("kind-calico.yaml" if network_profile == "calico" else "kind.yaml")
         with self.operation_lock():
             preflight = self.preflight()
             if not preflight["ok"]:
@@ -305,24 +313,29 @@ class Lab:
             state = {"schema_version": 1, "project": str(self.root), "cluster": CLUSTER,
                      "session": uuid.uuid4().hex, "phase": "preparing_image", "created_at": utc(),
                      "docker_id": preflight["docker"]["ID"], "node_ids": [], "node_image_source": image,
-                     "lock_sha256": file_hash(self.config / "versions.lock.json")}
+                     "lock_sha256": file_hash(self.config / "versions.lock.json"),
+                     "network_profile": network_profile, "kind_config_sha256": file_hash(kind_config)}
+            if network_profile == "calico":
+                state["network_definition"] = Network(self).definition()
             atomic_json(self.state_path, state)
             try:
                 self.prepare_image(image)
                 state["phase"] = "creating"
                 atomic_json(self.state_path, state)
-                shutil.copyfile(self.config / "kind.yaml", self.runner.output / "kind.yaml")
+                shutil.copyfile(kind_config, self.runner.output / "kind.yaml")
                 self.runner.run([self.tools["kind"], "create", "cluster", "--name", CLUSTER,
-                                 "--config", self.config / "kind.yaml", "--image", image,
-                                 "--kubeconfig", self.kubeconfig, "--retain", "--wait", "180s"],
+                                 "--config", kind_config, "--image", image,
+                                 "--kubeconfig", self.kubeconfig, "--retain", "--wait",
+                                 "0s" if network_profile == "calico" else "180s"],
                                 timeout=420, clear_proxy=True)
                 self.kubeconfig.chmod(0o600)
-                self.kubectl("wait", "--for=condition=Ready", "nodes", "--all", "--timeout=120s", timeout=140)
+                if network_profile == "kindnet":
+                    self.kubectl("wait", "--for=condition=Ready", "nodes", "--all", "--timeout=120s", timeout=140)
                 state["kubernetes_version"] = json.loads(self.kubectl("version", "-o", "json"))
                 if state["kubernetes_version"].get("serverVersion", {}).get("gitVersion") != self.lock["kubernetes"]["version"]:
                     raise LabError("server_version_mismatch", "API server version differs from the locked baseline")
-                state["nodes"] = self.node_report()
-                state["phase"] = "ready"
+                state["nodes"] = self.node_report(require_ready=network_profile == "kindnet")
+                state["phase"] = "network_pending" if network_profile == "calico" else "ready"
             except BaseException:
                 state["phase"] = "failed"
                 raise
@@ -462,19 +475,26 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test"))
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
     parser.add_argument("--node-image-source", help="mirror repository with the SAME locked node digest (create)")
     parser.add_argument("--smoke-image-source", help="mirror repository with the SAME locked task digest (smoke/gvisor-test)")
+    parser.add_argument("--network-profile", choices=("kindnet", "calico"), default="kindnet", help="CNI profile at cluster creation only")
+    parser.add_argument("--calico-manifest", type=Path, help="pinned upstream VXLAN YAML (network-install)")
+    parser.add_argument("--calico-image-prefix", help="digest-preserving registry/repository mirror (network-install)")
     parser.add_argument("--gvisor-case", choices=CASES, help="run only one gvisor-test case; default runs all")
     parser.add_argument("--gvisor-archive", type=Path, help="verified complete gVisor tar.bz2 (gvisor-install only)")
     parser.add_argument("--timeout", type=int, default=180, help="Job/probe observation budget per startup or terminal phase, 30..600 seconds")
     args = parser.parse_args(argv)
     if args.node_image_source and args.action != "create":
         parser.error("--node-image-source applies only to create")
-    if args.smoke_image_source and args.action not in ("smoke", "gvisor-test"):
-        parser.error("--smoke-image-source applies only to smoke or gvisor-test")
+    if args.smoke_image_source and args.action not in ("smoke", "gvisor-test", "network-test"):
+        parser.error("--smoke-image-source applies only to smoke, gvisor-test or network-test")
+    if args.network_profile != "kindnet" and args.action != "create":
+        parser.error("--network-profile applies only to create")
+    if (args.calico_manifest or args.calico_image_prefix) and args.action != "network-install":
+        parser.error("Calico source options apply only to network-install")
     if args.gvisor_case and args.action != "gvisor-test":
         parser.error("--gvisor-case applies only to gvisor-test")
     if args.gvisor_archive and args.action != "gvisor-install":
@@ -489,7 +509,7 @@ def main(argv=None):
     if args.dry_run:
         lock = json.loads((ROOT / "deploy/platform/versions.lock.json").read_text())
         runtime = json.loads((ROOT / "deploy/platform/gvisor.lock.json").read_text()) if args.action.startswith("gvisor-") else None
-        print(json.dumps({"action": args.action, "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
+        print(json.dumps({"action": args.action, "network_profile": args.network_profile if args.action == "create" else "recorded lab profile", "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
                           "kubeconfig": str(ROOT / ".local/platform/kubeconfig"),
                           "node_image": pinned_source(lock["kubernetes"]["node_image"], args.node_image_source),
                           "smoke_image": pinned_source(lock["smoke"]["image"], args.smoke_image_source),
@@ -506,6 +526,9 @@ def main(argv=None):
               "source_sha256": {str(p.relative_to(source_root)): file_hash(p) for p in
                                 [Path(__file__).resolve(), source_root / "scripts/lib/platform_gvisor.py",
                                  source_root / "scripts/lib/gvisor_guest_probe.py", source_root / "scripts/lib/gvisor_node_processes.sh",
+                                 source_root / "scripts/lib/platform_network.py", *sorted((source_root / "scripts/lib").glob("network_*.py")),
+                                 *sorted((source_root / "deploy/platform").glob("calico*")),
+                                 source_root / "deploy/platform/kind-calico.yaml", *sorted((source_root / "deploy/platform").glob("network*")),
                                  *sorted((source_root / "deploy/platform").glob("gvisor*"))]}}
     lab = None
     try:
@@ -519,7 +542,7 @@ def main(argv=None):
                 report["failed_checks"] = [{"name": c["name"], "reason": c["reason"]}
                                            for c in report["result"]["checks"] if not c["ok"]]
         elif args.action == "create":
-            report["result"] = lab.create(args.node_image_source)
+            report["result"] = lab.create(args.node_image_source, args.network_profile)
             report["ok"] = True
         elif args.action == "smoke":
             report["result"] = lab.smoke(args.smoke_image_source, args.timeout)
@@ -533,21 +556,32 @@ def main(argv=None):
             image = pinned_source(lab.lock["smoke"]["image"], args.smoke_image_source)
             report["result"] = GVisor(lab).test(image, args.timeout, [args.gvisor_case] if args.gvisor_case else None)
             report["ok"] = True
+        elif args.action == "network-install":
+            network = Network(lab)
+            manifest = args.calico_manifest or ROOT / ".local/platform-tools" / network.lock["manifest"]
+            report["result"] = network.install(manifest, args.calico_image_prefix)
+            report["ok"] = True
+        elif args.action == "network-test":
+            image = pinned_source(lab.lock["smoke"]["image"], args.smoke_image_source)
+            report["result"] = Network(lab).test(image)
+            report["ok"] = True
         else:
             report["result"] = lab.delete()
             report["ok"] = True
-    except (LabError, GVisorError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
+    except (LabError, GVisorError, NetworkError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
         reason = "interrupted" if isinstance(error, KeyboardInterrupt) else getattr(error, "reason", "invalid_state")
         report.update(reason=reason, detail=str(error))
-        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test") and reason not in {
+        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test") and reason not in {
                 "operation_in_progress", "existing_state", "unowned_cluster", "preflight_failed",
-                "image_digest_mismatch", "invalid_image", "tool_unavailable"}:
+                "image_digest_mismatch", "invalid_image", "tool_unavailable", "calico_checksum_mismatch",
+                "invalid_image_prefix", "wrong_network_profile", "network_definition_changed"}:
             lab.diagnostics()
     finally:
         report.update(finished_at=utc(), commands=runner.commands)
         atomic_json(output / "report.json", report)
         print(json.dumps({"ok": report["ok"], "reason": report.get("reason"),
                           "failed_checks": report.get("failed_checks", []),
+                          "phase": report.get("result", {}).get("state", {}).get("phase"),
                           "report": str(output / "report.json")}), flush=True)
     return 0 if report["ok"] else 1
 
@@ -555,6 +589,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (LabError, GVisorError, OSError, ValueError) as error:
+    except (LabError, GVisorError, NetworkError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

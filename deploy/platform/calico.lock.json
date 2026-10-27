@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "provider": "calico",
+  "version": "v3.33.0",
+  "mode": "VXLAN",
+  "pod_cidr": "10.244.0.0/16",
+  "manifest": "calico-vxlan-v3.33.0.yaml",
+  "url": "https://raw.githubusercontent.com/projectcalico/calico/v3.33.0/manifests/calico-vxlan.yaml",
+  "sha256": "202d70b43e38b60ebc60736c96e64e6de683053aab2e89da84ea9d904a9ef24c",
+  "object_count": 38,
+  "images": {
+    "quay.io/calico/calico:v3.33.0": "quay.io/calico/calico@sha256:4ebc20730127bc9e8bf1db5f5a2d8b58cf37fe0e891b3c7b5471992221d213e5",
+    "quay.io/calico/node:v3.33.0": "quay.io/calico/node@sha256:565d8db3200e443955557f8f28ff44ab8a4a456754bc74a19c4f2f3444af9b1c",
+    "quay.io/calico/third-party-cni-plugins:v3.33.0": "quay.io/calico/third-party-cni-plugins@sha256:0f32f48279484c0d6f0e0d0e767b2d0e1a6c6ca34cb3421a61b989d992f3df41"
+  },
+  "sources": [
+    "https://docs.tigera.io/calico/latest/getting-started/kubernetes/kind",
+    "https://docs.tigera.io/calico/latest/getting-started/kubernetes/requirements"
+  ],
+  "scope": "Fresh owned kind cluster only; no CNI replacement in existing clusters; standard Kubernetes NetworkPolicy TCP/DNS functional acceptance"
+}
