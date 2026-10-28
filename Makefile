@@ -1,5 +1,5 @@
 .PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test platform-network-create platform-network-install platform-network-test
-.PHONY: platform-session-build platform-session-install platform-session-test
+.PHONY: platform-session-build platform-session-install platform-session-test platform-session-warm-test
 
 PLATFORM ?= kvm
 
@@ -81,3 +81,6 @@ platform-session-install:
 
 platform-session-test:
 	python3 scripts/platform_lab.py session-test
+
+platform-session-warm-test:
+	python3 scripts/platform_lab.py session-test --session-profile warm

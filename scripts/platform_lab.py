@@ -489,6 +489,7 @@ def arguments(argv=None):
     parser.add_argument("--session-controller-source", help="digest-preserving controller image source (session-build)")
     parser.add_argument("--session-python-source", help="digest-preserving Python base source (session-build)")
     parser.add_argument("--session-manifest", type=Path, help="fixed upstream release YAML (session-install)")
+    parser.add_argument("--session-profile", choices=("cold", "warm"), default="cold", help="session-test behavior fixture; warm has fixed inventory 2 and total Pod quota 3")
     parser.add_argument("--gvisor-case", choices=CASES, help="run only one gvisor-test case; default runs all")
     parser.add_argument("--gvisor-archive", type=Path, help="verified complete gVisor tar.bz2 (gvisor-install only)")
     parser.add_argument("--timeout", type=int, default=180, help="Job/probe observation budget per startup or terminal phase, 30..600 seconds")
@@ -505,6 +506,8 @@ def arguments(argv=None):
         parser.error("session image sources apply only to session-build")
     if args.session_manifest and args.action != "session-install":
         parser.error("--session-manifest applies only to session-install")
+    if args.session_profile != "cold" and args.action != "session-test":
+        parser.error("--session-profile applies only to session-test")
     if args.gvisor_case and args.action != "gvisor-test":
         parser.error("--gvisor-case applies only to gvisor-test")
     if args.gvisor_archive and args.action != "gvisor-install":
@@ -526,7 +529,7 @@ def main(argv=None):
                           "kubeconfig": str(ROOT / ".local/platform/kubeconfig"),
                           "node_image": pinned_source(lock["kubernetes"]["node_image"], args.node_image_source),
                           "smoke_image": pinned_source(lock["smoke"]["image"], args.smoke_image_source),
-                          "sessions": sessions, "session_sources": session_sources,
+                          "sessions": sessions, "session_sources": session_sources, "session_profile": args.session_profile,
                           "mutates_cluster": args.action not in ("preflight", "session-build"), "dry_run": True}, indent=2))
         return 0
     output = args.output or ROOT / "artifacts" / ("platform-" + args.action + "-" + uuid.uuid4().hex[:12])
@@ -592,7 +595,7 @@ def main(argv=None):
             report["result"] = sessions.install(source)
             report["ok"] = True
         elif args.action == "session-test":
-            report["result"] = Sessions(lab).test()
+            report["result"] = Sessions(lab).test(args.session_profile)
             report["ok"] = True
         else:
             report["result"] = lab.delete()

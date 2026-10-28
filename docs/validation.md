@@ -90,6 +90,27 @@ Go 客户端在独立受限控制 namespace 逐次调用上游接口，实际 Py
 
 可信客户端的 namespace Role 不允许读 Secret、创建 Pod 或修改 Template；任务 Pod 没有 SA token。执行服务依赖受控客户端与 NetworkPolicy，尚无产品级用户鉴权。固定非零预热池、池耗尽、控制器重启/Pod 故障恢复、新产品 API/MCP、持久化产物、精确磁盘容量和对外不可信用户服务不在此轮结论内，空闲回收/动态会话容量也未定策。
 
+<a id="warm-pool"></a>
+## 固定预热池行为验收
+
+入口见[运维指南](operations.md#warm-pool)。此轮使用同一固定版本的上游组件与执行镜像，库存目标固定为 2，工作 namespace 总 Pod quota 为 3。它验证库存供给与总容量的职责边界，不测量预热带来的时延或吞吐收益。
+
+行为流程：两个 Ready 的预热 Sandbox/Pod → 两个并发 Claim 保持原 UID 且互不重复 → 剩余预算补出新库存并领取第三个会话 → 第四次创建在配额阻断下有界失败并回滚 → 关闭已用会话 → 两个全新库存恢复 → 再次领取的文件环境干净且可执行 → 停止池并回收。
+
+Go 检查覆盖固定目标、领取身份、文件隔离、补充、耗尽等待、关闭后拒绝调用及干净环境恢复。host 额外要求可关联的 Claim/Sandbox UID、当前代的 quota 拒绝状态及已占满的 ResourceQuota，随后检查失败 Open 的资源删除；一般超时不能算容量保护成功。运行时证据仍来自 CRI→runsc/Sentry→cgroup，成功结束要同时确认 WarmPool/Claim/Sandbox/Pod/Service、CRI 与捕获进程的清理。
+
+2026-10-28 重试后，完整 `session-test --session-profile warm` 入口已成功退出：九项 Go 检查、失败 Open 的配额拒绝与回滚证据、六个实际 gVisor Pod 的运行身份/资源证据，以及 WarmPool、会话对象、CRI、捕获进程和 namespace 清理均已通过。结果与逐阶段源码/报告哈希见[验收 JSON](data/platform-warm-pool-validation.json)。不进行压测、性能对照或收益推断。
+
+失败历史保留：首次受原生 controller-manager/scheduler 不健康阻塞，未创建测试 namespace；重试时两轮普通 kind 引导又在管理员绑定阶段失败，节点日志显示原生镜像快照解包/提交被取消。待原生镜像解包完成后，使用原 kind 配置重试 Kubernetes 官方 kubeadm init/join，重新核对归属、版本与两个节点，再继续 Calico/gVisor/会话组件。该恢复不修改健康标准或工作负载时限，不能视为普通冷引导稳定性通过。
+
+首轮实际 warm 流程完成九项 Go 检查后，结束标记的 exec 与客户端退出竞态导致回执 137。原失败报告保持不变；独立核对该 Job 的成功终态、完整成功事件和资源清理后，修正验收器仅对最后标记的 137 等待明确完成证据而不重放，随后用新 namespace 重跑完整入口成功。另补充了导入后 CRI 缓存的有限同步等待，标签与 image ID 仍严格核对。
+
+完整 `make check` 已通过；会话脚本回归现为 29 项，平台脚本合计 87 项，Go warm 身份/就绪保护测试 3 项。测试 namespace 与临时实验集群均已清理，其他集群保留；节点首次删除未收到退出事件，保留归属后重试完成。最终检查结果记录在 JSON。控制面健康检查、归档校验缓存、逐节点镜像身份和未完成 ctr 操作保护继续保留。
+
+固定 replicas 不限制已领取会话总数，池为空时上游可能冷创建；总量边界由另设的 Kubernetes ResourceQuota 执行。该测试采用有限 SDK 等待及失败清理，并未交付产品级 admission/容量拒绝接口。未领取库存归 WarmPool 控制器管理，SDK 关闭已领取会话不会停止整个池；host 按 UID 删除池后再验回收。
+
+此轮不包括控制器重启、Pod 故障恢复、TTL/关闭竞争、动态容量、idle/暂停、生产多租户鉴权或产品 API/MCP。历史冷会话与性能证据保持原样，不把行为通过解释为性能提升或生产就绪。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>

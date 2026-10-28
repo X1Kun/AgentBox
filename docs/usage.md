@@ -1,6 +1,6 @@
 # 使用指南
 
-状态：agentboxd 已决定退役；当前提供普通 Job、gVisor、Calico 和上游冷会话/Go SDK 验收，没有新会话/批任务产品 API。上游验收命令见[冷会话入口](operations.md#cold-sessions)；该 Go 客户端在集群内逐次调用执行/文件接口，不接入大模型、不要求一次提交整套代码，也不保存 Python 变量。下面先定义拟议契约，再保留仍在源码中的旧 HTTP、MCP 与 DeepSeek 用法。阶段见[路线图](roadmap.md)，旧服务收尾见[运维指南](operations.md#retirement)。
+状态：agentboxd 已决定退役；当前提供普通 Job、gVisor、Calico 和上游冷会话、固定预热池/Go SDK 验收，没有新会话/批任务产品 API。上游验收命令见[冷会话入口](operations.md#cold-sessions)；该 Go 客户端在集群内逐次调用执行/文件接口，不接入大模型、不要求一次提交整套代码，也不保存 Python 变量。下面先定义拟议契约，再保留仍在源码中的旧 HTTP、MCP 与 DeepSeek 用法。阶段见[路线图](roadmap.md)，旧服务收尾见[运维指南](operations.md#retirement)。
 
 <a id="target"></a>
 ## 目标接口契约（计划）
