@@ -1,8 +1,8 @@
 # 运维指南
 
-状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供普通 Job、gVisor 运行时及 Calico NetworkPolicy 实验入口；已增加上游冷会话与 Go SDK 验收；固定预热池、Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
+状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供普通 Job、gVisor 运行时及 Calico NetworkPolicy 实验入口；已增加上游冷会话、固定预热池与 Go SDK 验收入口；Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
 
-按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [冷会话验收](#cold-sessions) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
+按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [冷会话验收](#cold-sessions) · [固定预热池](#warm-pool) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
 
 <a id="platform-lab"></a>
 ## 独立 Kubernetes 功能实验
@@ -133,7 +133,7 @@ python3 scripts/platform_lab.py network-test --smoke-image-source \
 <a id="cold-sessions"></a>
 ## 上游冷会话与 Go SDK 验收
 
-此入口依赖 **ready 的 Calico profile 和 gVisor 安装**。普通 kindnet 集群需先按归属流程删除再新建。固定组件及校验值见 [session.lock.json](../deploy/platform/session.lock.json)：Agent Sandbox controller/CRD/Go SDK v1.0.8，WarmPool replicas=0，仅验证冷创建。项目 Go 最低版本随上游 SDK 提升为 1.26，固定工具链 go1.27.1；`go` 可按 go.mod 自动选择，无需替换系统 Go。
+此入口依赖 **ready 的 Calico profile 和 gVisor 安装**。 安装和会话验收还核对原生 kube-controller-manager 与 kube-scheduler 的 Ready 状态；仅 Node/CNI Ready 不足以继续，失败记录为 `session_control_plane_not_ready`。普通 kindnet 集群需先按归属流程删除再新建。固定组件及校验值见 [session.lock.json](../deploy/platform/session.lock.json)：Agent Sandbox controller/CRD/Go SDK v1.0.8，WarmPool replicas=0，仅验证冷创建。项目 Go 最低版本随上游 SDK 提升为 1.26，固定工具链 go1.27.1；`go` 可按 go.mod 自动选择，无需替换系统 Go。
 
 ```bash
 # 先准备前述 kind/kubectl、Calico 清单和 gVisor 完整包。
@@ -160,7 +160,7 @@ GOPROXY=https://goproxy.cn,direct python3 scripts/platform_lab.py session-build 
 
 build 核对上游模块版本/校验与工具链，用 `go build -mod=readonly` 构建上游 sandboxd 和本项目的 Go 验收客户端，再将二进制放入固定 Python 基镜像。上游 controller 使用官方发布 digest。Docker 构建只发送临时最小上下文，不发送仓库或凭据；本地镜像按输入哈希命名，bundle 记录来源、二进制 SHA-256、Docker daemon ID 和实际 image ID。变更 Go/镜像输入后必须重新 build，镜像别名被替换时拒绝继续。
 
-install 校验官方 release YAML，再由固定 kubectl 解析；部署上游合并控制器及四个 CRD，不自研会话控制器。只增加归属、固定镜像/节点及有界资源配置；现有外来对象拒绝接管。控制器安装后改变版本/模板定义需新建实验环境，不能直接覆盖运行中的 profile。`--session-manifest PATH` 可指定同校验值的本地清单。三个 session 动作支持 `--dry-run`；build 只变更本地构建产物，不变更集群。
+install 校验官方 release YAML，再由固定 kubectl 解析；部署上游合并控制器及四个 CRD，不自研会话控制器。只增加归属、固定镜像/节点及有界资源配置；现有外来对象拒绝接管。控制器安装后改变版本/模板定义需新建实验环境，不能直接覆盖运行中的 profile。`--session-manifest PATH` 可指定同校验值的本地清单。三个 session 动作支持 `--dry-run`；build 只变更本地构建产物，不变更集群。 镜像准备分为 Docker 导出（最多 600s）和 kind 归档导入（最多 300s）；归档在本地按 bundle 命名，记录 Docker daemon、image ID 与 SHA-256，重试前重新校验。失败导出不发布缓存，内容或身份不匹配会拒绝复用。 每个节点都核对 tag 与实际 image ID；内容已齐全时跳过导入，存在未完成 ctr 操作时拒绝叠加。导入成功后为 CRI 镜像缓存同步保留独立 60s 收敛窗口，超时仍拒绝继续。安装预算与会话执行/清理预算分开。
 
 会话 Pod 在 Worker 经 containerd/runsc 运行，sandboxd 与 Python 在同一容器；非 root、只读根、无 SA token，500m CPU/512MiB 内存，工作目录/tmp 使用独立内存卷。可信 Go 客户端是控制面节点上的一次性普通 Job，通过 headless Service 使用上游 REST 8080 和 gRPC 9090，不使用 gVisor 不支持的 Pod port-forward。该 Job 只是验收客户端，实际脚本在会话 Pod 内执行，其资源与客户端分开记录。
 
@@ -172,7 +172,33 @@ Go 客户端通过官方 SDK 顺序执行：A 写入输入和脚本→计算→�
 
 本阶段只验证行为，不执行压测或大量测量实验。报告耗时用于诊断，不形成性能结论。
 
-这是可信集群内验收，尚无对外执行 API 鉴权、用户身份关联、产品并发拒绝/输出截断、固定非零预热池、持久化产物或生产 SLO。sandboxd 的文件接口限制在工作目录，但命令仍可读取其镜像内可访问文件，不能把文件接口边界称为 Pod 内的第二层隔离；emptyDir sizeLimit 也未做精确容量验收。工作文件保留不等于 Python 内存状态保留，模型等待期间仍占用会话资源。暂不决定 idle、暂停或动态会话容量策略。
+这是可信集群内验收，尚无对外执行 API 鉴权、用户身份关联、产品并发拒绝/输出截断、持久化产物或生产 SLO。sandboxd 的文件接口限制在工作目录，但命令仍可读取其镜像内可访问文件，不能把文件接口边界称为 Pod 内的第二层隔离；emptyDir sizeLimit 也未做精确容量验收。工作文件保留不等于 Python 内存状态保留，模型等待期间仍占用会话资源。暂不决定 idle、暂停或动态会话容量策略。
+
+<a id="warm-pool"></a>
+## 固定预热池行为验收
+
+复用上节的构建与安装，新增 `warm` 测试 profile；默认 `platform-session-test` 仍是冷会话用例。组件版本、镜像与执行模板一致，无自研池控制器。
+
+```bash
+# 已完成 Calico/gVisor 和 session build/install 后执行。
+python3 scripts/platform_lab.py session-test --session-profile warm --dry-run
+make platform-session-warm-test
+make platform-delete
+```
+
+当前实现及九项正向 warm 行为实测与清理已通过，失败和恢复过程见[本轮记录](validation.md#warm-pool)。应先在健康控制面完成 session-install，再运行此入口。
+
+该固定行为夹具使用 `python-warm`，**replicas=2 是未领取库存目标，ResourceQuota pods=3 是工作 namespace 的总 Pod 上限**。两者分别约束库存和总量；已领取会话不占未领取库存，关闭后由上游销毁，再创建新库存。相同配额声明 requests CPU/内存 300m/384Mi、limits 1500m/1536Mi，与三个固定模板 Pod 对齐。它是功能测试预算，不是吞吐建议或物理资源预留。 `pods` 配额按 Kubernetes 口径计入非终态 Pod，Pending 和尚未终态的终止中 Pod 仍占预算；终态历史对象和残留运行时仍需单独清理。
+
+流程先等两个预热成员真实 Ready，记录 Sandbox/Pod UID，再通过 Go SDK 并发领取两个会话，核对身份未换、没有重复领取及文件互不可见。上游在剩余总预算中补出第三个 Ready Pod，再领取它，使三个执行 Pod 占满总量。此时库存目标仍为 2，但可用库存为 0；待创建的 Sandbox CR 不等于已运行的 Pod。
+
+第四次创建只提交一次，使用上游 SDK 的 20s 就绪等待预算。host 同时核对 Claim UID、它拥有的 Sandbox 当前 Ready=False/ResourceQuota 拒绝信息和已占满的 quota；单纯超时、鉴权失败或连接错误不能算耗尽行为通过。SDK 失败回滚后，分别等待该 Claim、Sandbox、Pod/Service 清理。等待预算不包含异步清理的全部时间，也不代表产品端已有容量拒绝接口。
+
+随后关闭已领取会话并核对它们消失，等待库存恢复为两个全新成员；再领取一个，验证没有旧会话标记文件且命令可执行，关闭后再次恢复固定库存。host 在检查点核对真实 gVisor 身份和资源边界。最后先按 UID/归属删除 WarmPool，停止补充，再检查关联 API 对象、CRI sandbox 和捕获的运行时进程收敛，最后删除本轮 namespace。失败保留现场，可用 `platform-delete` 清理整个本项目实验集群；未领取库存不会因 SDK 客户端退出而自行消失。
+
+结束握手的 exec 可能在 Go 主进程退出时返回 137。仅最后一个标记允许记录这种未知回执且不重放；仍须看到本轮完整成功事件、成功 Job 和独立资源清理，否则验收失败。其他标记、其他退出码仍立即失败。
+
+客户端 RBAC 仅新增 ResourceQuota 只读权限，不能调配额、改副本数或创建 Pod。此 profile 不启用动态池、空闲回收、暂停、监控压测或性能测量。控制器重启、Pod 故障恢复、TTL/关闭竞争和产品 API/MCP 仍须后续独立验收。
 
 <a id="platform-plan"></a>
 ## 会话与批任务平台部署计划

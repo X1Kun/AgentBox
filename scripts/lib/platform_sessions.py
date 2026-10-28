@@ -23,6 +23,25 @@ EXPECTED_CHECKS = {
     'explicit_close_and_reject_new_calls', 'controller_claim_expiry_and_gc',
     'deadline_no_replay_and_session_cleanup', 'close_running_parent_and_child',
 }
+WARM_CHECKS = {
+    'client_rbac_scope', 'fixed_two_ready_members_before_claims',
+    'concurrent_claims_keep_distinct_precreated_pods', 'parallel_warm_sessions_keep_files_isolated',
+    'pool_replenishes_within_total_pod_budget', 'exhaustion_is_bounded_without_creation_replay',
+    'used_sessions_deleted_and_closed_handles_rejected', 'capacity_recovers_with_clean_new_environment',
+    'fixed_inventory_restored_without_used_members',
+}
+
+
+def warm_fixture(template, namespace, owner, run_id):
+    """Fixed behavior fixture, separate from the cold profile and product policy."""
+    pool = next(o for o in template['items'] if o['kind'] == 'SandboxWarmPool')
+    pool['metadata']['name'] = 'python-warm'
+    pool['spec']['replicas'] = 2
+    quota = {'apiVersion': 'v1', 'kind': 'ResourceQuota',
+             'metadata': {'name': 'session-budget', 'namespace': namespace, 'labels': {OWNER: owner, RUN: run_id}},
+             'spec': {'hard': {'pods': '3', 'requests.cpu': '300m', 'requests.memory': '384Mi',
+                               'limits.cpu': '1500m', 'limits.memory': '1536Mi'}}}
+    return quota
 
 
 class SessionError(Exception):
@@ -162,11 +181,87 @@ class Sessions:
         network = Network(self.lab)
         network.attach(ready=True)
         network.verify()
+        self.state = network.state
+        self.control_plane_ready()
         runtime = GVisor(self.lab)
         runtime.attach()
         runtime.verify_installation()
-        self.state = network.state
         return runtime
+
+    def control_plane_ready(self):
+        expected = {'kube-controller-manager', 'kube-scheduler'}
+        pods = json.loads(self.lab.kubectl('-n', 'kube-system', 'get', 'pods', '-l',
+                         'component in (kube-controller-manager,kube-scheduler)', '--field-selector',
+                         'spec.nodeName=' + self.state['cluster'] + '-control-plane', '-o', 'json'))['items']
+        components = []
+        for pod in pods:
+            components.append({'component': pod['metadata'].get('labels', {}).get('component'),
+                               'pod': pod['metadata']['name'], 'uid': pod['metadata'].get('uid'),
+                               'ready': any(c.get('type') == 'Ready' and c.get('status') == 'True'
+                                            for c in pod.get('status', {}).get('conditions', [])),
+                               'phase': pod.get('status', {}).get('phase'),
+                               'waiting': [c.get('state', {}).get('waiting', {}).get('reason')
+                                           for c in pod.get('status', {}).get('containerStatuses', [])]})
+        self.save('session-control-plane.json', {'components': components})
+        if len(components) != 2 or {c['component'] for c in components} != expected or not all(c['ready'] for c in components):
+            raise SessionError('session_control_plane_not_ready', json.dumps(components))
+
+    def image_archive(self, bundle):
+        """Separate export from node import; retain a verified archive for retries."""
+        archive = self.lab.state_dir / ('session-images-' + bundle['fingerprint'] + '.tar')
+        metadata = archive.with_suffix('.json')
+        expected = {'docker_id': bundle['docker_id'], 'images': bundle['images']}
+        if archive.exists() and metadata.exists():
+            cached = json.loads(metadata.read_text())
+            if (any(cached.get(k) != v for k, v in expected.items()) or
+                    cached.get('sha256') != digest(archive)):
+                raise SessionError('session_archive_changed', 'cached export identity or checksum differs')
+            self.save('session-image-archive.json', dict(cached, reused=True))
+            return archive
+        with tempfile.TemporaryDirectory(prefix='session-export-', dir=self.lab.state_dir) as temporary:
+            path = Path(temporary) / 'images.tar'
+            self.lab.runner.run([self.lab.tools['docker'], 'save', '-o', str(path),
+                                 *[i['name'] for i in bundle['images'].values()]], timeout=600)
+            checksum = digest(path)
+            path.replace(archive)
+        value = dict(expected, sha256=checksum)
+        self.lab.write_json(metadata, value)
+        self.save('session-image-archive.json', dict(value, reused=False))
+        return archive
+
+    def node_images_match(self, bundle):
+        evidence = {}
+        complete = True
+        for node in self.state['node_ids']:
+            images = json.loads(self.lab.runner.run([self.lab.tools['docker'], 'exec', node,
+                                                     'crictl', 'images', '-o', 'json']))['images']
+            matched = {}
+            for role, expected in bundle['images'].items():
+                tag = 'docker.io/' + expected['name']
+                found = [v for v in images if tag in v.get('repoTags', []) and v['id'] == expected['id']]
+                matched[role] = expected['id'] if len(found) == 1 else None
+            evidence[node] = matched
+            complete = complete and all(matched.values())
+        self.save('session-node-images.json', {'complete': bool(complete), 'nodes': evidence})
+        return bool(complete)
+
+    def load_images(self, bundle):
+        if self.node_images_match(bundle):
+            return
+        for node in self.state['node_ids']:
+            processes = self.lab.runner.run([self.lab.tools['docker'], 'exec', node, 'ps', '-eo', 'comm='])
+            if 'ctr' in processes.split():
+                raise SessionError('session_import_in_progress', 'wait for the existing node ctr operation before retrying import')
+        archive = self.image_archive(bundle)
+        self.lab.runner.run([self.lab.tools['kind'], 'load', 'image-archive', str(archive),
+                             '--name', self.state['cluster']], timeout=300)
+        # Containerd import completion precedes the CRI image cache update.
+        until = time.monotonic() + 60
+        while time.monotonic() < until:
+            if self.node_images_match(bundle):
+                return
+            time.sleep(.5)
+        raise SessionError('session_image_load_incomplete', 'node image IDs did not converge to the verified bundle within 60s')
 
     def verify(self, bundle):
         installed = self.state.get('sessions', {})
@@ -196,8 +291,7 @@ class Sessions:
                 raise SessionError('session_definition_changed', 'recreate instead of replacing a live controller/runtime profile')
             if previous and previous.get('phase') == 'ready':
                 return dict(already_installed=True, **self.verify(bundle))
-            self.lab.runner.run([self.lab.tools['kind'], 'load', 'docker-image',
-                                 *[i['name'] for i in bundle['images'].values()], '--name', self.state['cluster']], timeout=300)
+            self.load_images(bundle)
             path = self.output / 'session-upstream.yaml'
             path.write_bytes(data)
             objects = kubectl_objects(self.lab.kubectl('create', '--dry-run=client', '--validate=false', '-f', path, '-o', 'json', timeout=60))
@@ -346,31 +440,143 @@ class Sessions:
                 raise SessionError('unowned_session_namespace', value['name'])
             self.lab.kubectl('delete', 'namespace', value['name'], '--wait=true', '--timeout=90s', timeout=110)
 
-    def test(self):
+    def warm_quota_ready(self, namespace):
+        until = time.monotonic() + 60
+        while time.monotonic() < until:
+            quota = json.loads(self.lab.kubectl('-n', namespace, 'get', 'resourcequota', 'session-budget', '-o', 'json', announce=False))
+            if quota.get('status', {}).get('hard') == quota['spec']['hard']:
+                return quota
+            time.sleep(.5)
+        raise SessionError('warm_quota_not_ready', 'ResourceQuota has not observed the fixed budget')
+
+    def inspect_supply(self, supply, pool_uid, namespace, run_id, runtime, record):
+        for identity in supply:
+            sandbox = json.loads(self.lab.kubectl('-n', namespace, 'get', 'sandbox', identity['sandbox'], '-o', 'json'))
+            pod = json.loads(self.lab.kubectl('-n', namespace, 'get', 'pod', identity['pod'], '-o', 'json'))
+            if (sandbox['metadata']['uid'] != identity['sandbox_uid'] or pod['metadata']['uid'] != identity['pod_uid'] or
+                    not any(r.get('uid') == pool_uid and r.get('controller') for r in sandbox['metadata'].get('ownerReferences', [])) or
+                    not any(r.get('uid') == identity['sandbox_uid'] and r.get('controller') for r in pod['metadata'].get('ownerReferences', [])) or
+                    pod['metadata'].get('labels', {}).get(OWNER) != self.state['session'] or
+                    pod['metadata']['labels'].get(RUN) != run_id or pod['spec'].get('automountServiceAccountToken', True)):
+                raise SessionError('warm_supply_identity_changed', identity['pod'])
+            record['runtime_evidence'][identity['pod_uid']] = runtime.runtime_evidence(pod, memory_bytes=512 * 1024 * 1024)
+
+    def observe_exhaustion(self, namespace, run_id, used, record):
+        claims = json.loads(self.lab.kubectl('-n', namespace, 'get', 'sandboxclaims', '-o', 'json', announce=False))['items']
+        remaining = [c for c in claims if c['metadata']['uid'] not in {v['claim_uid'] for v in used}]
+        if len(remaining) > 1:
+            raise SessionError('warm_attempt_replayed', 'more than one extra Claim exists')
+        if not remaining:
+            return
+        claim = remaining[0]
+        if claim['metadata'].get('labels', {}).get(OWNER) != self.state['session'] or claim['metadata']['labels'].get(RUN) != run_id:
+            raise SessionError('unowned_warm_attempt', claim['metadata']['name'])
+        previous = record.get('exhausted_claim')
+        identity = {'name': claim['metadata']['name'], 'uid': claim['metadata']['uid']}
+        if previous and previous != identity:
+            raise SessionError('warm_attempt_replayed', 'extra Claim identity changed')
+        record['exhausted_claim'] = identity
+        objects = json.loads(self.lab.kubectl('-n', namespace, 'get', 'sandboxes', '-o', 'json', announce=False))['items']
+        for sandbox in objects:
+            if not any(r.get('uid') == identity['uid'] and r.get('controller') for r in sandbox['metadata'].get('ownerReferences', [])):
+                continue
+            for condition in sandbox.get('status', {}).get('conditions', []):
+                if (condition.get('type') == 'Ready' and condition.get('status') == 'False' and
+                        condition.get('observedGeneration') == sandbox['metadata']['generation'] and
+                        'exceeded quota: session-budget' in condition.get('message', '') and 'pods' in condition['message']):
+                    record['quota_rejection'] = {'claim': identity, 'sandbox': {'name': sandbox['metadata']['name'], 'uid': sandbox['metadata']['uid']},
+                                                 'condition': condition}
+
+    def verify_exhaustion_rollback(self, namespace, event, record):
+        proof = record.get('quota_rejection')
+        if not proof:
+            raise SessionError('warm_quota_rejection_missing', 'a timeout alone does not prove quota exhaustion')
+        quota = json.loads(self.lab.kubectl('-n', namespace, 'get', 'resourcequota', 'session-budget', '-o', 'json'))
+        if (quota['metadata']['uid'] != event['warm']['quota_uid'] or quota['spec']['hard']['pods'] != '3' or
+                quota.get('status', {}).get('used', {}).get('pods') != '3'):
+            raise SessionError('warm_budget_changed', 'expected three active Pods at exhaustion')
+        until = time.monotonic() + 90
+        while time.monotonic() < until:
+            remaining = []
+            for kind in ('sandboxclaim', 'sandbox'):
+                identity = proof['claim' if kind == 'sandboxclaim' else 'sandbox']
+                output = self.lab.kubectl('-n', namespace, 'get', kind, identity['name'], '--ignore-not-found', '-o', 'json', announce=False)
+                if output.strip():
+                    obj = json.loads(output)
+                    if obj['metadata']['uid'] != identity['uid']:
+                        raise SessionError('warm_attempt_identity_changed', identity['name'])
+                    remaining.append(kind)
+            for kind in ('pods', 'services'):
+                objects = json.loads(self.lab.kubectl('-n', namespace, 'get', kind, '-o', 'json', announce=False))['items']
+                remaining += [kind for obj in objects if any(r.get('uid') == proof['sandbox']['uid'] for r in obj['metadata'].get('ownerReferences', []))]
+            if not remaining:
+                record['failed_open_cleanup_confirmed'] = True
+                record['quota_at_exhaustion'] = quota
+                return
+            time.sleep(.5)
+        raise SessionError('warm_attempt_cleanup_incomplete', 'failed Open left Claim-owned resources')
+
+    def stop_warm_pool(self, namespace, event):
+        pool = json.loads(self.lab.kubectl('-n', namespace, 'get', 'sandboxwarmpool', 'python-warm', '-o', 'json'))
+        if pool['metadata']['uid'] != event['warm']['pool_uid'] or pool['metadata'].get('labels', {}).get(OWNER) != self.state['session']:
+            raise SessionError('unowned_warm_pool', 'pool identity changed before cleanup')
+        self.lab.kubectl('-n', namespace, 'delete', 'sandboxwarmpool', 'python-warm', '--cascade=foreground', '--wait=true', '--timeout=90s', timeout=110)
+        for kind in ('sandboxclaims', 'sandboxes', 'pods', 'services'):
+            values = json.loads(self.lab.kubectl('-n', namespace, 'get', kind, '-o', 'json'))['items']
+            if values:
+                raise SessionError('warm_pool_cleanup_incomplete', kind + ' remain after pool shutdown')
+
+    def send_marker(self, namespace, pod_name, marker, record):
+        try:
+            self.lab.kubectl('-n', namespace, 'exec', pod_name, '-c', 'client', '--',
+                             '/usr/local/bin/python3', '-I', '-B', '-c',
+                             "from pathlib import Path; Path('/work/" + marker + "').touch()")
+        except Exception as error:
+            # The final marker lets PID 1 exit, which can kill this exec before
+            # its status is delivered. Do not replay it. The caller still must
+            # observe the matching complete event and successful Job, then
+            # independently verify all runtime and namespace cleanup.
+            commands = self.lab.runner.commands
+            code = commands[-1].get('exit_code') if commands else None
+            if marker != 'warm-finish' or getattr(error, 'reason', None) != 'command_failed' or code != 137:
+                raise
+            record['final_marker_transport_error'] = {'exit_code': code, 'detail': str(error)}
+
+    def test(self, profile="cold"):
+        if profile not in ('cold', 'warm'):
+            raise SessionError('invalid_session_profile', profile)
         with self.lab.operation_lock():
             runtime = self.attach()
             bundle = self.bundle()
             self.verify(bundle)
             run_id = uuid.uuid4().hex[:10]
             namespaces = {}
-            record = {'run': run_id, 'owner': self.state['session'], 'namespaces': namespaces,
+            record = {'profile': profile, 'run': run_id, 'owner': self.state['session'], 'namespaces': namespaces,
                       'runtime_evidence': {}, 'go_events': [], 'cleanup_complete': False}
             try:
-                for role, name in [('work', 'agentbox-session-' + run_id), ('client', 'agentbox-session-client-' + run_id),
-                                   ('observer', 'agentbox-session-observer-' + run_id)]:
+                roles = [('work', 'agentbox-session-' + run_id), ('client', 'agentbox-session-client-' + run_id)]
+                if profile == 'cold':
+                    roles.append(('observer', 'agentbox-session-observer-' + run_id))
+                for role, name in roles:
                     namespaces[role] = self.namespace(name, role, run_id)
                 params = {'OWNER': self.state['session'], 'RUN': run_id, 'WORK_NS': namespaces['work']['name'],
                           'CLIENT_NS': namespaces['client']['name'], 'RUNTIME_IMAGE': bundle['images']['runtime']['name'],
                           'CLIENT_IMAGE': bundle['images']['client']['name']}
                 template = self.render('session-template.json', params)
+                if profile == 'warm':
+                    quota = warm_fixture(template, params['WORK_NS'], self.state['session'], run_id)
+                    self.create(quota)
+                    record['quota_initial'] = self.warm_quota_ready(params['WORK_NS'])
                 self.save('session-template.json', template)
                 created = self.create(template)
                 template_uid = next(o['metadata']['uid'] for o in created if o['kind'] == 'SandboxTemplate')
                 self.create(self.render('session-rbac.json', params))
                 self.create(self.client_policy(params['CLIENT_NS'], params['WORK_NS'], run_id))
                 self.policies_ready(params['WORK_NS'], template_uid)
-                observer = self.observer(namespaces['observer']['name'], run_id, bundle['images']['client']['name'])
-                client_job = self.create(self.render('session-client-job.json', params))[0]
+                observer = self.observer(namespaces['observer']['name'], run_id, bundle['images']['client']['name']) if profile == 'cold' else None
+                job_spec = self.render('session-client-job.json', params)
+                job_spec['spec']['template']['spec']['containers'][0]['env'].append({'name': 'SESSION_PROFILE', 'value': profile})
+                client_job = self.create(job_spec)[0]
                 job_uid = client_job['metadata']['uid']
                 record.update(client_job_uid=job_uid, template_uid=template_uid, observer=observer)
                 until = time.monotonic() + 800
@@ -378,6 +584,8 @@ class Sessions:
                 client_pod = None
                 complete = None
                 while time.monotonic() < until:
+                    if profile == 'warm' and 'warm-claimed' in handled and 'warm-exhausted' not in handled:
+                        self.observe_exhaustion(params['WORK_NS'], run_id, record['warm_claimed'], record)
                     job = json.loads(self.lab.kubectl('-n', params['CLIENT_NS'], 'get', 'job', 'session-client', '-o', 'json', announce=False))
                     if job['metadata']['uid'] != job_uid:
                         raise SessionError('session_client_identity_changed', 'client Job was replaced')
@@ -400,7 +608,8 @@ class Sessions:
                             (self.output / 'go-client.jsonl').write_text(logs)
                             for event in events:
                                 if (event.get('run') != run_id or event.get('owner') != self.state['session'] or
-                                        event.get('namespace') != params['WORK_NS'] or event.get('sdk_version') != self.lock['version']):
+                                        event.get('namespace') != params['WORK_NS'] or event.get('sdk_version') != self.lock['version'] or
+                                        event.get('profile') != profile):
                                     raise SessionError('invalid_session_event', 'Go client identity differs')
                                 stage = event['stage']
                                 if stage in handled:
@@ -408,7 +617,25 @@ class Sessions:
                                 if stage == 'failed':
                                     raise SessionError('go_session_acceptance_failed', event.get('error', 'unknown error'))
                                 marker = None
-                                if stage == 'ready':
+                                if profile == 'warm' and stage == 'warm-prepared':
+                                    self.inspect_supply(event['warm']['initial'], event['warm']['pool_uid'], params['WORK_NS'], run_id, runtime, record)
+                                    marker = 'warm-start'
+                                elif profile == 'warm' and stage == 'warm-claimed':
+                                    record['warm_claimed'] = event['sessions']
+                                    identity = event['sessions'][2]
+                                    record['runtime_evidence'][identity['pod_uid']] = self.inspect_identity(identity, params['WORK_NS'], run_id, runtime)
+                                    marker = 'warm-exhaust'
+                                elif profile == 'warm' and stage == 'warm-exhausted':
+                                    self.verify_exhaustion_rollback(params['WORK_NS'], event, record)
+                                    marker = 'warm-release'
+                                elif profile == 'warm' and stage == 'warm-reused':
+                                    identity = event['sessions'][3]
+                                    record['runtime_evidence'][identity['pod_uid']] = self.inspect_identity(identity, params['WORK_NS'], run_id, runtime)
+                                    marker = 'warm-return'
+                                elif profile == 'warm' and stage == 'warm-recovered':
+                                    self.inspect_supply(event['warm']['recovered'], event['warm']['pool_uid'], params['WORK_NS'], run_id, runtime, record)
+                                    marker = 'warm-finish'
+                                elif stage == 'ready':
                                     for identity in event['sessions']:
                                         record['runtime_evidence'][identity['pod_uid']] = self.inspect_identity(identity, params['WORK_NS'], run_id, runtime)
                                     self.outsider_blocked(observer, event['sessions'], run_id, record)
@@ -423,26 +650,32 @@ class Sessions:
                                 elif stage == 'complete':
                                     complete = event
                                 if marker:
-                                    print('[platform] cold session checkpoint: ' + stage, flush=True)
-                                    self.lab.kubectl('-n', params['CLIENT_NS'], 'exec', pod['metadata']['name'], '-c', 'client', '--',
-                                                     '/usr/local/bin/python3', '-I', '-B', '-c',
-                                                     "from pathlib import Path; Path('/work/" + marker + "').touch()")
+                                    print('[platform] ' + profile + ' session checkpoint: ' + stage, flush=True)
+                                    self.send_marker(params['CLIENT_NS'], pod['metadata']['name'], marker, record)
                                 handled.add(stage)
                     self.save('session-test.json', record)
                     conditions = job.get('status', {}).get('conditions', [])
                     if any(c['type'] == 'Failed' and c['status'] == 'True' for c in conditions):
                         raise SessionError('session_client_job_failed', json.dumps(job['status']))
                     if any(c['type'] == 'Complete' and c['status'] == 'True' for c in conditions):
+                        expected = WARM_CHECKS if profile == 'warm' else EXPECTED_CHECKS
+                        required = {'warm-prepared', 'warm-claimed', 'warm-exhausted', 'warm-reused', 'warm-recovered'} if profile == 'warm' else {'ready', 'timeout-ready', 'closing-active'}
                         if (complete is None or not complete.get('cleanup_complete') or
-                                {c['name'] for c in complete.get('checks', [])} != EXPECTED_CHECKS or
+                                {c['name'] for c in complete.get('checks', [])} != expected or
                                 not all(c['passed'] for c in complete['checks']) or
-                                not {'ready', 'timeout-ready', 'closing-active'}.issubset(handled)):
+                                not required.issubset(handled)):
                             raise SessionError('incomplete_session_acceptance', 'client completed without full evidence')
                         break
                     time.sleep(1)
                 else:
                     raise SessionError('session_acceptance_timeout', 'trusted SDK client did not complete')
-                identities = complete['sessions'] + [complete['expiring'], complete['timed_out']]
+                identities = list(complete['sessions'])
+                if profile == 'warm':
+                    self.stop_warm_pool(params['WORK_NS'], complete)
+                    record['pool_cleanup_complete'] = True
+                    identities += complete['warm']['initial'] + complete['warm']['recovered']
+                else:
+                    identities += [complete['expiring'], complete['timed_out']]
                 deadline = time.monotonic() + 60
                 while time.monotonic() < deadline:
                     processes = [p for evidence in record['runtime_evidence'].values()

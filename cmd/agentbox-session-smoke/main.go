@@ -65,6 +65,8 @@ type report struct {
 	Timings   map[string]int64     `json:"timings_ms"`
 	Error     string               `json:"error,omitempty"`
 	Cleanup   bool                 `json:"cleanup_complete"`
+	Profile   string               `json:"profile"`
+	Warm      *warmReport          `json:"warm,omitempty"`
 }
 type probe struct {
 	namespace, run, owner, pool string
@@ -276,6 +278,17 @@ func run(ctx context.Context) (result report, retErr error) {
 	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: "client_rbac_scope", Passed: true})
 
 	defer func() { result = p.result }()
+	profile := os.Getenv("SESSION_PROFILE")
+	if profile == "" {
+		profile = "cold"
+	}
+	p.result.Profile = profile
+	if profile == "warm" {
+		return p.runWarm(ctx, config)
+	}
+	if profile != "cold" {
+		return result, errors.New("unknown session acceptance profile")
+	}
 	pool, err := dyn.Resource(pools).Namespace(namespace).Get(ctx, p.pool, metav1.GetOptions{})
 	if err != nil {
 		return result, err

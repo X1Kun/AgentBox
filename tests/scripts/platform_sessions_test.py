@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.platform_sessions import Sessions, SessionError, checked_source, render_controller, OWNER, RUN, ROLE
+from lib.platform_sessions import Sessions, SessionError, checked_source, render_controller, warm_fixture, OWNER, RUN, ROLE
 
 
 class SessionTests(unittest.TestCase):
@@ -82,6 +82,7 @@ class SessionTests(unittest.TestCase):
             {'metadata': {'labels': {OWNER: 'foreign'}}}]})]
         bundle = {'images': {'controller': {'name': 'local'}}, 'fingerprint': 'f'}
         with patch.object(self.sessions, 'attach'), patch.object(self.sessions, 'bundle', return_value=bundle), \
+                patch.object(self.sessions, 'load_images'), \
                 patch('lib.platform_sessions.render_controller', return_value={'kind': 'List', 'items': []}):
             with self.assertRaises(SessionError) as caught:
                 self.sessions.install(path)
@@ -166,6 +167,174 @@ class SessionTests(unittest.TestCase):
         api_rules = spec['egress'][2:]
         self.assertEqual({r['to'][0]['ipBlock']['cidr'] for r in api_rules}, {'10.96.0.1/32', '172.18.0.2/32'})
         self.assertEqual({p['port'] for r in api_rules for p in r['ports']}, {443, 6443})
+
+    def test_warm_profile_keeps_inventory_and_total_budget_distinct(self):
+        template = self.sessions.render('session-template.json', {'OWNER': 'owner', 'RUN': 'run', 'WORK_NS': 'work',
+            'CLIENT_NS': 'client', 'RUNTIME_IMAGE': 'image'})
+        quota = warm_fixture(template, 'work', 'owner', 'run')
+        self.assertEqual(template['items'][1]['metadata']['name'], 'python-warm')
+        self.assertEqual(template['items'][1]['spec']['replicas'], 2)
+        self.assertEqual(quota['spec']['hard']['pods'], '3')
+        self.assertEqual(quota['spec']['hard']['limits.cpu'], '1500m')
+        self.assertEqual(quota['spec']['hard']['limits.memory'], '1536Mi')
+        original = json.loads((ROOT / 'deploy/platform/session-template.json').read_text())
+        self.assertEqual(original['items'][1]['spec']['replicas'], 0)
+
+    def test_invalid_profile_rejected_before_external_operations(self):
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.test('dynamic')
+        self.assertEqual(caught.exception.reason, 'invalid_session_profile')
+        self.lab.operation_lock.assert_not_called()
+        self.lab.kubectl.assert_not_called()
+
+    def test_warm_supply_replacement_rejected_before_runtime_probe(self):
+        self.lab.kubectl.side_effect = [json.dumps({'metadata': {'uid': 'replaced'}}), json.dumps({'metadata': {'uid': 'pod'}})]
+        runtime = Mock()
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.inspect_supply([{'sandbox': 's', 'sandbox_uid': 'original', 'pod': 'p', 'pod_uid': 'pod'}],
+                                         'pool', 'work', 'run', runtime, {'runtime_evidence': {}})
+        self.assertEqual(caught.exception.reason, 'warm_supply_identity_changed')
+        runtime.runtime_evidence.assert_not_called()
+
+    def test_timeout_without_quota_proof_cannot_pass_exhaustion(self):
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.verify_exhaustion_rollback('work', {}, {})
+        self.assertEqual(caught.exception.reason, 'warm_quota_rejection_missing')
+        self.lab.kubectl.assert_not_called()
+
+    def test_extra_claim_replay_rejected(self):
+        self.lab.kubectl.return_value = json.dumps({'items': [{'metadata': {'uid': 'extra1'}}, {'metadata': {'uid': 'extra2'}}]})
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.observe_exhaustion('work', 'run', [], {})
+        self.assertEqual(caught.exception.reason, 'warm_attempt_replayed')
+
+    def test_failed_claim_identity_replacement_never_counted_as_cleanup(self):
+        self.lab.kubectl.side_effect = [json.dumps({'metadata': {'uid': 'q'}, 'spec': {'hard': {'pods': '3'}},
+                                                  'status': {'used': {'pods': '3'}}}),
+                                        json.dumps({'metadata': {'uid': 'replaced'}})]
+        proof = {'claim': {'name': 'claim', 'uid': 'original'}, 'sandbox': {'name': 's', 'uid': 's'}}
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.verify_exhaustion_rollback('work', {'warm': {'quota_uid': 'q'}}, {'quota_rejection': proof})
+        self.assertEqual(caught.exception.reason, 'warm_attempt_identity_changed')
+
+    def test_foreign_pool_never_deleted(self):
+        self.lab.kubectl.return_value = json.dumps({'metadata': {'uid': 'foreign', 'labels': {OWNER: 'a'*32}}})
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.stop_warm_pool('work', {'warm': {'pool_uid': 'owned'}})
+        self.assertEqual(caught.exception.reason, 'unowned_warm_pool')
+        self.assertFalse(any('delete' in call.args for call in self.lab.kubectl.call_args_list))
+
+    def test_cached_archive_requires_matching_bytes_and_image_ids(self):
+        archive = self.root / 'session-images-fingerprint.tar'
+        archive.write_bytes(b'archive')
+        bundle = {'fingerprint': 'fingerprint', 'docker_id': 'daemon', 'images': {'client': {'name': 'client', 'id': 'sha256:client'}}}
+        metadata = dict(docker_id=bundle['docker_id'], images=bundle['images'], sha256=hashlib.sha256(b'archive').hexdigest())
+        archive.with_suffix('.json').write_text(json.dumps(metadata))
+        self.assertEqual(self.sessions.image_archive(bundle), archive)
+        self.lab.runner.run.assert_not_called()
+        archive.write_bytes(b'changed')
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.image_archive(bundle)
+        self.assertEqual(caught.exception.reason, 'session_archive_changed')
+        archive.write_bytes(b'archive')
+        metadata['images']['client']['id'] = 'sha256:changed'
+        archive.with_suffix('.json').write_text(json.dumps(metadata))
+        bundle['images'] = {'client': {'name': 'client', 'id': 'sha256:client'}}
+        with self.assertRaises(SessionError):
+            self.sessions.image_archive(bundle)
+
+    def test_failed_export_never_publishes_a_cache(self):
+        bundle = {'fingerprint': 'failed', 'docker_id': 'daemon', 'images': {'client': {'name': 'client', 'id': 'id'}}}
+        self.lab.runner.run.side_effect = RuntimeError('export failed')
+        with self.assertRaises(RuntimeError):
+            self.sessions.image_archive(bundle)
+        self.assertFalse((self.root / 'session-images-failed.tar').exists())
+        self.assertFalse((self.root / 'session-images-failed.json').exists())
+        self.lab.write_json.assert_not_called()
+
+    def test_existing_images_require_every_node_tag_and_image_id(self):
+        self.sessions.state['node_ids'] = ['node-a', 'node-b']
+        bundle = {'images': {'client': {'name': 'agentbox/client:hash', 'id': 'sha256:expected'}}}
+        good = json.dumps({'images': [{'repoTags': ['docker.io/agentbox/client:hash'], 'id': 'sha256:expected'}]})
+        wrong = json.dumps({'images': [{'repoTags': ['docker.io/agentbox/client:hash'], 'id': 'sha256:other'}]})
+        self.lab.runner.run.side_effect = [good, good]
+        with patch.object(self.sessions, 'image_archive') as export:
+            self.sessions.load_images(bundle)
+            export.assert_not_called()
+        self.lab.runner.run.side_effect = [good, wrong]
+        self.assertFalse(self.sessions.node_images_match(bundle))
+
+    def test_remaining_node_ctr_prevents_overlapping_import(self):
+        self.sessions.state['node_ids'] = ['node-a']
+        self.lab.runner.run.return_value = 'systemd\nctr\ncontainerd\n'
+        with patch.object(self.sessions, 'node_images_match', return_value=False), \
+                patch.object(self.sessions, 'image_archive') as export:
+            with self.assertRaises(SessionError) as caught:
+                self.sessions.load_images({'images': {}})
+        self.assertEqual(caught.exception.reason, 'session_import_in_progress')
+        export.assert_not_called()
+
+    def test_control_plane_requires_both_native_controllers_ready(self):
+        pods = [{'metadata': {'name': role, 'labels': {'component': role}},
+                 'status': {'phase': 'Running', 'conditions': [{'type': 'Ready', 'status': 'True'}]}}
+                 for role in ('kube-controller-manager', 'kube-scheduler')]
+        self.lab.kubectl.return_value = json.dumps({'items': pods})
+        self.sessions.control_plane_ready()
+        pods[0]['status']['conditions'][0]['status'] = 'False'
+        pods[0]['status']['containerStatuses'] = [{'state': {'waiting': {'reason': 'CrashLoopBackOff'}}}]
+        self.lab.kubectl.return_value = json.dumps({'items': pods})
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.control_plane_ready()
+        self.assertEqual(caught.exception.reason, 'session_control_plane_not_ready')
+        self.assertIn('CrashLoopBackOff', str(caught.exception))
+        self.lab.write_state.assert_not_called()
+
+    def test_missing_native_control_plane_member_is_not_ready(self):
+        self.lab.kubectl.return_value = '{"items":[]}'
+        with self.assertRaises(SessionError) as caught:
+            self.sessions.control_plane_ready()
+        self.assertEqual(caught.exception.reason, 'session_control_plane_not_ready')
+
+    def test_image_import_waits_for_cri_cache_without_reimport(self):
+        self.sessions.state['node_ids'] = ['node-a']
+        self.lab.runner.run.return_value = 'systemd\ncontainerd\n'
+        with patch.object(self.sessions, 'node_images_match', side_effect=[False, False, True]) as matching, \
+                patch.object(self.sessions, 'image_archive', return_value=self.root/'images.tar'), \
+                patch('lib.platform_sessions.time.sleep'):
+            self.sessions.load_images({'images': {}})
+        self.assertEqual(matching.call_count, 3)
+        self.assertEqual(sum('image-archive' in call.args[0] for call in self.lab.runner.run.call_args_list), 1)
+
+    def test_image_import_still_rejects_ids_that_never_converge(self):
+        self.sessions.state['node_ids'] = ['node-a']
+        self.lab.runner.run.return_value = 'systemd\ncontainerd\n'
+        with patch.object(self.sessions, 'node_images_match', return_value=False), \
+                patch.object(self.sessions, 'image_archive', return_value=self.root/'images.tar'), \
+                patch('lib.platform_sessions.time.monotonic', side_effect=[0, 0, 61]), \
+                patch('lib.platform_sessions.time.sleep'):
+            with self.assertRaises(SessionError) as caught:
+                self.sessions.load_images({'images': {}})
+        self.assertEqual(caught.exception.reason, 'session_image_load_incomplete')
+
+    def test_final_marker_exit_race_is_not_replayed_or_called_cleanup(self):
+        error = RuntimeError('exec killed as client exits')
+        error.reason = 'command_failed'
+        self.lab.kubectl.side_effect = error
+        self.lab.runner.commands = [{'exit_code':137}]
+        record = {'cleanup_complete':False}
+        self.sessions.send_marker('client', 'pod', 'warm-finish', record)
+        self.lab.kubectl.assert_called_once()
+        self.assertFalse(record['cleanup_complete'])
+        self.assertEqual(record['final_marker_transport_error']['exit_code'],137)
+
+    def test_other_marker_errors_remain_fatal(self):
+        error = RuntimeError('exec failed')
+        error.reason = 'command_failed'
+        self.lab.kubectl.side_effect = error
+        for marker,code in [('warm-finish',1),('warm-start',137),('warm-release',137)]:
+            self.lab.runner.commands = [{'exit_code':code}]
+            with self.subTest(marker=marker,code=code), self.assertRaises(RuntimeError):
+                self.sessions.send_marker('client','pod',marker,{})
 
 
 if __name__ == '__main__':
