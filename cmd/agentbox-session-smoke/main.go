@@ -67,6 +67,7 @@ type report struct {
 	Cleanup   bool                 `json:"cleanup_complete"`
 	Profile   string               `json:"profile"`
 	Warm      *warmReport          `json:"warm,omitempty"`
+	Fault     *faultReport         `json:"fault,omitempty"`
 }
 type probe struct {
 	namespace, run, owner, pool string
@@ -155,9 +156,12 @@ func (p *probe) stable(ctx context.Context, s *sdk.Sandbox, expected identity) e
 	return nil
 }
 func waitMarker(ctx context.Context, name string) error {
+	return waitMarkerBudget(ctx, name, 120*time.Second)
+}
+func waitMarkerBudget(ctx context.Context, name string, budget time.Duration) error {
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
-	until := time.NewTimer(120 * time.Second)
+	until := time.NewTimer(budget)
 	defer until.Stop()
 	for {
 		if _, err := os.Stat(filepath.Join("/work", name)); err == nil {
@@ -285,6 +289,9 @@ func run(ctx context.Context) (result report, retErr error) {
 	p.result.Profile = profile
 	if profile == "warm" {
 		return p.runWarm(ctx, config)
+	}
+	if profile == "fault" {
+		return p.runFault(ctx, config)
 	}
 	if profile != "cold" {
 		return result, errors.New("unknown session acceptance profile")

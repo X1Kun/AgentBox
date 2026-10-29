@@ -2,7 +2,7 @@
 
 状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供普通 Job、gVisor 运行时及 Calico NetworkPolicy 实验入口；已增加上游冷会话、固定预热池与 Go SDK 验收入口；Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
 
-按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [冷会话验收](#cold-sessions) · [固定预热池](#warm-pool) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
+按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [冷会话验收](#cold-sessions) · [固定预热池](#warm-pool) · [会话故障](#session-faults) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
 
 <a id="platform-lab"></a>
 ## 独立 Kubernetes 功能实验
@@ -158,7 +158,7 @@ GOPROXY=https://goproxy.cn,direct python3 scripts/platform_lab.py session-build 
   --session-python-source docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
 ```
 
-build 核对上游模块版本/校验与工具链，用 `go build -mod=readonly` 构建上游 sandboxd 和本项目的 Go 验收客户端，再将二进制放入固定 Python 基镜像。上游 controller 使用官方发布 digest。Docker 构建只发送临时最小上下文，不发送仓库或凭据；本地镜像按输入哈希命名，bundle 记录来源、二进制 SHA-256、Docker daemon ID 和实际 image ID。变更 Go/镜像输入后必须重新 build，镜像别名被替换时拒绝继续。
+build 核对上游模块版本/校验与工具链，用 `go build -mod=readonly` 构建上游 sandboxd 和本项目的 Go 验收客户端，再将二进制放入固定 Python 基镜像。上游 controller 使用官方发布 digest。Docker 构建只发送临时最小上下文，不发送仓库或凭据；本地镜像按输入哈希命名，bundle 记录来源、二进制 SHA-256、Docker daemon ID 和实际 image ID。变更 Go/镜像输入后必须重新 build，镜像别名被替换时拒绝继续。 仅客户端变化时，sandboxd 可复用前次同 Docker daemon、工具链、SDK 校验和、go.mod/go.sum、锁文件及 runtime Dockerfile 对应的缓存二进制；复用前核对其 SHA-256，来源不同则重编译，内容不符则拒绝。报告单列 reused_binaries。
 
 install 校验官方 release YAML，再由固定 kubectl 解析；部署上游合并控制器及四个 CRD，不自研会话控制器。只增加归属、固定镜像/节点及有界资源配置；现有外来对象拒绝接管。控制器安装后改变版本/模板定义需新建实验环境，不能直接覆盖运行中的 profile。`--session-manifest PATH` 可指定同校验值的本地清单。三个 session 动作支持 `--dry-run`；build 只变更本地构建产物，不变更集群。 镜像准备分为 Docker 导出（最多 600s）和 kind 归档导入（最多 300s）；归档在本地按 bundle 命名，记录 Docker daemon、image ID 与 SHA-256，重试前重新校验。失败导出不发布缓存，内容或身份不匹配会拒绝复用。 每个节点都核对 tag 与实际 image ID；内容已齐全时跳过导入，存在未完成 ctr 操作时拒绝叠加。导入成功后为 CRI 镜像缓存同步保留独立 60s 收敛窗口，超时仍拒绝继续。安装预算与会话执行/清理预算分开。
 
@@ -199,6 +199,29 @@ make platform-delete
 结束握手的 exec 可能在 Go 主进程退出时返回 137。仅最后一个标记允许记录这种未知回执且不重放；仍须看到本轮完整成功事件、成功 Job 和独立资源清理，否则验收失败。其他标记、其他退出码仍立即失败。
 
 客户端 RBAC 仅新增 ResourceQuota 只读权限，不能调配额、改副本数或创建 Pod。此 profile 不启用动态池、空闲回收、暂停、监控压测或性能测量。控制器重启、Pod 故障恢复、TTL/关闭竞争和产品 API/MCP 仍须后续独立验收。
+
+<a id="session-faults"></a>
+## 会话故障行为验收
+
+在同一已安装的 Calico/gVisor/Agent Sandbox 实验集群中运行：
+
+```bash
+make platform-session-build
+make platform-session-install
+make platform-session-fault-test
+```
+
+此入口使用零预热副本和顺序创建的受控会话，仅做行为验证。 八项实际行为及清理已通过，范围见[验证记录](validation.md#session-faults)。构建输入改变后按现有安装归属规则准备新实验集群；下载镜像、版本、受限 RBAC 和网络策略仍沿用前文。不会运行付费模型或压测。
+
+Go 客户端先在会话内启动等待文件标记的命令；host 核对本项目安装的 Deployment UID、ReplicaSet 归属及 Pod 镜像后，只删除该上游控制器 Pod，等待旧 Pod 消失、新 UID 的 Pod Ready。客户端再放行该命令，检查输出、文件及 Claim/Sandbox/Pod/Service UID 未变。这项故障不操作原生 kube-controller-manager 或 scheduler。
+
+接着 host 删除本轮指定执行 Pod，DELETE 请求带 UID 前置条件，等待同一 Claim/Sandbox 对应的新 Pod Ready。客户端使用独立 SDK client 显式观察新环境，核对 Pod UID 已变、原 emptyDir 文件消失，并让原身份检查失败；不对旧句柄重放执行。随后关闭变化后的会话，通过新 Claim 验证干净环境可执行。删除 Pod 与容器终态失败不同，此轮不验证 failedPodPolicy=Retain/Recreate 的全部分支。
+
+最后 host 通过 UID 条件补丁缩短本轮 Claim 的 shutdownTime，客户端在该到期点发起显式 Close，允许到期删除或 Close 任一方先完成；检查对象收敛、重复 Close 安全、关闭后拒绝执行。它验证边界处的终态语义，不统计或声称每次都发生相同并发交错。
+
+host 独立核对三组执行 Pod 的运行时和资源归属，最后等待 API、CRI、捕获进程及本轮 namespace 回收。执行 Pod 不挂载集群凭据，Go 客户端没有删除 Pod、重启控制器或 patch Claim 的权限；故障注入仅由绑定专用 kubeconfig 的宿主验收器执行。失败保留现场，最终按现有 platform-delete 归属流程清理。
+
+Pod UID 检查目前属于验收器；上游 SDK 的缓存句柄不是产品身份防护的替代。P2 产品层仍须将此边界落实到每个请求的归属与身份核对。本轮不宣称对外多租户鉴权、持久化工作区或故障后透明续接。
 
 <a id="platform-plan"></a>
 ## 会话与批任务平台部署计划

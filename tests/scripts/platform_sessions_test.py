@@ -321,11 +321,13 @@ class SessionTests(unittest.TestCase):
         error.reason = 'command_failed'
         self.lab.kubectl.side_effect = error
         self.lab.runner.commands = [{'exit_code':137}]
-        record = {'cleanup_complete':False}
-        self.sessions.send_marker('client', 'pod', 'warm-finish', record)
-        self.lab.kubectl.assert_called_once()
-        self.assertFalse(record['cleanup_complete'])
-        self.assertEqual(record['final_marker_transport_error']['exit_code'],137)
+        for marker in ('warm-finish', 'fault-finish'):
+            self.lab.kubectl.reset_mock()
+            record = {'cleanup_complete':False}
+            self.sessions.send_marker('client', 'pod', marker, record)
+            self.lab.kubectl.assert_called_once()
+            self.assertFalse(record['cleanup_complete'])
+            self.assertEqual(record['final_marker_transport_error']['exit_code'],137)
 
     def test_other_marker_errors_remain_fatal(self):
         error = RuntimeError('exec failed')
@@ -335,6 +337,89 @@ class SessionTests(unittest.TestCase):
             self.lab.runner.commands = [{'exit_code':code}]
             with self.subTest(marker=marker,code=code), self.assertRaises(RuntimeError):
                 self.sessions.send_marker('client','pod',marker,{})
+
+    def test_runtime_reuse_requires_pinned_inputs_and_checksum(self):
+        keys=('go.mod','go.sum','deploy/platform/session.lock.json','deploy/platform/sandbox-runtime.Dockerfile')
+        inputs={key:'locked' for key in keys}
+        folder=self.root/('session-build-'+'a'*16);folder.mkdir();binary=folder/'sandboxd';binary.write_bytes(b'verified runtime')
+        previous={'docker_id':'daemon','go_version':'go version go1.27.1 linux/amd64','sdk_version':self.sessions.lock['version'],
+                  'sdk_sum':self.sessions.lock['module_sum'],'inputs':inputs,'fingerprint':'a'*64,
+                  'binary_sha256':{'sandboxd':hashlib.sha256(binary.read_bytes()).hexdigest()}}
+        self.sessions.bundle_path.write_text(json.dumps(previous))
+        self.assertEqual(self.sessions.cached_runtime_binary(inputs,'daemon',previous['go_version']),binary)
+        changed=dict(inputs);changed['go.mod']='changed'
+        self.assertIsNone(self.sessions.cached_runtime_binary(changed,'daemon',previous['go_version']))
+        self.assertIsNone(self.sessions.cached_runtime_binary(inputs,'other',previous['go_version']))
+        binary.write_bytes(b'changed runtime')
+        with self.assertRaises(SessionError) as caught:self.sessions.cached_runtime_binary(inputs,'daemon',previous['go_version'])
+        self.assertEqual(caught.exception.reason,'session_runtime_binary_changed')
+
+
+
+class FaultTests(unittest.TestCase):
+    def setUp(self):
+        from lib.session_faults import FaultActions
+        self.lab = Mock()
+        self.sessions = Mock()
+        self.sessions.lab = self.lab
+        self.sessions.state = {'session':'owner','sessions':{'controller_uid':'deployment'}}
+        self.actions = FaultActions(self.sessions,Mock(),'work','run','controller-image')
+
+    def test_fault_target_requires_uid_owner_and_run(self):
+        from lib.session_faults import require_identity
+        good={'metadata':{'name':'pod','uid':'uid','labels':{OWNER:'owner',RUN:'run'}}}
+        require_identity(good,'uid','owner','run')
+        for uid,owner,run in [('other','owner','run'),('uid','other','run'),('uid','owner','other')]:
+            with self.subTest(uid=uid,owner=owner,run=run),self.assertRaises(SessionError):
+                require_identity(good,uid,owner,run)
+
+    def test_pod_delete_has_server_side_uid_precondition(self):
+        self.actions.delete_pod('work',{'metadata':{'name':'victim','uid':'original'}})
+        args=self.lab.kubectl.call_args.args
+        body=json.loads(self.lab.kubectl.call_args.kwargs['input_text'])
+        self.assertEqual(args[:3],('delete','--raw','/api/v1/namespaces/work/pods/victim'))
+        self.assertEqual(body['preconditions'],{'uid':'original'})
+        self.assertNotIn('gracePeriodSeconds',body)
+
+    def test_foreign_controller_deployment_is_never_restarted(self):
+        with patch.object(self.actions,'get',return_value={'metadata':{'name':'controller','uid':'other','labels':{OWNER:'owner'}}}), \
+                patch.object(self.actions,'delete_pod') as delete:
+            with self.assertRaises(SessionError):self.actions.restart_controller({})
+        delete.assert_not_called()
+
+    def test_controller_pod_requires_owned_replicaset(self):
+        pod={'metadata':{'name':'controller','uid':'p','ownerReferences':[{'kind':'ReplicaSet','name':'rs','uid':'rs-id','controller':True}]},
+             'spec':{'containers':[{'image':'controller-image'}]}}
+        rs={'metadata':{'name':'rs','uid':'rs-id','ownerReferences':[{'uid':'foreign','controller':True}]}}
+        with patch.object(self.actions,'get',return_value=rs):
+            with self.assertRaises(SessionError) as caught:self.actions.require_controller_pod(pod,'deployment')
+        self.assertEqual(caught.exception.reason,'unowned_fault_controller_pod')
+
+    def test_replaced_session_pod_is_never_deleted(self):
+        identity={'pod':'pod','pod_uid':'old','sandbox_uid':'sandbox'}
+        replacement={'metadata':{'name':'pod','uid':'new','labels':{OWNER:'owner',RUN:'run'}}}
+        with patch.object(self.actions,'get',return_value=replacement),patch.object(self.actions,'delete_pod') as delete:
+            with self.assertRaises(SessionError):self.actions.pod_loss(identity,{})
+        delete.assert_not_called()
+
+    def test_foreign_expiry_claim_is_never_patched(self):
+        identity={'pod_uid':'p','claim':'claim','claim_uid':'old'}
+        claim={'metadata':{'name':'claim','uid':'other','labels':{OWNER:'owner',RUN:'run'}}}
+        with patch.object(self.actions,'get',return_value=claim):
+            with self.assertRaises(SessionError):self.actions.expire_claim(identity,{'runtime_evidence':{}})
+        self.lab.kubectl.assert_not_called()
+
+    def test_expiry_patch_tests_uid_before_shortening_deadline(self):
+        identity={'pod_uid':'p','claim':'claim','claim_uid':'uid'}
+        claim={'metadata':{'name':'claim','uid':'uid','labels':{OWNER:'owner',RUN:'run'}}}
+        self.lab.kubectl.return_value=json.dumps(claim)
+        record={'runtime_evidence':{}}
+        with patch.object(self.actions,'get',return_value=claim):self.actions.expire_claim(identity,record)
+        args=self.lab.kubectl.call_args.args
+        patch_value=json.loads(args[args.index('-p')+1])
+        self.assertEqual(patch_value[0],{'op':'test','path':'/metadata/uid','value':'uid'})
+        self.assertEqual(patch_value[1]['path'],'/spec/lifecycle/shutdownTime')
+        self.assertEqual(record['expiry_close']['claim_uid'],'uid')
 
 
 if __name__ == '__main__':

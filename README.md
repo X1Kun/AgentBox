@@ -26,7 +26,9 @@ gVisor 运行时使用独立的 `make platform-gvisor-install` / `make platform-
 
 固定预热池新增 `make platform-session-warm-test` 入口，用于验证并发领取、补充、配额耗尽和恢复；九项真实行为检查与资源清理已通过，见[验收记录](docs/validation.md#warm-pool)。库存目标与总 Pod 配额分别声明，见[操作说明](docs/operations.md#warm-pool)。当前只做行为验证，不进行压测。
 
-后续顺序：补齐会话故障行为 → Go API/MCP 与 Daemon 退役 → 图片批任务/Kueue → 健康准入对照。只有在途竞争成为明确瓶颈时，再评价 Koordinator。阶段与门槛见[路线图](docs/roadmap.md)。
+会话故障新增 `make platform-session-fault-test` 入口，验证上游控制器重启、执行 Pod 丢失后的身份变化，以及到期与关闭相遇时的回收。八项真实检查和清理已通过，见[故障验收](docs/validation.md#session-faults)。
+
+后续顺序：Go API/MCP 与 Daemon 退役 → 图片批任务/Kueue → 健康准入对照。只有在途竞争成为明确瓶颈时，再评价 Koordinator。阶段与门槛见[路线图](docs/roadmap.md)。
 
 Go 用于产品服务和自研 Controller；Python 用于环境验收、实验分析及执行负载。当前检查仍覆盖尚未移除的旧代码，不能通过下列命令启动目标平台：
 
