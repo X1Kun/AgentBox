@@ -29,6 +29,8 @@ Go 产品层适配上游 Agent Sandbox 与 Kubernetes Job，不调用 agentboxd�
 - 旧在途请求先排空或明确取消，未知结果不得自动迁入新会话/Job；切换后旧调用明确停用，新平台失败不自动回落 Daemon。
 - 通用模型客户端、输入/输出预算和错误处理可按职责复用；旧 cleanup_complete 及 timings 不直接作为新平台字段解释。
 
+执行 Pod 重建可能保留 Claim/Service 名称，但 Pod UID 和 emptyDir 工作目录已经变化；旧句柄不能据此继续代表原环境。当前 fault 验收器会显式识别这种变化并结束原会话，产品接口中的逐请求身份保护仍属于 P2。
+
 新契约依据见[会话设计](../DESIGN.md#session)、[批任务设计](../DESIGN.md#batch)，切换门槛见[路线图](roadmap.md#retirement)。以下所有 HTTP/MCP 示例仅适用于旧链路。
 
 <a id="http"></a>

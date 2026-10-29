@@ -30,6 +30,15 @@ WARM_CHECKS = {
     'used_sessions_deleted_and_closed_handles_rejected', 'capacity_recovers_with_clean_new_environment',
     'fixed_inventory_restored_without_used_members',
 }
+FAULT_CHECKS = {
+    'client_rbac_scope', 'controller_restart_keeps_session_identity_and_workspace',
+    'inflight_command_survives_controller_restart_once',
+    'pod_replacement_changes_uid_and_invalidates_old_identity',
+    'replacement_environment_has_no_implicit_workspace_restore',
+    'changed_session_closed_without_command_replay',
+    'explicit_new_claim_gets_clean_executable_environment',
+    'expiry_and_close_converge_with_idempotent_close',
+}
 
 
 def warm_fixture(template, namespace, owner, run_id):
@@ -111,6 +120,26 @@ class Sessions:
     def docker_image(self, name):
         return json.loads(self.lab.runner.run([self.lab.tools['docker'], 'image', 'inspect', name]))[0]
 
+    def cached_runtime_binary(self, inputs, docker_id, go_version):
+        if not self.bundle_path.is_file():
+            return None
+        previous = json.loads(self.bundle_path.read_text())
+        runtime_inputs = ('go.mod', 'go.sum', 'deploy/platform/session.lock.json',
+                          'deploy/platform/sandbox-runtime.Dockerfile')
+        if (previous.get('docker_id') != docker_id or previous.get('go_version') != go_version.strip() or
+                previous.get('sdk_version') != self.lock['version'] or previous.get('sdk_sum') != self.lock['module_sum'] or
+                any(previous.get('inputs', {}).get(k) != inputs.get(k) for k in runtime_inputs)):
+            return None
+        fingerprint = previous.get('fingerprint', '')
+        if not re.fullmatch(r'[a-f0-9]{64}', fingerprint):
+            raise SessionError('invalid_session_bundle', 'invalid previous build fingerprint')
+        binary = self.lab.state_dir / ('session-build-' + fingerprint[:16]) / 'sandboxd'
+        if not binary.is_file():
+            return None
+        if digest(binary) != previous.get('binary_sha256', {}).get('sandboxd'):
+            raise SessionError('session_runtime_binary_changed', 'cached upstream runtime binary checksum differs')
+        return binary
+
     def build(self, controller_source=None, python_source=None):
         controller_source = checked_source(self.lock['controller_image'], controller_source)
         python_image = self.lab.lock['smoke']['image']
@@ -137,12 +166,19 @@ class Sessions:
             directory = self.lab.state_dir / ('session-build-' + fingerprint[:16])
             directory.mkdir(parents=True, exist_ok=True)
             binary_hashes = {}
+            cached_runtime = self.cached_runtime_binary(inputs, docker['ID'], version)
+            reused_binaries = []
             for name, package, flags in [
                 ('sandboxd', self.lock['module'] + '/packages/sandboxd/cmd/sandboxd',
                  '-s -w -X sigs.k8s.io/agent-sandbox/internal/version.gitVersion=' + self.lock['version']),
                 ('agentbox-session-smoke', './cmd/agentbox-session-smoke', '-s -w')]:
                 path = directory / name
-                self.lab.runner.run(['env', 'CGO_ENABLED=0', 'GOOS=linux', 'GOARCH=amd64',
+                if name == 'sandboxd' and cached_runtime is not None:
+                    if cached_runtime != path:
+                        shutil.copy2(cached_runtime, path)
+                    reused_binaries.append(name)
+                else:
+                    self.lab.runner.run(['env', 'CGO_ENABLED=0', 'GOOS=linux', 'GOARCH=amd64',
                                      'go', 'build', '-p=2', '-mod=readonly', '-trimpath', '-buildvcs=false',
                                      '-ldflags=' + flags, '-o', str(path), package], timeout=900)
                 binary_hashes[name] = digest(path)
@@ -160,6 +196,7 @@ class Sessions:
             images = {kind: {'name': name, 'id': self.docker_image(name)['Id']} for kind, name in tags.items()}
             result = {'schema_version': 1, 'docker_id': docker['ID'], 'inputs': inputs, 'fingerprint': fingerprint,
                       'images': images, 'binary_sha256': binary_hashes, 'go_version': version.strip(),
+                      'reused_binaries': reused_binaries,
                       'sdk_version': module['Version'], 'sdk_sum': module['Sum'],
                       'controller_source': controller_source, 'python_source': python_source}
             self.lab.write_json(self.bundle_path, result)
@@ -538,12 +575,12 @@ class Sessions:
             # independently verify all runtime and namespace cleanup.
             commands = self.lab.runner.commands
             code = commands[-1].get('exit_code') if commands else None
-            if marker != 'warm-finish' or getattr(error, 'reason', None) != 'command_failed' or code != 137:
+            if marker not in ('warm-finish', 'fault-finish') or getattr(error, 'reason', None) != 'command_failed' or code != 137:
                 raise
             record['final_marker_transport_error'] = {'exit_code': code, 'detail': str(error)}
 
     def test(self, profile="cold"):
-        if profile not in ('cold', 'warm'):
+        if profile not in ('cold', 'warm', 'fault'):
             raise SessionError('invalid_session_profile', profile)
         with self.lab.operation_lock():
             runtime = self.attach()
@@ -573,6 +610,10 @@ class Sessions:
                 self.create(self.render('session-rbac.json', params))
                 self.create(self.client_policy(params['CLIENT_NS'], params['WORK_NS'], run_id))
                 self.policies_ready(params['WORK_NS'], template_uid)
+                faults = None
+                if profile == 'fault':
+                    from lib.session_faults import FaultActions
+                    faults = FaultActions(self, runtime, params['WORK_NS'], run_id, bundle['images']['controller']['name'])
                 observer = self.observer(namespaces['observer']['name'], run_id, bundle['images']['client']['name']) if profile == 'cold' else None
                 job_spec = self.render('session-client-job.json', params)
                 job_spec['spec']['template']['spec']['containers'][0]['env'].append({'name': 'SESSION_PROFILE', 'value': profile})
@@ -617,7 +658,9 @@ class Sessions:
                                 if stage == 'failed':
                                     raise SessionError('go_session_acceptance_failed', event.get('error', 'unknown error'))
                                 marker = None
-                                if profile == 'warm' and stage == 'warm-prepared':
+                                if profile == 'fault' and stage.startswith('fault-'):
+                                    marker = faults.handle(event, record)
+                                elif profile == 'warm' and stage == 'warm-prepared':
                                     self.inspect_supply(event['warm']['initial'], event['warm']['pool_uid'], params['WORK_NS'], run_id, runtime, record)
                                     marker = 'warm-start'
                                 elif profile == 'warm' and stage == 'warm-claimed':
@@ -658,8 +701,10 @@ class Sessions:
                     if any(c['type'] == 'Failed' and c['status'] == 'True' for c in conditions):
                         raise SessionError('session_client_job_failed', json.dumps(job['status']))
                     if any(c['type'] == 'Complete' and c['status'] == 'True' for c in conditions):
-                        expected = WARM_CHECKS if profile == 'warm' else EXPECTED_CHECKS
-                        required = {'warm-prepared', 'warm-claimed', 'warm-exhausted', 'warm-reused', 'warm-recovered'} if profile == 'warm' else {'ready', 'timeout-ready', 'closing-active'}
+                        expected = {'cold': EXPECTED_CHECKS, 'warm': WARM_CHECKS, 'fault': FAULT_CHECKS}[profile]
+                        required = {'warm': {'warm-prepared', 'warm-claimed', 'warm-exhausted', 'warm-reused', 'warm-recovered'},
+                                    'cold': {'ready', 'timeout-ready', 'closing-active'},
+                                    'fault': {'fault-controller', 'fault-pod-loss', 'fault-replacement', 'fault-expiry-close', 'fault-finished'}}[profile]
                         if (complete is None or not complete.get('cleanup_complete') or
                                 {c['name'] for c in complete.get('checks', [])} != expected or
                                 not all(c['passed'] for c in complete['checks']) or
@@ -674,7 +719,7 @@ class Sessions:
                     self.stop_warm_pool(params['WORK_NS'], complete)
                     record['pool_cleanup_complete'] = True
                     identities += complete['warm']['initial'] + complete['warm']['recovered']
-                else:
+                elif profile == 'cold':
                     identities += [complete['expiring'], complete['timed_out']]
                 deadline = time.monotonic() + 60
                 while time.monotonic() < deadline:

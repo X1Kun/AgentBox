@@ -111,6 +111,19 @@ Go 检查覆盖固定目标、领取身份、文件隔离、补充、耗尽等�
 
 此轮不包括控制器重启、Pod 故障恢复、TTL/关闭竞争、动态容量、idle/暂停、生产多租户鉴权或产品 API/MCP。历史冷会话与性能证据保持原样，不把行为通过解释为性能提升或生产就绪。
 
+<a id="session-faults"></a>
+## 会话故障行为验收
+
+入口见[运维指南](operations.md#session-faults)。此轮仅验证三个受控场景：指定上游控制器 Pod 重启时在途命令/文件/身份保持；指定执行 Pod 删除后出现新 UID 与空工作目录，旧身份不能继续代表原环境；到期点 Close、重复 Close 与对象/运行时回收。
+
+host 故障操作核对 UID、namespace/run 归属及 Deployment→ReplicaSet→Pod 链，删除带服务端 UID 前置条件，期限补丁先测试 Claim UID。Go 客户端没有故障注入权限。代码、回归与真实行为结果分别记录，实测未完成前不标记通过；保留冷会话/固定池的历史记录。
+
+2026-10-29 完整 `session-test --session-profile fault` 已成功退出，八项检查全部通过。执行 Pod 的三组运行身份均经 CRI→runsc/Sentry→cgroup 核对，测试 API 对象、对应 CRI sandbox、捕获进程及两个 namespace 均已回收；Controller Deployment UID 保持，新控制器 Pod UID 与原 Pod 不同。Claim/Sandbox/Service 身份不变时，执行 Pod 的新 UID 及旧工作目录丢失均被明确识别。证据和逐阶段源码哈希见[故障验收 JSON](data/platform-session-fault-validation.json)。
+
+准备阶段保留了 Calico 首次等待超时、sandboxd 重编译超时、镜像导出/导入和控制器冷启动等待失败记录；复用已有节点与校验归档继续，不放宽健康条件或工作负载期限。针对未变的上游 runtime，补充同工具链、SDK/依赖输入和二进制 SHA-256 的缓存复用，构建报告单列复用项。Go 新增身份边界回归 2 项；会话脚本回归 37 项，平台脚本合计 95 项，最终完整 `make check` 与定向脚本回归均通过，结果分别留证。实验集群已清理，其他集群保留。
+
+Pod 删除后的重建不等于容器终态失败的 Retain/Recreate 策略已全面验证，也不代表解释器状态或 emptyDir 可恢复。当前身份拒绝属于可信验收器，产品 API/MCP 的归属与逐请求身份防护仍待 P2 交付。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>

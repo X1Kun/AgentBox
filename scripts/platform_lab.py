@@ -489,7 +489,7 @@ def arguments(argv=None):
     parser.add_argument("--session-controller-source", help="digest-preserving controller image source (session-build)")
     parser.add_argument("--session-python-source", help="digest-preserving Python base source (session-build)")
     parser.add_argument("--session-manifest", type=Path, help="fixed upstream release YAML (session-install)")
-    parser.add_argument("--session-profile", choices=("cold", "warm"), default="cold", help="session-test behavior fixture; warm has fixed inventory 2 and total Pod quota 3")
+    parser.add_argument("--session-profile", choices=("cold", "warm", "fault"), default="cold", help="session-test fixture: cold, fixed warm pool, or scoped lifecycle faults")
     parser.add_argument("--gvisor-case", choices=CASES, help="run only one gvisor-test case; default runs all")
     parser.add_argument("--gvisor-archive", type=Path, help="verified complete gVisor tar.bz2 (gvisor-install only)")
     parser.add_argument("--timeout", type=int, default=180, help="Job/probe observation budget per startup or terminal phase, 30..600 seconds")
@@ -548,6 +548,7 @@ def main(argv=None):
                                  source_root / "deploy/platform/kind-calico.yaml", *sorted((source_root / "deploy/platform").glob("network*")),
                                  *sorted((source_root / "deploy/platform").glob("gvisor*")),
                                  source_root / "scripts/lib/platform_sessions.py",
+                                 source_root / "scripts/lib/session_faults.py",
                                  *sorted((source_root / "deploy/platform").glob("session*")), source_root / "deploy/platform/sandbox-runtime.Dockerfile",
                                  *sorted((source_root / "cmd/agentbox-session-smoke").glob("*.go")),
                                  *sorted((source_root / "internal/sessionprobe").glob("*.go")), source_root / "go.mod", source_root / "go.sum"]}}
