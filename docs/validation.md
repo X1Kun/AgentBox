@@ -122,7 +122,35 @@ host 故障操作核对 UID、namespace/run 归属及 Deployment→ReplicaSet→
 
 准备阶段保留了 Calico 首次等待超时、sandboxd 重编译超时、镜像导出/导入和控制器冷启动等待失败记录；复用已有节点与校验归档继续，不放宽健康条件或工作负载期限。针对未变的上游 runtime，补充同工具链、SDK/依赖输入和二进制 SHA-256 的缓存复用，构建报告单列复用项。Go 新增身份边界回归 2 项；会话脚本回归 37 项，平台脚本合计 95 项，最终完整 `make check` 与定向脚本回归均通过，结果分别留证。实验集群已清理，其他集群保留。
 
-Pod 删除后的重建不等于容器终态失败的 Retain/Recreate 策略已全面验证，也不代表解释器状态或 emptyDir 可恢复。当前身份拒绝属于可信验收器，产品 API/MCP 的归属与逐请求身份防护仍待 P2 交付。
+Pod 删除后的重建不等于容器终态失败的 Retain/Recreate 策略已全面验证，也不代表解释器状态或 emptyDir 可恢复。该故障用例的身份拒绝属于可信验收器；生命周期 API 的产品身份防护另行验收，执行/文件/MCP 的防护仍待后续交付。
+
+### 平台初始化故障与修复
+
+2026-10-29 的 Calico 超时已确认使用国内镜像前缀，并非仍在直连 quay.io。Worker 的前两次 CRI 镜像准备分别约 127 秒、62 秒，期间还有串行 init container 和本地处理；CRI 总耗时不能拆算成纯下载速度。会话安装失败时的 etcd 日志记录 `slow fdatasync` 约 9.03 秒，API Server 同时出现 etcd 请求超时，etcd/containerd 线程处于磁盘等待。这是运行中控制面延迟，延长首次固定 sleep 不能解决。
+
+安装脚本新增 `platform-up` 依赖编排、有限连续健康观察、原预算内 GET/version 重试，以及 Calico 镜像准备与 rollout 分开留证。写入/执行、权限/证书错误不自动重试；缺失前置条件不再触发昂贵的完整日志导出。会话镜像导入后重新观察控制面，再提交控制器资源。旧取消测试改用轻量 shell 替身并在所有退出路径 join 后台创建操作，之后才关闭文件，生产执行期限不变。初始化修复与执行/文件接口分别留证，不把安装成功当成业务验收成功。
+
+自动入口已在同一集群完成恢复安装，未重建节点；`make check`（包并发上限 2）完整通过。原始超时、最终恢复与源码关联见[初始化恢复记录](data/platform-bootstrap-recovery-validation.json)。国内源和健康等待不能消除磁盘竞争，因此仍保留有限期限与失败证据。
+
+<a id="session-api"></a>
+## 生命周期 API 行为验收
+
+`make platform-api-test` 在专用 namespace/受限 ServiceAccount 下启动真实 Go HTTP 服务，客户端使用两个配置身份；管理员仅搭建与注入 Pod 删除，API 自身没有 Secret、Pod 写入或控制器权限。所有令牌及 kubeconfig 只存私有临时目录，不写入报告或执行 Pod。
+
+2026-10-29 六项真实 API 检查通过：权限范围、异步幂等/参数冲突、重启恢复绑定、跨身份拒绝、Pod UID 变化后的持久失效，以及关闭收敛/幂等/创建记录保留。服务启动三次，工作区 Pod 删除并重建后始终保留原身份修订；GET 仅在同一环境暂时不 Ready 时恢复 ready，终态或 UID 变化会持久失效。产品 closed 需控制器本代终止确认及关联对象消失，随后 host 独立核对原/新两个 gVisor sandbox 与进程回收。结果与分阶段源码哈希见[API 验收 JSON](data/session-lifecycle-api-validation.json)。
+
+重试记录保留：首次启动探测和只读查询遇到临时 503，验收器改为有限收敛；一次执行 Pod 删除先暴露终态，补充“已绑定环境终止即失效”映射及普通 readiness 抖动不失效回归后，完整入口通过。新增产品 Go 测试共 20 项，涵盖响应丢失、并发创建/绑定、UID/resourceVersion 冲突、原生终止确认、剩余 Service 检查、错误脱敏、HTTP 输入与在途容量边界。
+
+上述六项记录只覆盖生命周期，不验证执行请求原子 UID 防护、输出截断、多副本执行互斥、公共网络 SaaS/IAM 或生产 SLO。执行/文件接口已另行完成下述真实验收；MCP 尚未接入。Claim 记录使用 Retain，按管理员配额/清理管理；API 进程退出不会自动删除会话。平台测试成功不替代每个部署环境的持续稳定性验证。
+
+<a id="session-execution"></a>
+### 执行与文件 API 行为验收
+
+2026-10-29 `make platform-api-exec-test` 完整通过七项真实检查：受限权限；CSV/脚本写入、执行、报告下载和第二次调用；二进制文件、会话/身份隔离及 revision 拒绝；非零退出恢复和路径/越界链接；同会话并发拒绝及运行中关闭；命令超时关闭；输出超限关闭。报告断言总和 10、记录数 3，第二次调用读取文件输出 11，上一进程的 Python 变量不保留。
+
+Go API 在普通 Pod 内提供 TLS，实际 Python 由锁定上游 sandboxd 在 Worker gVisor Pod 内执行，宿主不向 gVisor Pod port-forward。host 独立确认四个执行环境的 runtime/cgroup 归属，以及最后无残留进程或 CRI sandbox；两个临时 namespace 已删除，开发集群和上游组件保留。调用身份与 TLS 私钥未写入镜像/证据。结果、源码哈希与边界见[执行 API 验收 JSON](data/session-execution-api-validation.json)。
+
+产品相关 Go 顶层用例共 32 项，覆盖持久互斥、取消/未知结果关闭、原连接校验、上游流协议完整性与输入/输出预算；本次完整 `make check` 通过。故障重启后的互斥采用假客户端回归，真实验收未增加 API 多副本部署或更多故障组合。TCP 固定连接依赖可信 Kubernetes/CNI，未提供跨系统原子执行凭据或运行时远端证明；成功响应丢失仍无结果账本，不得重放命令。
 
 <a id="runtime"></a>
 <a id="warm"></a>

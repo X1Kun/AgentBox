@@ -129,6 +129,35 @@ class Network:
             raise NetworkError('calico_pool_changed', 'expected the locked IPv4 VXLAN pool')
         return {'pool': pool[0]['spec'], 'images': installed['images'], 'components': installed['components']}
 
+    def prepare_images(self, images):
+        """Separate node image preparation from the existing Pod rollout budget."""
+        records = []
+        for node in self.state['node_ids']:
+            def cached():
+                return json.loads(self.lab.runner.run([self.lab.tools['docker'], 'exec', node,
+                    'crictl', 'images', '-o', 'json']))['images']
+            inventory = cached()
+            for image in sorted(set(images.values())):
+                started = time.monotonic()
+                found = [v for v in inventory if image in v.get('repoDigests', [])]
+                reused = bool(found)
+                if not found:
+                    self.lab.runner.run([self.lab.tools['docker'], 'exec', node, 'crictl', 'pull', image], timeout=180)
+                    # Pull completion can precede the CRI image cache update.
+                    until = time.monotonic() + 30
+                    while time.monotonic() < until:
+                        inventory = cached()
+                        found = [v for v in inventory if image in v.get('repoDigests', [])]
+                        if found:
+                            break
+                        time.sleep(.5)
+                if len(found) != 1:
+                    raise NetworkError('calico_image_not_ready', 'CRI did not confirm the pinned image digest on the owned node')
+                records.append({'node': node, 'source': image, 'image_id': found[0]['id'],
+                    'cached': reused, 'elapsed_seconds': round(time.monotonic()-started, 3)})
+                self.save('network-image-preparation.json', {'images': records})
+        return records
+
     def install(self, source, prefix=None):
         data = checked_manifest(source, self.lock)
         with self.lab.operation_lock():
@@ -158,6 +187,7 @@ class Network:
             self.state['network'] = current
             self.lab.write_state(self.state)
             try:
+                self.prepare_images(images)
                 self.lab.kubectl('apply', '--server-side', '--field-manager=agentbox-platform', '-f', '-',
                                  input_text=json.dumps(rendered), timeout=120)
                 for kind, name in [('daemonset', 'calico-node'), ('deployment', 'calico-kube-controllers')]:

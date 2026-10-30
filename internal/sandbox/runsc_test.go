@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -14,10 +13,6 @@ import (
 // Reproduce a runtime transaction paused between truncation and JSON write.
 // Cancellation must wait for that transaction, and never start the next one.
 func TestCreateCancellationDoesNotInterruptMetadataWrite(t *testing.T) {
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, phase := range []string{"create", "start"} {
 		t.Run(phase, func(t *testing.T) {
 			dir := t.TempDir()
@@ -25,7 +20,26 @@ func TestCreateCancellationDoesNotInterruptMetadataWrite(t *testing.T) {
 				t.Fatal(err)
 			}
 			wrapper := filepath.Join(dir, "runsc")
-			script := "#!/bin/sh\nexec '" + strings.ReplaceAll(executable, "'", "'\\''") + "' -test.run=^TestRunscMetadataHelper$ -- \"$@\"\n"
+			// A small shell fixture avoids cold-starting this entire race-enabled
+			// Go test binary for every simulated runsc control operation.
+			script := `#!/bin/sh
+set -eu
+root=
+operation=
+for arg in "$@"; do
+  case "$arg" in
+    --root=*) root=${arg#--root=} ;;
+    create|start) operation=$arg ;;
+  esac
+done
+if [ "$operation" = start ]; then : > "$root/started"; fi
+if [ "$(cat "$root/pause-phase")" != "$operation" ]; then exit 0; fi
+printf '%s' '{"status":' > "$root/state.json"
+: > "$root/writing"
+while [ ! -e "$root/finish" ]; do sleep 0.01; done
+printf '%s' '{"status":"complete"}' > "$root/state.json"
+`
+
 			if err := os.WriteFile(wrapper, []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -33,11 +47,21 @@ func TestCreateCancellationDoesNotInterruptMetadataWrite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer session.finishStreams()
 			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
 			done := make(chan error, 1)
-			go func() { done <- session.create(ctx, dir) }()
+			finished := make(chan struct{})
+			go func() {
+				done <- session.create(ctx, dir)
+				close(finished)
+			}()
+			t.Cleanup(func() {
+				cancel()
+				// Release the fixture even when an assertion called Fatal. Join
+				// create before closing files it may still pass to Cmd.Start.
+				_ = os.WriteFile(filepath.Join(dir, "finish"), nil, 0600)
+				<-finished // create retains its production 10s setup deadline.
+				session.finishStreams()
+			})
 			deadline := time.Now().Add(5 * time.Second)
 			for {
 				if _, err := os.Stat(filepath.Join(dir, "writing")); err == nil {
@@ -75,51 +99,5 @@ func TestCreateCancellationDoesNotInterruptMetadataWrite(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestRunscMetadataHelper(t *testing.T) {
-	var dir, operation string
-	for _, arg := range os.Args {
-		if strings.HasPrefix(arg, "--root=") {
-			dir = strings.TrimPrefix(arg, "--root=")
-		}
-		if arg == "create" || arg == "start" {
-			operation = arg
-		}
-	}
-	if dir == "" {
-		return
-	}
-	phase, err := os.ReadFile(filepath.Join(dir, "pause-phase"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if operation == "start" {
-		if err := os.WriteFile(filepath.Join(dir, "started"), nil, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if string(phase) != operation {
-		return
-	}
-	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(`{"status":`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "writing"), nil, 0600); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "finish")); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("test did not release metadata writer")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(`{"status":"complete"}`), 0600); err != nil {
-		t.Fatal(err)
 	}
 }

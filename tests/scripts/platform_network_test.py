@@ -230,6 +230,32 @@ class NetworkTests(unittest.TestCase):
                 self.assertEqual(platform_lab.main(args),0)
             self.assertFalse(path.exists())
 
+    def test_image_preparation_reuses_cache_and_verifies_exact_source_digest(self):
+        images = image_sources(self.net.lock, 'domestic.example/calico')
+        expected = list(sorted(set(images.values())))
+        self.net.state['node_ids'] = ['owned-node']
+        self.lab.tools = {'docker': 'docker'}
+        inventory = [{'id': 'first', 'repoDigests': [expected[0]]}]
+        pulls = []
+        def run(args, **kwargs):
+            if 'pull' in args:
+                pulls.append(args[-1]);inventory.append({'id': 'new', 'repoDigests': [args[-1]]});return ''
+            return json.dumps({'images': inventory})
+        self.lab.runner.run.side_effect = run
+        result = self.net.prepare_images(images)
+        self.assertEqual(pulls, expected[1:])
+        self.assertEqual([v['cached'] for v in result], [True, False, False])
+        self.assertEqual({v['source'] for v in result}, set(expected))
+        self.assertTrue(all(call.args[0][2] == 'owned-node' for call in self.lab.runner.run.call_args_list))
+
+    def test_image_preparation_rejects_unconfirmed_pull_without_applying_manifest(self):
+        self.net.state['node_ids'] = ['owned-node'];self.lab.tools = {'docker': 'docker'}
+        self.lab.runner.run.return_value = '{"images":[]}'
+        with patch('lib.platform_network.time.monotonic', side_effect=[0, 0, 31]), self.assertRaises(NetworkError) as caught:
+            self.net.prepare_images(image_sources(self.net.lock, None))
+        self.assertEqual(caught.exception.reason, 'calico_image_not_ready')
+        self.lab.kubectl.assert_not_called()
+
 
 if __name__=='__main__':
     unittest.main()

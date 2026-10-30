@@ -16,12 +16,15 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 
 from lib.platform_gvisor import CASES, GVisor, GVisorError
 from lib.platform_network import Network, NetworkError
 from lib.platform_sessions import Sessions, SessionError, checked_source as session_source
+from lib.platform_api import APIAcceptance
+from lib.platform_api_execution import APIExecutionAcceptance
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,6 +133,7 @@ class Runner:
 
 class Lab:
     def __init__(self, root, runner):
+        self._lock_owner = None
         self.root = Path(root).resolve()
         self.runner = runner
         self.config = self.root / "deploy/platform"
@@ -156,10 +160,35 @@ class Lab:
         local = self.root / ".local/platform-tools" / name
         return override or (str(local) if local.is_file() else shutil.which(name) or name)
 
-    def kubectl(self, *args, timeout=30, input_text=None, announce=True):
-        return self.runner.run([self.tools["kubectl"], "--kubeconfig", self.kubeconfig,
-                                "--context", CONTEXT, "--request-timeout=15s", *args],
-                               timeout=timeout, input_text=input_text, announce=announce)
+    @staticmethod
+    def transient_read_error(error):
+        message = str(error).lower()
+        if any(x in message for x in ("x509", "certificate", "unauthorized", "forbidden", "credential")):
+            return False
+        return error.reason == "command_timeout" or (error.reason == "command_failed" and any(
+            x in message for x in ("deadline exceeded", "timed out", "timeout", "connection refused",
+                "connection reset", "unable to connect", "serviceunavailable", "internalerror", "too many requests", " eof")))
+
+    def kubectl(self, *args, timeout=30, input_text=None, announce=True, request_timeout=15):
+        # Retry only explicit GET/version operations within the original total
+        # subprocess budget. Never replay create/apply/patch/delete/exec.
+        read_only = bool(args) and (args[0] in ("get", "version") or
+            (len(args) >= 3 and args[0] in ("-n", "--namespace") and args[2] == "get"))
+        deadline = time.monotonic() + timeout
+        attempts = 0
+        while True:
+            remaining = max(.001, deadline - time.monotonic())
+            budget = round(max(.001, min(request_timeout, remaining)), 3) if attempts else request_timeout
+            try:
+                return self.runner.run([self.tools["kubectl"], "--kubeconfig", self.kubeconfig,
+                    "--context", CONTEXT, f"--request-timeout={budget}s", *args],
+                    timeout=remaining, input_text=input_text, announce=announce)
+            except CommandError as error:
+                if not read_only or not self.transient_read_error(error) or deadline - time.monotonic() <= 1:
+                    raise
+                attempts += 1
+                print("[platform] transient Kubernetes read failure; retrying within the same budget", flush=True)
+                time.sleep(1)
 
     def docker_info(self):
         try:
@@ -219,6 +248,13 @@ class Lab:
 
     @contextlib.contextmanager
     def operation_lock(self):
+        # The unified installer holds this lock across all stages. Nested
+        # operations on the same CLI thread reuse it; other processes/threads
+        # must still acquire the OS lock and are rejected while it is held.
+        owner = threading.get_ident()
+        if self._lock_owner == owner:
+            yield
+            return
         self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         if self.state_dir.is_symlink():
             raise LabError("invalid_state", "state directory must not be a symlink")
@@ -227,7 +263,11 @@ class Lab:
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise LabError("operation_in_progress", "another platform operation holds the lock") from error
-            yield
+            self._lock_owner = owner
+            try:
+                yield
+            finally:
+                self._lock_owner = None
 
     def node_ids(self):
         output = self.runner.run([self.tools["docker"], "ps", "-aq", "--no-trunc",
@@ -265,8 +305,9 @@ class Lab:
                 raise LabError("baseline_changed", "kind configuration changed; recreate the lab")
         return state, actual
 
-    def node_report(self, require_ready=True):
-        data = json.loads(self.kubectl("get", "nodes", "-o", "json"))
+    def node_report(self, require_ready=True, data=None):
+        if data is None:
+            data = json.loads(self.kubectl("get", "nodes", "-o", "json"))
         items = data["items"]
         expected = {CLUSTER + "-control-plane", CLUSTER + "-worker"}
         if {n["metadata"]["name"] for n in items} != expected:
@@ -285,6 +326,92 @@ class Lab:
         if worker["labels"].get("agentbox.dev/lab") != CLUSTER or worker["labels"].get("agentbox.dev/role") != "worker":
             raise LabError("worker_labels_mismatch", "dedicated worker labels are missing")
         return result
+
+    def wait_ready(self, timeout=180, require_nodes=True):
+        """Bounded read-only convergence; no replay of writes or component restart."""
+        state, actual = self.owned()
+        if (len(actual) != 2 or actual != state.get("node_ids") or
+                state.get("phase") not in ("network_pending", "ready")):
+            raise LabError("cluster_not_ready", "finish owned cluster creation before health observation")
+        deadline = time.monotonic() + timeout
+        attempts, consecutive = [], 0
+        expected = {"etcd", "kube-apiserver", "kube-controller-manager", "kube-scheduler"}
+        def read(*args):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise LabError("control_plane_not_ready", "health observation deadline reached")
+            budget = round(min(5, remaining), 3)
+            return self.kubectl(*args, request_timeout=budget, timeout=budget + 1, announce=False)
+        print("[platform] waiting for API/etcd, native control plane" +
+              (" and Nodes" if require_nodes else " (CNI pending)") + f"; budget {timeout}s", flush=True)
+        while time.monotonic() < deadline:
+            sample = {"elapsed_seconds": round(timeout - (deadline - time.monotonic()), 3)}
+            try:
+                api = read("get", "--raw=/readyz").strip() == "ok"
+                node_data = json.loads(read("get", "nodes", "-o", "json"))
+                self.node_report(require_ready=False, data=node_data)
+                objects = json.loads(read("-n", "kube-system", "get", "pods", "-l",
+                    "component in (etcd,kube-apiserver,kube-controller-manager,kube-scheduler)",
+                    "--field-selector", "spec.nodeName=" + CLUSTER + "-control-plane", "-o", "json"))["items"]
+                components = [{"component": p["metadata"].get("labels", {}).get("component"),
+                    "ready": not p["metadata"].get("deletionTimestamp") and
+                         p.get("status", {}).get("phase") == "Running" and any(
+                         c.get("type") == "Ready" and c.get("status") == "True"
+                         for c in p.get("status", {}).get("conditions", []))} for p in objects]
+                # node_report already validates original names, versions and Worker labels.
+                nodes_ready = all(any(c.get("type") == "Ready" and c.get("status") == "True"
+                    for c in p.get("status", {}).get("conditions", [])) for p in node_data["items"])
+                healthy = api and len(components) == 4 and {c["component"] for c in components} == expected and all(c["ready"] for c in components)
+                sample.update(api_ready=api, nodes_ready=nodes_ready, components=components)
+                consecutive = consecutive + 1 if healthy and (nodes_ready or not require_nodes) else 0
+            except CommandError as error:
+                if not self.transient_read_error(error):
+                    raise
+                consecutive = 0
+                sample["reason"] = "api_temporarily_unavailable"
+            attempts.append(sample)
+            value = {"ready": consecutive >= 3, "required_consecutive_samples": 3,
+                     "budget_seconds": timeout, "attempts": attempts}
+            atomic_json(self.runner.output / "control-plane-readiness.json", value)
+            if value["ready"]:
+                return value
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(2, remaining))
+        raise LabError("control_plane_not_ready", "API/etcd, native control plane or Nodes did not stabilize; see control-plane-readiness.json")
+
+    def up(self, calico_source=None, calico_prefix=None, gvisor_archive=None, session_source=None, node_source=None):
+        """Install/resume one owned lab in dependency order, retaining healthy stages."""
+        stages = []
+        network, runtime, sessions = Network(self), GVisor(self), Sessions(self)
+        calico_source = calico_source or self.root / ".local/platform-tools" / network.lock["manifest"]
+        gvisor_archive = gvisor_archive or self.root / ".local/platform-tools" / runtime.lock["archive"]
+        session_source = session_source or self.root / ".local/platform-tools" / sessions.lock["manifest"]
+        # Avoid creating a cold cluster only to discover missing local assets.
+        for asset in (calico_source, gvisor_archive, session_source, sessions.bundle_path):
+            if not Path(asset).is_file():
+                raise LabError("missing_bootstrap_asset", "prepare pinned platform assets and run session-build before up")
+        with self.operation_lock():
+            state = self.read_state() if self.state_path.exists() else None
+            if state is None or state.get("phase") == "deleted":
+                self.create(node_source, "calico")
+            else:
+                state, _ = self.owned()
+                if state.get("network_profile") != "calico" or state.get("phase") not in ("network_pending", "ready"):
+                    raise LabError("cluster_not_ready", "up only resumes an owned Calico lab after successful create")
+            def stage(name, operation):
+                print("[platform] bootstrap stage: " + name, flush=True)
+                result = operation()
+                stages.append(name)
+                atomic_json(self.runner.output / "bootstrap.json", {"completed_stages": stages})
+                return result
+            stage("control-plane", lambda: self.wait_ready(require_nodes=self.read_state().get("phase") == "ready"))
+            stage("calico", lambda: network.install(calico_source, calico_prefix))
+            stage("nodes", self.wait_ready)
+            stage("gvisor", lambda: runtime.install(gvisor_archive))
+            stage("control-plane-after-runtime", self.wait_ready)
+            stage("sessions", lambda: sessions.install(session_source))
+            return {"completed_stages": stages, "cluster_retained": True}
 
     def prepare_image(self, image):
         args = [self.tools["docker"], "image", "inspect", image, "--format", "{{json .RepoDigests}}"]
@@ -478,7 +605,7 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "up", "ready"))
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
     parser.add_argument("--node-image-source", help="mirror repository with the SAME locked node digest (create)")
@@ -494,24 +621,24 @@ def arguments(argv=None):
     parser.add_argument("--gvisor-archive", type=Path, help="verified complete gVisor tar.bz2 (gvisor-install only)")
     parser.add_argument("--timeout", type=int, default=180, help="Job/probe observation budget per startup or terminal phase, 30..600 seconds")
     args = parser.parse_args(argv)
-    if args.node_image_source and args.action != "create":
-        parser.error("--node-image-source applies only to create")
+    if args.node_image_source and args.action not in ("create", "up"):
+        parser.error("--node-image-source applies only to create or up")
     if args.smoke_image_source and args.action not in ("smoke", "gvisor-test", "network-test"):
         parser.error("--smoke-image-source applies only to smoke, gvisor-test or network-test")
     if args.network_profile != "kindnet" and args.action != "create":
         parser.error("--network-profile applies only to create")
-    if (args.calico_manifest or args.calico_image_prefix) and args.action != "network-install":
-        parser.error("Calico source options apply only to network-install")
+    if (args.calico_manifest or args.calico_image_prefix) and args.action not in ("network-install", "up"):
+        parser.error("Calico source options apply only to network-install or up")
     if (args.session_controller_source or args.session_python_source) and args.action != "session-build":
         parser.error("session image sources apply only to session-build")
-    if args.session_manifest and args.action != "session-install":
-        parser.error("--session-manifest applies only to session-install")
+    if args.session_manifest and args.action not in ("session-install", "up"):
+        parser.error("--session-manifest applies only to session-install or up")
     if args.session_profile != "cold" and args.action != "session-test":
         parser.error("--session-profile applies only to session-test")
     if args.gvisor_case and args.action != "gvisor-test":
         parser.error("--gvisor-case applies only to gvisor-test")
-    if args.gvisor_archive and args.action != "gvisor-install":
-        parser.error("--gvisor-archive applies only to gvisor-install")
+    if args.gvisor_archive and args.action not in ("gvisor-install", "up"):
+        parser.error("--gvisor-archive applies only to gvisor-install or up")
     if not 30 <= args.timeout <= 600:
         parser.error("--timeout must be 30..600 seconds")
     return args
@@ -525,12 +652,14 @@ def main(argv=None):
         sessions = json.loads((ROOT / "deploy/platform/session.lock.json").read_text()) if args.action.startswith("session-") else None
         session_sources = ({"controller": session_source(sessions["controller_image"], args.session_controller_source),
                             "python": session_source(lock["smoke"]["image"], args.session_python_source)} if sessions else None)
-        print(json.dumps({"action": args.action, "network_profile": args.network_profile if args.action == "create" else "recorded lab profile", "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
+        print(json.dumps({"action": args.action, "network_profile": "calico" if args.action == "up" else args.network_profile if args.action == "create" else "recorded lab profile", "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
                           "kubeconfig": str(ROOT / ".local/platform/kubeconfig"),
                           "node_image": pinned_source(lock["kubernetes"]["node_image"], args.node_image_source),
                           "smoke_image": pinned_source(lock["smoke"]["image"], args.smoke_image_source),
                           "sessions": sessions, "session_sources": session_sources, "session_profile": args.session_profile,
-                          "mutates_cluster": args.action not in ("preflight", "session-build"), "dry_run": True}, indent=2))
+                          "bootstrap_stages": ["control-plane", "calico", "nodes", "gvisor", "control-plane-after-runtime", "sessions"] if args.action == "up" else None,
+                          "calico_image_prefix": args.calico_image_prefix,
+                          "mutates_cluster": args.action not in ("preflight", "session-build", "ready"), "dry_run": True}, indent=2))
         return 0
     output = args.output or ROOT / "artifacts" / ("platform-" + args.action + "-" + uuid.uuid4().hex[:12])
     output.mkdir(parents=True, exist_ok=False)
@@ -549,6 +678,16 @@ def main(argv=None):
                                  *sorted((source_root / "deploy/platform").glob("gvisor*")),
                                  source_root / "scripts/lib/platform_sessions.py",
                                  source_root / "scripts/lib/session_faults.py",
+                                 source_root / "scripts/lib/platform_api.py",
+                                 source_root / "scripts/lib/platform_api_execution.py",
+                                 *sorted((source_root / "internal/sessionruntime").glob("*.go")),
+                                 source_root / "deploy/platform/api.Dockerfile",
+                                 source_root / "deploy/platform/api-deployment.json",
+                                 *sorted((source_root / "cmd/agentbox-api").glob("*.go")),
+                                 *sorted((source_root / "internal/session").glob("*.go")),
+                                 *sorted((source_root / "internal/sessionapi").glob("*.go")),
+                                 source_root / "deploy/platform/api-rbac.json",
+                                 source_root / "deploy/platform/api-quota.json",
                                  *sorted((source_root / "deploy/platform").glob("session*")), source_root / "deploy/platform/sandbox-runtime.Dockerfile",
                                  *sorted((source_root / "cmd/agentbox-session-smoke").glob("*.go")),
                                  *sorted((source_root / "internal/sessionprobe").glob("*.go")), source_root / "go.mod", source_root / "go.sum"]}}
@@ -563,6 +702,12 @@ def main(argv=None):
                 report["reason"] = "preflight_failed"
                 report["failed_checks"] = [{"name": c["name"], "reason": c["reason"]}
                                            for c in report["result"]["checks"] if not c["ok"]]
+        elif args.action == "up":
+            report["result"] = lab.up(args.calico_manifest, args.calico_image_prefix, args.gvisor_archive, args.session_manifest, args.node_image_source)
+            report["ok"] = True
+        elif args.action == "ready":
+            report["result"] = lab.wait_ready(args.timeout)
+            report["ok"] = True
         elif args.action == "create":
             report["result"] = lab.create(args.node_image_source, args.network_profile)
             report["ok"] = True
@@ -598,16 +743,23 @@ def main(argv=None):
         elif args.action == "session-test":
             report["result"] = Sessions(lab).test(args.session_profile)
             report["ok"] = True
+        elif args.action == "api-exec-test":
+            report["result"] = APIExecutionAcceptance(lab).test()
+            report["ok"] = True
+        elif args.action == "api-test":
+            report["result"] = APIAcceptance(lab).test()
+            report["ok"] = True
         else:
             report["result"] = lab.delete()
             report["ok"] = True
     except (LabError, GVisorError, NetworkError, SessionError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
         reason = "interrupted" if isinstance(error, KeyboardInterrupt) else getattr(error, "reason", "invalid_state")
         report.update(reason=reason, detail=str(error))
-        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-install", "session-test") and reason not in {
+        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-install", "session-test", "api-test", "api-exec-test", "up", "ready") and reason not in {
                 "operation_in_progress", "existing_state", "unowned_cluster", "preflight_failed",
                 "image_digest_mismatch", "invalid_image", "tool_unavailable", "calico_checksum_mismatch",
-                "invalid_image_prefix", "wrong_network_profile", "network_definition_changed"}:
+                "invalid_image_prefix", "wrong_network_profile", "network_definition_changed",
+                "missing_bootstrap_asset", "cluster_not_ready", "baseline_changed"}:
             lab.diagnostics()
     finally:
         report.update(finished_at=utc(), commands=runner.commands)

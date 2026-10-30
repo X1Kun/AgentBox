@@ -2,7 +2,7 @@
 
 面向 AI Agent 的隔离会话与受控批任务项目。目标在同一 Kubernetes 平台上，用 **Agent Sandbox 管理会话和固定预热池，Job＋Kueue 管理批任务，containerd＋gVisor 提供运行与隔离**。Go API/MCP 负责产品适配，首个研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
-**继续演进现有项目，已决定退役 agentboxd。**会话可执行多次命令，批任务按有限输入完成；不要求每次工具调用都创建 Job。当前仍保留可构建的单机旧实现，现已提供上游冷会话、固定预热池与 Go SDK 验收入口，新产品接口和实际退役尚未完成。
+**继续演进现有项目，已决定退役 agentboxd。**会话可执行多次命令，批任务按有限输入完成；不要求每次工具调用都创建 Job。当前仍保留可构建的单机旧实现，现已提供上游冷会话、固定预热池与 Go SDK 验收入口，新增 Go 生命周期、执行与文件 API，MCP 接入和实际退役尚未完成。
 
 ## 当前代码与迁移状态
 
@@ -16,7 +16,7 @@ make platform-smoke
 make platform-delete
 ```
 
-先按[环境与工具要求](docs/operations.md#platform-lab)准备工具。普通 smoke 不依赖 agentboxd，也不验证 gVisor。Agent Sandbox 冷会话另有独立入口；Kueue 与新产品 API 尚未接入。已有闭环证据见[验证指南](docs/validation.md#platform-bootstrap)。
+先按[环境与工具要求](docs/operations.md#platform-lab)准备工具。普通 smoke 不依赖 agentboxd，也不验证 gVisor。Agent Sandbox 冷会话另有独立入口；Kueue 尚未接入；会话 API 见下节。已有闭环证据见[验证指南](docs/validation.md#platform-bootstrap)。
 
 gVisor 运行时使用独立的 `make platform-gvisor-install` / `make platform-gvisor-test` 入口；包准备、运行方式和验收边界见[运维指南](docs/operations.md#gvisor-runtime)。它只验证可信探针，不表示完整网络隔离或沙箱产品已经交付。
 
@@ -28,7 +28,11 @@ gVisor 运行时使用独立的 `make platform-gvisor-install` / `make platform-
 
 会话故障新增 `make platform-session-fault-test` 入口，验证上游控制器重启、执行 Pod 丢失后的身份变化，以及到期与关闭相遇时的回收。八项真实检查和清理已通过，见[故障验收](docs/validation.md#session-faults)。
 
-后续顺序：Go API/MCP 与 Daemon 退役 → 图片批任务/Kueue → 健康准入对照。只有在途竞争成为明确瓶颈时，再评价 Koordinator。阶段与门槛见[路线图](docs/roadmap.md)。
+已准备缓存与镜像 bundle 后，`make platform-up` 可按依赖自动安装/恢复开发平台，`make platform-ready` 观察控制面与节点健康。步骤见[自动安装](docs/operations.md#platform-lab)。
+
+Go 会话 API 提供创建、查询、关闭，以及逐次 Python 执行和工作目录文件读写；绑定归属与上游 UID，支持同创建标识恢复、服务重启和持久操作互斥。七项真实行为与清理检查已通过，见[执行验收](docs/validation.md#session-execution)。接口与边界见[使用指南](docs/usage.md#session-api)，操作见[运维指南](docs/operations.md#session-api)。
+
+后续顺序：MCP/Agent 接入 → Daemon 退役 → 图片批任务/Kueue → 健康准入对照。只有在途竞争成为明确瓶颈时，再评价 Koordinator。阶段与门槛见[路线图](docs/roadmap.md)。
 
 Go 用于产品服务和自研 Controller；Python 用于环境验收、实验分析及执行负载。当前检查仍覆盖尚未移除的旧代码，不能通过下列命令启动目标平台：
 

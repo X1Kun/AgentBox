@@ -1,0 +1,666 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-29",
+  "status": "passed",
+  "base_commit": "7bf855bfd913dddf369c5da345c68839449b61e2",
+  "scope": "Minimal Go HTTP lifecycle product API; no execution/files/MCP or performance experiment",
+  "source_sha256": {
+    "cmd/agentbox-api/main.go": "015822b69e06989593c5f254242ae31d6f6fa32d2702399e4d585145a0455928",
+    "cmd/agentbox-session-smoke/fault.go": "cfadfd4173711103e534480f94f521df8deecc920e9704c09e897565a715b789",
+    "cmd/agentbox-session-smoke/fault_test.go": "b999f8426d99d84a6e22500c60e9e41088e4ce17d2f17c39bbf373f8630f6527",
+    "cmd/agentbox-session-smoke/main.go": "be2bbb3415fb5984a01758ee8be677bcd1cecdb8073d8c443020e98b2e251798",
+    "cmd/agentbox-session-smoke/warm.go": "f76fed5bd97c15d3bf72310757afbac98a99c60bf516893c8f30caf98f8307f6",
+    "cmd/agentbox-session-smoke/warm_test.go": "b263569c077c88d32f151a44d721c19dc55dad5a2b5a5f1549b012b3e5249a12",
+    "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a",
+    "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+    "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+    "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+    "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+    "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+    "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+    "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+    "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+    "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+    "deploy/platform/sandbox-runtime.Dockerfile": "7a2a450282d5dbb0d06d9457ef0acdd1a3eb120d407d564c8ab03fc1110124bc",
+    "deploy/platform/session-client-job.json": "0f62ae911ed9def1988a6135a6a196f9963427311fa570d8d0c2e28b60fca402",
+    "deploy/platform/session-client.Dockerfile": "d6d3509065f1f41fb9b7f1afeba3c0fe673ee156b4b6a105e56d05ae93e4f3b5",
+    "deploy/platform/session-rbac.json": "7b5f605988ea1ec8e897d713b334458e164fa65d09efee8abc47d6537a2c59f7",
+    "deploy/platform/session-template.json": "f61ea336d4e316fb2686943d5903cb2d4456d35bca5551cd968a92dc08847fb6",
+    "deploy/platform/session.lock.json": "e05ac3cb8ec9668ceecc2da9eb686e9dc6dd27ed8e76a76498b9b11ca2b12e94",
+    "go.mod": "6788d70352f4e17577d3ed96ffcde76b96380db2f0f19b41a17d3ca9ccc4cad4",
+    "go.sum": "a7c5debcb697cf21973d6cfe8cbabcc047da7c4543ba01b0080b001fe15eedb1",
+    "internal/session/service.go": "ec160be2c32f725fa04fb5b468b7023ab13a7a9c21a008946867959c04f7671b",
+    "internal/session/service_test.go": "c1c8d27fb3701e873a81503cc9264ef56f995f6f27b3a3fe9364ea965ac03c1f",
+    "internal/sessionapi/server.go": "d9f89f393d79b29f55bf944648f394bee1423a955b97d71dbad579b09472dcab",
+    "internal/sessionapi/server_test.go": "3a824d446e9825d0b831fdafb5788260910eeee2a0dbe58af6670a67a0df829a",
+    "internal/sessionprobe/operations.go": "38a248d6c25d5b4997da6c182f286431ad7b2d2a8dabdc0236f3bb981097bd28",
+    "internal/sessionprobe/operations_test.go": "e13ab80d787eb1e2be5ebd6db3e08543a840f6dd546baeba9fd2c4727bd75d77",
+    "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+    "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+    "scripts/lib/platform_api.py": "8514e985f2be431ab110dfde1f8b8ef37c061856f753a198bf9bcb30021f7518",
+    "scripts/lib/platform_gvisor.py": "09181e6ea284fb1f79be9813697629d8e490ce7d2d0a4d8eb49014ea4325d18a",
+    "scripts/lib/platform_network.py": "e92e4a6849f3719a2e002a896c8b4aa318dcd948d375ad21693406b53489dfcd",
+    "scripts/lib/platform_sessions.py": "502412a7c9f93534cbef439810eca32ae97eadbeb4e28bcd539c4816203f72a6",
+    "scripts/lib/session_faults.py": "38432be7dcdbc5e2f633b84272c6222bbb52ab45711e20e42c527be9025ebea3",
+    "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+    "Makefile": "6700895f0316cc463114fd3f41919d342e8b5cc8de9f5de188b670f7ca836a05"
+  },
+  "versions": {
+    "schema_version": 1,
+    "version": "v1.0.8",
+    "go_toolchain": "go1.27.1",
+    "go_minimum": "1.26.0",
+    "module": "sigs.k8s.io/agent-sandbox",
+    "module_sum": "h1:gkRAGiwGpINiilIbbO+aQTWx3fFdXQLCrI22m5oALVQ=",
+    "manifest": "agent-sandbox-v1.0.8.yaml",
+    "manifest_url": "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.8/sandbox-with-extensions.yaml",
+    "manifest_sha256": "e68bfae0bd9b6ff717745a4be04bcc909594ba32011b6a0891b77c4d7b5bf58a",
+    "object_count": 12,
+    "controller_image": "registry.k8s.io/agent-sandbox/agent-sandbox-controller@sha256:e1d96312487eba7d8f001e848a9d4e644b7deea8c2a4564ccc318abb729be731",
+    "promotion_source": "https://raw.githubusercontent.com/kubernetes/k8s.io/main/registry.k8s.io/images/k8s-staging-agent-sandbox/images.yaml",
+    "promotion_sha256": "a7a475a61603f874d95026eb674335950fd43503fa208d652178041ef962c9b0",
+    "source_archive_sha256": "bed43c4919e946354e176c685ee44a854e6f7f1c2622d6b5b484184e9797ece5",
+    "runtime": "sandboxd (built from the checksum-verified Go module)",
+    "connectivity": "in-cluster-service",
+    "warm_replicas": 0,
+    "scope": "Trusted in-cluster Go acceptance client; no public API, product auth, dynamic warm capacity or idle strategy"
+  },
+  "api_contract": {
+    "paths": [
+      "POST /v2/sessions",
+      "GET /v2/sessions/{id}",
+      "DELETE /v2/sessions/{id}"
+    ],
+    "identity": "Configured principal, stable instance and named Claim UID; first-Ready backing UID binding retained in Claim annotations",
+    "closure": "Upstream Retain lifecycle; current-generation expiry acknowledgement and absent dependent API objects required",
+    "default_ttl_seconds": 600,
+    "default_max_ttl_seconds": 3600,
+    "credentials": "namespace-scoped ServiceAccount kubeconfig; separate private caller-token file"
+  },
+  "acceptance": {
+    "run": "3129bc552b",
+    "namespace_uids": {
+      "client": {
+        "name": "agentbox-api-client-3129bc552b",
+        "uid": "aa26e417-4962-4679-bf91-f2337cc8a06f"
+      },
+      "work": {
+        "name": "agentbox-api-3129bc552b",
+        "uid": "80a29a6b-9f25-413e-9838-5638eeae7d03"
+      }
+    },
+    "checks": [
+      {
+        "name": "namespace_scoped_credentials_and_no_secret_or_pod_mutation",
+        "passed": true
+      },
+      {
+        "name": "asynchronous_stable_creation_and_parameter_conflict",
+        "passed": true
+      },
+      {
+        "name": "service_restart_restores_persisted_identity",
+        "passed": true
+      },
+      {
+        "name": "cross_principal_query_and_close_denied",
+        "passed": true
+      },
+      {
+        "name": "pod_uid_change_invalidates_without_silent_rebinding",
+        "passed": true
+      },
+      {
+        "name": "close_converges_idempotently_and_retains_creation_record",
+        "passed": true
+      }
+    ],
+    "binary_sha256": "0b95faf57f0602c702e24e2665188f6357da24ccb8facae40bbe7bb90f3d419c",
+    "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+    "ready": {
+      "cleanup_complete": false,
+      "expires_at": "2026-10-29T05:46:28Z",
+      "identity_revision": "654cd49bc74b07b3ec9b91b7d84cb9c7",
+      "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+      "state": "ready"
+    },
+    "closed": {
+      "cleanup_complete": true,
+      "expires_at": "2026-10-29T05:36:55Z",
+      "identity_revision": "654cd49bc74b07b3ec9b91b7d84cb9c7",
+      "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+      "state": "closed"
+    },
+    "original_binding": {
+      "pod": {
+        "name": "ses-504867e06a8c232125f2e123701d04e1e7d52f84",
+        "uid": "65dd428b-101d-4d46-aaef-2c11c4a86d9d"
+      },
+      "sandbox": {
+        "name": "ses-504867e06a8c232125f2e123701d04e1e7d52f84",
+        "uid": "70886405-d62c-4803-94eb-a6fa4e2fb441"
+      },
+      "service": {
+        "name": "ses-504867e06a8c232125f2e123701d04e1e7d52f84",
+        "uid": "a1de6312-1f69-4bbe-813d-3b5e36e150e9"
+      },
+      "version": 1
+    },
+    "replacement_pod_uid": "d0291a8e-a7b7-4a01-bc9e-4be9194ebf94",
+    "server_attempts": [
+      {
+        "attempt": 1,
+        "instance": "api-3129bc552b"
+      },
+      {
+        "attempt": 2,
+        "instance": "api-3129bc552b"
+      },
+      {
+        "attempt": 3,
+        "instance": "api-3129bc552b"
+      }
+    ],
+    "observed_states": [
+      {
+        "cleanup_complete": false,
+        "expires_at": "2026-10-29T05:46:28Z",
+        "reason": "awaiting_assignment",
+        "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+        "state": "creating"
+      },
+      {
+        "cleanup_complete": false,
+        "expires_at": "2026-10-29T05:46:28Z",
+        "reason": "backing_not_ready",
+        "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+        "state": "creating"
+      },
+      {
+        "cleanup_complete": false,
+        "expires_at": "2026-10-29T05:46:28Z",
+        "identity_revision": "654cd49bc74b07b3ec9b91b7d84cb9c7",
+        "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+        "state": "ready"
+      },
+      {
+        "cleanup_complete": false,
+        "expires_at": "2026-10-29T05:46:28Z",
+        "identity_revision": "654cd49bc74b07b3ec9b91b7d84cb9c7",
+        "reason": "backing_environment_terminated",
+        "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+        "state": "invalidated"
+      },
+      {
+        "cleanup_complete": false,
+        "expires_at": "2026-10-29T05:36:55Z",
+        "identity_revision": "654cd49bc74b07b3ec9b91b7d84cb9c7",
+        "reason": "awaiting_upstream_cleanup",
+        "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+        "state": "closing"
+      },
+      {
+        "cleanup_complete": true,
+        "expires_at": "2026-10-29T05:36:55Z",
+        "identity_revision": "654cd49bc74b07b3ec9b91b7d84cb9c7",
+        "session_id": "ses-504867e06a8c232125f2e123701d04e1e7d52f84.1b225125-0812-4810-9f81-319896ebdfee",
+        "state": "closed"
+      }
+    ],
+    "quota": {
+      "apiVersion": "v1",
+      "kind": "ResourceQuota",
+      "metadata": {
+        "creationTimestamp": "2026-10-29T05:36:27Z",
+        "labels": {
+          "agentbox.dev/session": "bf9d26847bd64d7e901d6c1841c82272",
+          "agentbox.dev/session-run": "3129bc552b"
+        },
+        "name": "agentbox-api-budget",
+        "namespace": "agentbox-api-3129bc552b",
+        "resourceVersion": "11294",
+        "uid": "1e363db6-2a06-40e6-a4ce-01e6ad88235c"
+      },
+      "spec": {
+        "hard": {
+          "count/sandboxclaims.extensions.agents.x-k8s.io": "32",
+          "limits.cpu": "1500m",
+          "limits.memory": "1536Mi",
+          "pods": "3",
+          "requests.cpu": "300m",
+          "requests.memory": "384Mi"
+        }
+      },
+      "status": {
+        "hard": {
+          "count/sandboxclaims.extensions.agents.x-k8s.io": "32",
+          "limits.cpu": "1500m",
+          "limits.memory": "1536Mi",
+          "pods": "3",
+          "requests.cpu": "300m",
+          "requests.memory": "384Mi"
+        },
+        "used": {
+          "count/sandboxclaims.extensions.agents.x-k8s.io": "0",
+          "limits.cpu": "0",
+          "limits.memory": "0",
+          "pods": "0",
+          "requests.cpu": "0",
+          "requests.memory": "0"
+        }
+      }
+    },
+    "runtime_evidence": [
+      {
+        "pod_uid": "65dd428b-101d-4d46-aaef-2c11c4a86d9d",
+        "cri_sandbox_id": "c03505bc5b3c20d0dd7af20ad33a5f81deec42d10db565e602119a24797a3520",
+        "runtime_handler": "agentbox-gvisor",
+        "runsc": {
+          "annotations": {
+            "dev.gvisor.spec.mount.gvisorinternaldevshm.options": "rw",
+            "dev.gvisor.spec.mount.gvisorinternaldevshm.share": "pod",
+            "dev.gvisor.spec.mount.gvisorinternaldevshm.source": "/run/containerd/io.containerd.grpc.v1.cri/sandboxes/c03505bc5b3c20d0dd7af20ad33a5f81deec42d10db565e602119a24797a3520/shm",
+            "dev.gvisor.spec.mount.gvisorinternaldevshm.type": "tmpfs",
+            "io.kubernetes.cri.container-type": "sandbox",
+            "io.kubernetes.cri.podsandbox.image-name": "registry.k8s.io/pause:3.10",
+            "io.kubernetes.cri.sandbox-cpu-period": "100000",
+            "io.kubernetes.cri.sandbox-cpu-quota": "50000",
+            "io.kubernetes.cri.sandbox-cpu-shares": "102",
+            "io.kubernetes.cri.sandbox-id": "c03505bc5b3c20d0dd7af20ad33a5f81deec42d10db565e602119a24797a3520",
+            "io.kubernetes.cri.sandbox-log-directory": "/var/log/pods/agentbox-api-3129bc552b_ses-504867e06a8c232125f2e123701d04e1e7d52f84_65dd428b-101d-4d46-aaef-2c11c4a86d9d",
+            "io.kubernetes.cri.sandbox-memory": "536870912",
+            "io.kubernetes.cri.sandbox-name": "ses-504867e06a8c232125f2e123701d04e1e7d52f84",
+            "io.kubernetes.cri.sandbox-namespace": "agentbox-api-3129bc552b",
+            "io.kubernetes.cri.sandbox-uid": "65dd428b-101d-4d46-aaef-2c11c4a86d9d"
+          },
+          "bundle": "/run/containerd/io.containerd.runtime.v2.task/k8s.io/c03505bc5b3c20d0dd7af20ad33a5f81deec42d10db565e602119a24797a3520",
+          "id": "c03505bc5b3c20d0dd7af20ad33a5f81deec42d10db565e602119a24797a3520",
+          "ociVersion": "1.2.1",
+          "pid": 44172,
+          "status": "running"
+        },
+        "processes": [
+          {
+            "pid": 44155,
+            "start_ticks": "102339420",
+            "cgroup": "/system.slice/containerd.service",
+            "exe": "/opt/agentbox-gvisor/containerd-shim-runsc-v1"
+          },
+          {
+            "pid": 44170,
+            "start_ticks": "102339424",
+            "cgroup": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod65dd428b_101d_4d46_aaef_2c11c4a86d9d.slice/cri-containerd-c03505bc5b3c20d0dd7af20ad33a5f81deec42d10db565e602119a24797a3520.scope",
+            "exe": "/opt/agentbox-gvisor/runsc"
+          },
+          {
+            "pid": 44172,
+            "start_ticks": "102339424",
+            "cgroup": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod65dd428b_101d_4d46_aaef_2c11c4a86d9d.slice/cri-containerd-c03505bc5b3c20d0dd7af20ad33a5f81deec42d10db565e602119a24797a3520.scope",
+            "exe": "/opt/agentbox-gvisor/gvisor-bin/gvisor_sentry"
+          },
+          {
+            "pid": 44209,
+            "start_ticks": "102339438",
+            "cgroup": "/system.slice/containerd.service",
+            "exe": "/opt/agentbox-gvisor/runsc"
+          }
+        ],
+        "resources": [
+          {
+            "cgroup": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod65dd428b_101d_4d46_aaef_2c11c4a86d9d.slice/cri-containerd-c03505bc5b3c20d0dd7af20ad33a5f81deec42d10db565e602119a24797a3520.scope",
+            "limits": "cpu.max\nmax 100000\nmemory.max\nmax\nmemory.swap.max\nmax\nmemory.events\nlow 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          },
+          {
+            "cgroup": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod65dd428b_101d_4d46_aaef_2c11c4a86d9d.slice",
+            "limits": "cpu.max\n50000 100000\nmemory.max\n536870912\nmemory.swap.max\nmax\nmemory.events\nlow 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          }
+        ],
+        "zero_swap_ancestor_confirmed": true,
+        "outside_pod_process_count": 2
+      },
+      {
+        "pod_uid": "d0291a8e-a7b7-4a01-bc9e-4be9194ebf94",
+        "cri_sandbox_id": "ec70dcdbe244a31a02c3da1ab7b7ccb4ae1f61503dbba0f9d9d8dd07bbe97fe7",
+        "runtime_handler": "agentbox-gvisor",
+        "runsc": {
+          "annotations": {
+            "dev.gvisor.spec.mount.gvisorinternaldevshm.options": "rw",
+            "dev.gvisor.spec.mount.gvisorinternaldevshm.share": "pod",
+            "dev.gvisor.spec.mount.gvisorinternaldevshm.source": "/run/containerd/io.containerd.grpc.v1.cri/sandboxes/ec70dcdbe244a31a02c3da1ab7b7ccb4ae1f61503dbba0f9d9d8dd07bbe97fe7/shm",
+            "dev.gvisor.spec.mount.gvisorinternaldevshm.type": "tmpfs",
+            "io.kubernetes.cri.container-type": "sandbox",
+            "io.kubernetes.cri.podsandbox.image-name": "registry.k8s.io/pause:3.10",
+            "io.kubernetes.cri.sandbox-cpu-period": "100000",
+            "io.kubernetes.cri.sandbox-cpu-quota": "50000",
+            "io.kubernetes.cri.sandbox-cpu-shares": "102",
+            "io.kubernetes.cri.sandbox-id": "ec70dcdbe244a31a02c3da1ab7b7ccb4ae1f61503dbba0f9d9d8dd07bbe97fe7",
+            "io.kubernetes.cri.sandbox-log-directory": "/var/log/pods/agentbox-api-3129bc552b_ses-504867e06a8c232125f2e123701d04e1e7d52f84_d0291a8e-a7b7-4a01-bc9e-4be9194ebf94",
+            "io.kubernetes.cri.sandbox-memory": "536870912",
+            "io.kubernetes.cri.sandbox-name": "ses-504867e06a8c232125f2e123701d04e1e7d52f84",
+            "io.kubernetes.cri.sandbox-namespace": "agentbox-api-3129bc552b",
+            "io.kubernetes.cri.sandbox-uid": "d0291a8e-a7b7-4a01-bc9e-4be9194ebf94"
+          },
+          "bundle": "/run/containerd/io.containerd.runtime.v2.task/k8s.io/ec70dcdbe244a31a02c3da1ab7b7ccb4ae1f61503dbba0f9d9d8dd07bbe97fe7",
+          "id": "ec70dcdbe244a31a02c3da1ab7b7ccb4ae1f61503dbba0f9d9d8dd07bbe97fe7",
+          "ociVersion": "1.2.1",
+          "pid": 44846,
+          "status": "running"
+        },
+        "processes": [
+          {
+            "pid": 44825,
+            "start_ticks": "102341326",
+            "cgroup": "/system.slice/containerd.service",
+            "exe": "/opt/agentbox-gvisor/containerd-shim-runsc-v1"
+          },
+          {
+            "pid": 44841,
+            "start_ticks": "102341330",
+            "cgroup": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-podd0291a8e_a7b7_4a01_bc9e_4be9194ebf94.slice/cri-containerd-ec70dcdbe244a31a02c3da1ab7b7ccb4ae1f61503dbba0f9d9d8dd07bbe97fe7.scope",
+            "exe": "/opt/agentbox-gvisor/runsc"
+          },
+          {
+            "pid": 44846,
+            "start_ticks": "102341331",
+            "cgroup": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-podd0291a8e_a7b7_4a01_bc9e_4be9194ebf94.slice/cri-containerd-ec70dcdbe244a31a02c3da1ab7b7ccb4ae1f61503dbba0f9d9d8dd07bbe97fe7.scope",
+            "exe": "/opt/agentbox-gvisor/gvisor-bin/gvisor_sentry"
+          },
+          {
+            "pid": 44879,
+            "start_ticks": "102341339",
+            "cgroup": "/system.slice/containerd.service",
+            "exe": "/opt/agentbox-gvisor/runsc"
+          }
+        ],
+        "resources": [
+          {
+            "cgroup": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-podd0291a8e_a7b7_4a01_bc9e_4be9194ebf94.slice/cri-containerd-ec70dcdbe244a31a02c3da1ab7b7ccb4ae1f61503dbba0f9d9d8dd07bbe97fe7.scope",
+            "limits": "cpu.max\nmax 100000\nmemory.max\nmax\nmemory.swap.max\nmax\nmemory.events\nlow 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          },
+          {
+            "cgroup": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-podd0291a8e_a7b7_4a01_bc9e_4be9194ebf94.slice",
+            "limits": "cpu.max\n50000 100000\nmemory.max\n536870912\nmemory.swap.max\nmax\nmemory.events\nlow 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+          }
+        ],
+        "zero_swap_ancestor_confirmed": true,
+        "outside_pod_process_count": 2
+      }
+    ],
+    "runtime_cleanup": {
+      "remaining_cri_sandboxes": [],
+      "remaining_processes": []
+    },
+    "namespace_cleanup_complete": true
+  },
+  "checks": {
+    "make_check": "passed",
+    "log": "artifacts/platform-api-test-15d9f90835b5/final-check.log",
+    "log_sha256": "a56e981bfa1249b2f3f91524619eaba773a17345b4f391275882f08299daa566",
+    "new_go_tests": {
+      "session": 14,
+      "sessionapi": 6
+    },
+    "existing_platform_script_tests": 95,
+    "go_mod_tidy_diff": "empty"
+  },
+  "phases": [
+    {
+      "report": "artifacts/platform-create-a1c24e754396/report.json",
+      "report_sha256": "572d8f8c5cdca080b4ae8c19756ae73440ead5e261a2f485cd3051bc517ebdc9",
+      "action": "create",
+      "started_at": "2026-10-29T03:51:46.704364+00:00",
+      "finished_at": "2026-10-29T03:56:15.591608+00:00",
+      "ok": true,
+      "reason": null,
+      "detail": null,
+      "source_sha256": {
+        "scripts/platform_lab.py": "91f866c01272b95c23873a1aff17c19943701e7eee8a27b1bb50b1aefeef03a8"
+      }
+    },
+    {
+      "report": "artifacts/platform-network-install-0a6dbe16f27c/report.json",
+      "report_sha256": "eadb9f199225d6ec6fe2eea9b47f54a77d3b010c0bfa489a118d00d046fbc064",
+      "action": "network-install",
+      "started_at": "2026-10-29T03:59:01.704132+00:00",
+      "finished_at": "2026-10-29T04:04:34.970006+00:00",
+      "ok": false,
+      "reason": "command_failed",
+      "detail": "kubectl exited 1: error: timed out waiting for the condition",
+      "source_sha256": {
+        "scripts/platform_lab.py": "91f866c01272b95c23873a1aff17c19943701e7eee8a27b1bb50b1aefeef03a8"
+      }
+    },
+    {
+      "report": "artifacts/platform-network-install-6bca63aa2ad7/report.json",
+      "report_sha256": "e05ab895f350d7d36fc3f68bdf748bd1bc287b6b2d1eaa5b2d16025fb8059d98",
+      "action": "network-install",
+      "started_at": "2026-10-29T04:09:27.793297+00:00",
+      "finished_at": "2026-10-29T04:12:32.279710+00:00",
+      "ok": true,
+      "reason": null,
+      "detail": null,
+      "source_sha256": {
+        "scripts/platform_lab.py": "15ff470ed317a2885de024caa62966c8d7b0d711ad2c2c3bab08f7dfcd45a969",
+        "scripts/lib/platform_api.py": "a91a57facf685fd1e7bd4042df8fbb7f5432698c5b38695e0e4d7c3c0108cb80",
+        "internal/session/service.go": "3702bcc1197bb63b4326247c7ad527021c1486cdc75b4ab987a1788d05ae55d9",
+        "internal/sessionapi/server.go": "4ebd2d459ee3568a12455c84ca2bc19100cf879b444b6931ac385dc682a9931b",
+        "cmd/agentbox-api/main.go": "1175d5a9ebb93eff0098105771617931d89362a4e225304eafd286de4ac1e6d1",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450"
+      }
+    },
+    {
+      "report": "artifacts/platform-gvisor-install-f8d8c7750df0/report.json",
+      "report_sha256": "9b4fa7f4a63cdb67fb47a49df86f69ce489ec2ab7fd05a19071a7dc5723fdd85",
+      "action": "gvisor-install",
+      "started_at": "2026-10-29T04:12:32.779069+00:00",
+      "finished_at": "2026-10-29T04:13:49.702787+00:00",
+      "ok": true,
+      "reason": null,
+      "detail": null,
+      "source_sha256": {
+        "scripts/platform_lab.py": "15ff470ed317a2885de024caa62966c8d7b0d711ad2c2c3bab08f7dfcd45a969",
+        "scripts/lib/platform_api.py": "288b5db77e0e80b544d790f59bd841a84b18d5c2103af4a619e28a925b2dec8c",
+        "internal/session/service.go": "3702bcc1197bb63b4326247c7ad527021c1486cdc75b4ab987a1788d05ae55d9",
+        "internal/sessionapi/server.go": "7f48564ea64f7d89a36724b4eb653b90803f74886c8ffb1e7df1b05ed8707560",
+        "cmd/agentbox-api/main.go": "1175d5a9ebb93eff0098105771617931d89362a4e225304eafd286de4ac1e6d1",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450"
+      }
+    },
+    {
+      "report": "artifacts/platform-session-install-583e927675cd/report.json",
+      "report_sha256": "34a0a6fbe6c107d4b57bbc314a4784a9682c5f0d40678e0387529951e6eb3a22",
+      "action": "session-install",
+      "started_at": "2026-10-29T04:13:55.097518+00:00",
+      "finished_at": "2026-10-29T04:14:23.720436+00:00",
+      "ok": false,
+      "reason": "session_control_plane_not_ready",
+      "detail": "[{\"component\": \"kube-controller-manager\", \"pod\": \"kube-controller-manager-agentbox-platform-lab-control-plane\", \"uid\": \"67833779-a491-4086-a058-000d8a7acd81\", \"ready\": true, \"phase\": \"Running\", \"waiting\": [null]}, {\"component\": \"kube-scheduler\", \"pod\": \"kube-scheduler-agentbox-platform-lab-control-plane\", \"uid\": \"81f28d85-c2b3-48d9-b151-29a9d48cb43a\", \"ready\": false, \"phase\": \"Running\", \"waiting\": [null]}]",
+      "source_sha256": {
+        "scripts/platform_lab.py": "15ff470ed317a2885de024caa62966c8d7b0d711ad2c2c3bab08f7dfcd45a969",
+        "scripts/lib/platform_api.py": "288b5db77e0e80b544d790f59bd841a84b18d5c2103af4a619e28a925b2dec8c",
+        "internal/session/service.go": "3702bcc1197bb63b4326247c7ad527021c1486cdc75b4ab987a1788d05ae55d9",
+        "internal/sessionapi/server.go": "7f48564ea64f7d89a36724b4eb653b90803f74886c8ffb1e7df1b05ed8707560",
+        "cmd/agentbox-api/main.go": "1175d5a9ebb93eff0098105771617931d89362a4e225304eafd286de4ac1e6d1",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450"
+      }
+    },
+    {
+      "report": "artifacts/platform-session-install-e02d83f6af09/report.json",
+      "report_sha256": "1e3cf31102ac5053d016b8d0a802727c3824da08df152cb3595c3ce46b295058",
+      "action": "session-install",
+      "started_at": "2026-10-29T04:15:03.709744+00:00",
+      "finished_at": "2026-10-29T04:15:05.317937+00:00",
+      "ok": false,
+      "reason": "session_control_plane_not_ready",
+      "detail": "[{\"component\": \"kube-controller-manager\", \"pod\": \"kube-controller-manager-agentbox-platform-lab-control-plane\", \"uid\": \"67833779-a491-4086-a058-000d8a7acd81\", \"ready\": false, \"phase\": \"Running\", \"waiting\": [null]}, {\"component\": \"kube-scheduler\", \"pod\": \"kube-scheduler-agentbox-platform-lab-control-plane\", \"uid\": \"81f28d85-c2b3-48d9-b151-29a9d48cb43a\", \"ready\": true, \"phase\": \"Running\", \"waiting\": [null]}]",
+      "source_sha256": {
+        "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+        "scripts/lib/platform_api.py": "288b5db77e0e80b544d790f59bd841a84b18d5c2103af4a619e28a925b2dec8c",
+        "internal/session/service.go": "3702bcc1197bb63b4326247c7ad527021c1486cdc75b4ab987a1788d05ae55d9",
+        "internal/sessionapi/server.go": "7f48564ea64f7d89a36724b4eb653b90803f74886c8ffb1e7df1b05ed8707560",
+        "cmd/agentbox-api/main.go": "1175d5a9ebb93eff0098105771617931d89362a4e225304eafd286de4ac1e6d1",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+        "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a"
+      }
+    },
+    {
+      "report": "artifacts/platform-session-install-afe24cd3c70e/report.json",
+      "report_sha256": "82a2e47d6b559640d530e12a03b4f070b0b69d92ba16e2dabaa5a62bdf2f589b",
+      "action": "session-install",
+      "started_at": "2026-10-29T04:17:51.734910+00:00",
+      "finished_at": "2026-10-29T04:21:37.211022+00:00",
+      "ok": true,
+      "reason": null,
+      "detail": null,
+      "source_sha256": {
+        "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+        "scripts/lib/platform_api.py": "288b5db77e0e80b544d790f59bd841a84b18d5c2103af4a619e28a925b2dec8c",
+        "internal/session/service.go": "56240030f919d868b759ccb886e1899a7ea1071531fe9400bc108a2c828a84cd",
+        "internal/sessionapi/server.go": "7f48564ea64f7d89a36724b4eb653b90803f74886c8ffb1e7df1b05ed8707560",
+        "cmd/agentbox-api/main.go": "1175d5a9ebb93eff0098105771617931d89362a4e225304eafd286de4ac1e6d1",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+        "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a"
+      }
+    },
+    {
+      "report": "artifacts/platform-api-test-0f8422143694/report.json",
+      "report_sha256": "0f98e8cf7a6cc6c463f52bb8e8bac9f58c490d3e355ab1ae0e883fb23bd55b65",
+      "action": "api-test",
+      "started_at": "2026-10-29T04:21:37.456447+00:00",
+      "finished_at": "2026-10-29T04:22:52.167655+00:00",
+      "ok": false,
+      "reason": "api_acceptance_failed",
+      "detail": "unexpected HTTP status: 503 for GET /readyz",
+      "source_sha256": {
+        "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+        "scripts/lib/platform_api.py": "288b5db77e0e80b544d790f59bd841a84b18d5c2103af4a619e28a925b2dec8c",
+        "internal/session/service.go": "56240030f919d868b759ccb886e1899a7ea1071531fe9400bc108a2c828a84cd",
+        "internal/sessionapi/server.go": "7f48564ea64f7d89a36724b4eb653b90803f74886c8ffb1e7df1b05ed8707560",
+        "cmd/agentbox-api/main.go": "1175d5a9ebb93eff0098105771617931d89362a4e225304eafd286de4ac1e6d1",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+        "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a"
+      }
+    },
+    {
+      "report": "artifacts/platform-api-test-7b78e31191b8/report.json",
+      "report_sha256": "f8c965e7e9457099e71d6afc1c0bfd9bb98fd030a5a33b6b0e7b0f2980f46222",
+      "action": "api-test",
+      "started_at": "2026-10-29T04:25:54.043016+00:00",
+      "finished_at": "2026-10-29T04:26:34.749024+00:00",
+      "ok": false,
+      "reason": "api_acceptance_failed",
+      "detail": "unexpected HTTP status: 503 for GET /v2/sessions/ses-65fc4365c5ea94e0bc6ce51521671e571134cbe3.c67eeed1-a132-4aad-80c5-6b8a2d17c39b",
+      "source_sha256": {
+        "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+        "scripts/lib/platform_api.py": "b3d87009a1a58690a90a6bdfc5ee80acd307d95bfc0625a13991d7e3b579bc7a",
+        "internal/session/service.go": "56240030f919d868b759ccb886e1899a7ea1071531fe9400bc108a2c828a84cd",
+        "internal/sessionapi/server.go": "1d504730e0b667f6765b64823d03343cb71a2d3824dd9724acbb3d8fd5ff0804",
+        "cmd/agentbox-api/main.go": "1175d5a9ebb93eff0098105771617931d89362a4e225304eafd286de4ac1e6d1",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+        "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a"
+      }
+    },
+    {
+      "report": "artifacts/platform-api-test-d9dc72790cf2/report.json",
+      "report_sha256": "5171adadf8e0bed0a730c0bbc25120d50b41d510868679b3f003f631c0646efb",
+      "action": "api-test",
+      "started_at": "2026-10-29T04:41:38.878342+00:00",
+      "finished_at": "2026-10-29T04:42:57.416067+00:00",
+      "ok": false,
+      "reason": "api_acceptance_failed",
+      "detail": "unexpected terminal session state",
+      "source_sha256": {
+        "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+        "scripts/lib/platform_api.py": "a4edce1b963eed6af75e16809935f09bda06101fea3c233b9c11fec71c54b91e",
+        "internal/session/service.go": "56240030f919d868b759ccb886e1899a7ea1071531fe9400bc108a2c828a84cd",
+        "internal/sessionapi/server.go": "d9f89f393d79b29f55bf944648f394bee1423a955b97d71dbad579b09472dcab",
+        "cmd/agentbox-api/main.go": "015822b69e06989593c5f254242ae31d6f6fa32d2702399e4d585145a0455928",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+        "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a"
+      }
+    },
+    {
+      "report": "artifacts/platform-api-test-15d9f90835b5/report.json",
+      "report_sha256": "a92d6bbe4048571aecfaedb6f16fc0726df96aacff94bf00381fa2a507dcd016",
+      "action": "api-test",
+      "started_at": "2026-10-29T05:36:20.362928+00:00",
+      "finished_at": "2026-10-29T05:37:35.248172+00:00",
+      "ok": true,
+      "reason": null,
+      "detail": null,
+      "source_sha256": {
+        "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+        "scripts/lib/platform_api.py": "8514e985f2be431ab110dfde1f8b8ef37c061856f753a198bf9bcb30021f7518",
+        "internal/session/service.go": "ec160be2c32f725fa04fb5b468b7023ab13a7a9c21a008946867959c04f7671b",
+        "internal/sessionapi/server.go": "d9f89f393d79b29f55bf944648f394bee1423a955b97d71dbad579b09472dcab",
+        "cmd/agentbox-api/main.go": "015822b69e06989593c5f254242ae31d6f6fa32d2702399e4d585145a0455928",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+        "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a"
+      }
+    },
+    {
+      "report": "artifacts/platform-delete-463a56f52d25/report.json",
+      "report_sha256": "8445784fb3be17f091367d1bf3a9a437b240cf97eb6ccb50b8823ff3d7445c80",
+      "action": "delete",
+      "started_at": "2026-10-29T05:42:36.432925+00:00",
+      "finished_at": "2026-10-29T05:43:08.994069+00:00",
+      "ok": false,
+      "reason": "command_failed",
+      "detail": "kind exited 1: using docker due to KIND_EXPERIMENTAL_PROVIDER\nDeleting cluster \"agentbox-platform-lab\" ...\nERROR: failed to delete cluster \"agentbox-platform-lab\": failed to delete nodes: command \"docker rm -f -v agentbox-platform-lab-worker agentbox-platform-lab-control-plane\" failed with error: exit status 1\n\nCommand Output: agentbox-platform-lab-worker\nError response from daemon: cannot remove container \"/agentbox-platform-lab-control-plane\": could not kill: tried to kill container, but did not receive an exit event",
+      "source_sha256": {
+        "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+        "scripts/lib/platform_api.py": "8514e985f2be431ab110dfde1f8b8ef37c061856f753a198bf9bcb30021f7518",
+        "internal/session/service.go": "ec160be2c32f725fa04fb5b468b7023ab13a7a9c21a008946867959c04f7671b",
+        "internal/sessionapi/server.go": "d9f89f393d79b29f55bf944648f394bee1423a955b97d71dbad579b09472dcab",
+        "cmd/agentbox-api/main.go": "015822b69e06989593c5f254242ae31d6f6fa32d2702399e4d585145a0455928",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+        "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a"
+      }
+    },
+    {
+      "report": "artifacts/platform-delete-6039d8038111/report.json",
+      "report_sha256": "44eec8dc67771276b87f3791bf711d263b74b5e3ba5bf4aec015fe94e2fb190d",
+      "action": "delete",
+      "started_at": "2026-10-29T05:44:21.190466+00:00",
+      "finished_at": "2026-10-29T05:44:25.946082+00:00",
+      "ok": true,
+      "reason": null,
+      "detail": null,
+      "source_sha256": {
+        "scripts/platform_lab.py": "324ea440fce16e7fe73695312c869140a1cf5a2c439eae520713248557ad1cb9",
+        "scripts/lib/platform_api.py": "8514e985f2be431ab110dfde1f8b8ef37c061856f753a198bf9bcb30021f7518",
+        "internal/session/service.go": "ec160be2c32f725fa04fb5b468b7023ab13a7a9c21a008946867959c04f7671b",
+        "internal/sessionapi/server.go": "d9f89f393d79b29f55bf944648f394bee1423a955b97d71dbad579b09472dcab",
+        "cmd/agentbox-api/main.go": "015822b69e06989593c5f254242ae31d6f6fa32d2702399e4d585145a0455928",
+        "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+        "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a"
+      }
+    }
+  ],
+  "failure_notes": [
+    "Initial CNI startup wait and native control-plane readiness failed before successful component installation.",
+    "First API startup check saw 503; readiness now uses a bounded convergence window, with explicit scoped Pool read verification.",
+    "A read-only state query saw a transient backend 503; only safe GET polling was retried within its existing budget.",
+    "Pod deletion initially exposed a terminal state before UID replacement. A bound terminated environment is now persistently invalidated, while readiness-only loss remains recoverable.",
+    "First lab deletion did not receive an exit event; preserved ownership allowed a successful bounded retry."
+  ],
+  "cleanup": {
+    "temporary_cluster_deleted": true,
+    "report": "artifacts/platform-delete-6039d8038111/report.json",
+    "remaining_other_clusters": [
+      "dev-cluster",
+      "orion-live",
+      "simplecache-gateway-0f3acde6",
+      "simplecache-stage4"
+    ]
+  },
+  "limits": [
+    "Only create/query/close lifecycle operations; no execution, files, MCP or agentboxd retirement.",
+    "Static configured principals and namespace-scoped API credentials; no SaaS/IAM or adversarial administrator security claim.",
+    "Closed Claim records remain for idempotency and ownership until administrator cleanup, bounded by namespace record quota.",
+    "Product cleanup_complete concerns API objects; the lab independently verified CRI and gVisor process cleanup.",
+    "No latency percentile, throughput/resource-saving, multi-replica execution coordination or production SLO conclusion."
+  ]
+}

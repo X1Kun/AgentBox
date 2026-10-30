@@ -1,11 +1,63 @@
 # 使用指南
 
-状态：agentboxd 已决定退役；当前提供普通 Job、gVisor、Calico 和上游冷会话、固定预热池/Go SDK 验收，没有新会话/批任务产品 API。上游验收命令见[冷会话入口](operations.md#cold-sessions)；该 Go 客户端在集群内逐次调用执行/文件接口，不接入大模型、不要求一次提交整套代码，也不保存 Python 变量。下面先定义拟议契约，再保留仍在源码中的旧 HTTP、MCP 与 DeepSeek 用法。阶段见[路线图](roadmap.md)，旧服务收尾见[运维指南](operations.md#retirement)。
+状态：agentboxd 已决定退役；当前提供普通 Job、gVisor、Calico 和上游冷会话、固定预热池/Go SDK 验收，新增 Go 会话 API，支持生命周期、逐次 Python 执行和文件读写；MCP 与批任务产品接口仍待接入。上游验收命令见[冷会话入口](operations.md#cold-sessions)；该 Go 客户端在集群内逐次调用执行/文件接口，不接入大模型、不要求一次提交整套代码，也不保存 Python 变量。下面先定义拟议契约，再保留仍在源码中的旧 HTTP、MCP 与 DeepSeek 用法。阶段见[路线图](roadmap.md)，旧服务收尾见[运维指南](operations.md#retirement)。
+
+<a id="session-api"></a>
+## Go 会话 API v2
+
+当前入口为 `cmd/agentbox-api`，提供创建、查询、关闭，以及显式开启后的执行/文件接口。实例固定一个管理员维护的 namespace/Pool，调用方只传创建标识和硬期限，不能提交镜像或 PodSpec。
+
+| 请求 | 行为 |
+| --- | --- |
+| `POST /v2/sessions` | 异步创建；首次返回 202，相同有效请求重放返回 200 和同一对象 |
+| `GET /v2/sessions/{session_id}` | 查询上游状态及已持久化的身份绑定 |
+| `DELETE /v2/sessions/{session_id}` | 提交关闭；确认回收返回 200，否则返回 202/closing |
+| `POST /v2/sessions/{session_id}/execute` | 在原会话中运行一次 Python，返回 stdout/stderr/exit_code |
+| `POST /v2/sessions/{session_id}/files/write`、`files/read` | 工作目录内有界二进制文件写入/读取 |
+| `GET /healthz`、`GET /readyz` | 进程存活、配置 Pool 的 API 可达性；不承诺可领取容量 |
+
+请求使用配置文件中的 Bearer token。token 对应服务端配置的 principal；相同 principal 可配置多个 token 用于轮换，归属不绑定 token 字节。所有错误返回稳定的 `error` 代码，不返回集群地址、凭据或原生错误正文。
+
+```http
+POST /v2/sessions
+Authorization: Bearer <caller-token>
+Content-Type: application/json
+
+{"request_id":"analysis-001","ttl_seconds":600}
+```
+
+创建 body 最多 4KiB，拒绝未知/重复字段和尾随 JSON。request_id 为 1～128 个受限 ASCII 字符；TTL 默认 600 秒，默认可选 60～3600 秒，由管理员配置上限。服务端将创建标识、归属和实例关联到同一命名 Claim，并绑定有效 TTL/Pool 摘要。参数冲突为 409/request_conflict；重试不延长期限。创建响应丢失时可用相同参数重放创建请求，服务仅查询/创建同名对象，每次调用只发起一次同名创建动作，不换新标识补建；底层 client-go 的传输重试仍使用同一资源名称。
+
+返回字段为 `session_id`、`state`、`reason`、`expires_at`、`identity_revision`、`cleanup_complete`、`operation_active`。session_id 是不应解析的标识，包含 Claim 实例身份；旧标识不能操作管理员删除后重建的同名 Claim。首次 Ready 时绑定 Sandbox/Pod/Service UID 并存入 Claim 注解，服务重启不丢失此绑定。Pod UID 改变或原资源消失后标记 invalidated，绑定不覆盖；新环境应使用新的 request_id 申请。
+
+状态包括 creating、ready、unavailable、invalidated、closing、closed、failed。ready 仅反映查询时的控制面状态，不保证未来执行一定成功。跨 principal 的读取/关闭统一返回 404；身份、绑定或参数冲突为 409；配额/权限/策略明确拒绝创建为 503/admission_rejected；传输结果不确定且查不到同一对象为 503/create_outcome_unknown。HTTP 请求超时不代表上游资源已停止。
+
+关闭通过原生 `ShutdownPolicy=Retain` 和终止时间驱动。Claim 留作幂等及终止记录；只有上游确认已观察本代到期，关联 Sandbox/Pod/Service 均消失后才返回 closed/cleanup_complete。仅查无对象、仅到达时钟期限或仅收到关闭请求均不算回收完成。产品字段证明 Kubernetes 对象回收；真实运行时/进程的回收由平台验收独立核对，API 本身无 CRI 权限。
+
+停止 Go API 进程不自动删除会话，上游硬期限仍生效。保留的 Claim 记录由管理员在确认 closed 后清理，计入记录配额；清理后同一个 request_id 可产生新 Claim UID，因此调用方应持续使用唯一创建标识。这是元数据保留边界，不是空闲资源回收策略。
+
+### 执行与文件调用
+
+先创建并查询至 ready，再携带该会话的 `identity_revision` 调用；每次只传本次代码，执行结束后可等待模型下一次 tool call。文件跨调用保留，每次启动新的 `python3 -I -B -u -c` 进程，Python 变量不保留。业务方通过文件导出产物后再关闭会话。
+
+```json
+{"identity_revision":"<ready response revision>","code":"import csv\nprint(list(csv.DictReader(open('input.csv'))))","timeout_seconds":10}
+```
+
+代码最多 64KiB，命令期限默认 20 秒，可选 1～60 秒；从连接运行时开始计入期限。正常返回 HTTP 200 和 `stdout`、`stderr`、`exit_code`，非零退出码是程序结果，仍可继续使用会话。stdout/stderr 合计最多 64KiB；超限为 413/execution_output_limit，并请求关闭整个会话，不返回伪造的完整结果。
+
+文件写入示例：`{"identity_revision":"<revision>","path":"input.csv","content_base64":"dmFsdWUKMgo="}`，其中 content_base64 须替换为实际文件的标准 Base64。读取只传 revision/path，返回 `content_base64` 和 `size_bytes`。单文件最多 256KiB，允许嵌套相对路径；绝对路径、`..`、非规范路径拒绝，符号链接的工作目录边界由上游文件协议再次检查。文件请求预算 10 秒；不存在为 404/file_not_found，越界链接为 403/file_access_denied，下载超限为 413/file_too_large。
+
+执行、文件读取和写入共用 Claim 上的 CAS 操作标记，同一会话最多一个在途数据操作，冲突立即返回 409/session_busy，无等待队列；查询和关闭使用独立 HTTP 名额。此标记跨 API 副本和进程重启保留，不自动租约到期释放。API 在操作中崩溃时，调用方应关闭会话并新建；不能借重启重放命令或绕过仍可能运行的进程。
+
+每次连接使用绑定 Pod 的 IP，TCP 建连前后复核 UID/IP、会话状态和操作标记，随后固定该连接，禁止 Service 重解析、自动重连、HTTP 重定向和命令重试；结果返回前再验证原身份。它依赖可信 Kubernetes/CNI 的 Pod 网络身份，不提供运行时远端证明，也不承诺无竞态的跨系统事务。身份变化拒绝继续，不将调用迁到替换 Pod。
+
+执行超时为 504/execution_timeout；执行或写入结果不确定、客户端断线等返回 503/operation_outcome_unknown（断线时可能收不到响应），保留操作标记并在独立 5 秒预算内请求上游关闭。关闭请求失败时仍不得重放或继续，调用方必须重试关闭/查询，硬 TTL 是最终兜底。错误本身不等于清理完成，仍需 GET 确认 closed/cleanup_complete。成功执行响应丢失也没有命令结果查询或去重账本，调用方不能自动重试代码；创建幂等不代表执行 exactly-once。
 
 <a id="target"></a>
 ## 目标接口契约（计划）
 
-Go 产品层适配上游 Agent Sandbox 与 Kubernetes Job，不调用 agentboxd。P2 实现会话工具，P3 增加批任务工具；具体端点、工具名和 schema 在实现时版本化公布，目前以下是能力约定，不是可调用 API。
+Go 产品层适配上游 Agent Sandbox 与 Kubernetes Job，不调用 agentboxd。P2 实现会话工具，P3 增加批任务工具；会话 v2 端点见上节；以下是整体目标契约，MCP 与批任务仍为计划。
 
 | 能力 | 会话 Session | 批任务 BatchTask |
 | --- | --- | --- |
@@ -29,7 +81,7 @@ Go 产品层适配上游 Agent Sandbox 与 Kubernetes Job，不调用 agentboxd�
 - 旧在途请求先排空或明确取消，未知结果不得自动迁入新会话/Job；切换后旧调用明确停用，新平台失败不自动回落 Daemon。
 - 通用模型客户端、输入/输出预算和错误处理可按职责复用；旧 cleanup_complete 及 timings 不直接作为新平台字段解释。
 
-执行 Pod 重建可能保留 Claim/Service 名称，但 Pod UID 和 emptyDir 工作目录已经变化；旧句柄不能据此继续代表原环境。当前 fault 验收器会显式识别这种变化并结束原会话，产品接口中的逐请求身份保护仍属于 P2。
+执行 Pod 重建可能保留 Claim/Service 名称，但 Pod UID 和 emptyDir 工作目录已经变化；旧句柄不能据此继续代表原环境。当前 fault 验收器会显式识别这种变化并结束原会话，生命周期 API 已另行实现逐请求归属与持久 UID 绑定，执行/文件请求要求 revision 并验证绑定连接。
 
 新契约依据见[会话设计](../DESIGN.md#session)、[批任务设计](../DESIGN.md#batch)，切换门槛见[路线图](roadmap.md#retirement)。以下所有 HTTP/MCP 示例仅适用于旧链路。
 

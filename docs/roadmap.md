@@ -6,7 +6,7 @@
 
 ## 1. 当前状态与总体顺序
 
-已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；新增固定预热池行为入口；Kueue、真实图片任务、新 API/MCP、AdmissionCheck 与实际退役仍未完成。
+已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；新增固定预热池行为入口；新增最小生命周期 API；执行/文件/MCP、Kueue、真实图片任务、AdmissionCheck 与实际退役仍未完成。
 
 | 阶段 | 主要交付 | 进入下一阶段的条件 |
 | --- | --- | --- |
@@ -60,6 +60,10 @@ kind 可承担功能验收；若当前宿主无法稳定支持目标 runtime/CNI
 ## 4. P2：Go API/MCP 与 agentboxd 退役
 
 ### P2a：薄产品适配
+
+第一笔新增最小 `agentbox-api` 生命周期服务：异步创建、查询、关闭、配置身份、命名 Claim 幂等与持久 UID 绑定。状态依赖上游 Retain Claim，不建第二套生命周期 CRD/状态库；首次 Ready 后的 Pod 替换会失效而不重绑。执行/文件在第二步补齐，MCP 和实际退役随后完成。本阶段仅做行为验收；受限凭据下的六项真实 API 检查与运行时清理已通过，见[API 验收](validation.md#session-api)。
+
+第二步已增加执行/文件适配：按原身份连接上游 sandboxd、Claim CAS 数据操作互斥、有界结果、超时/未知结果关闭。七项真实 API 行为检查、四个运行时的独立回收及完整 `make check` 已通过，见[执行验收](validation.md#session-execution)；不增加性能实验。后续收敛为两笔：新 MCP＋Agent 调用链；切换默认路径并实际退役 agentboxd/旧 Gateway。开发期复用健康集群，测试后只清本次资源。
 
 复用现有 Agent、模型客户端和 MCP 通用能力，使用上游 Go 客户端/执行协议承接会话创建、查询、命令执行、文件访问和关闭。产品只做身份/授权、稳定关联、受控模板、有限预算与结果适配；不新建池控制器、Node Agent、宿主执行器或通用会话 CRD。
 

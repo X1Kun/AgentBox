@@ -1,0 +1,1 @@
+{"apiVersion":"v1","kind":"ResourceQuota","metadata":{"name":"agentbox-api-budget","namespace":"__WORK_NS__"},"spec":{"hard":{"pods":"3","requests.cpu":"300m","requests.memory":"384Mi","limits.cpu":"1500m","limits.memory":"1536Mi","count/sandboxclaims.extensions.agents.x-k8s.io":"32"}}}

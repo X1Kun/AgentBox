@@ -325,6 +325,107 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(summary["reason"], "preflight_failed")
         self.assertEqual(summary["failed_checks"], [{"name": "kind", "reason": "version_mismatch"}])
 
+    def test_read_retry_is_bounded_and_never_replays_mutations(self):
+        elapsed = [0]
+        def sleep(seconds): elapsed[0] += seconds
+        replies = [labmod.CommandError("command_failed", "context deadline exceeded"), "ok"]
+        def handler(args, **kwargs):
+            reply = replies.pop(0)
+            if isinstance(reply, Exception): raise reply
+            return reply
+        self.runner.handler = handler
+        with patch.object(labmod.time, "monotonic", side_effect=lambda: elapsed[0]), patch.object(labmod.time, "sleep", side_effect=sleep):
+            self.assertEqual(self.lab.kubectl("get", "nodes", timeout=6), "ok")
+        self.assertEqual(len(self.runner.calls), 2)
+        self.assertLess(self.runner.calls[1][1]["timeout"], self.runner.calls[0][1]["timeout"])
+        for args in [("create", "-f", "-"), ("apply", "-f", "-"), ("patch", "pod", "x"),
+                     ("delete", "pod", "x"), ("-n", "get", "exec", "pod", "--", "echo", "x")]:
+            self.runner.calls.clear()
+            self.runner.handler = lambda *a, **k: (_ for _ in ()).throw(labmod.CommandError("command_failed", "context deadline exceeded"))
+            with self.assertRaises(labmod.CommandError): self.lab.kubectl(*args)
+            self.assertEqual(len(self.runner.calls), 1)
+        for detail in ("Forbidden", "Unauthorized", "Unable to connect: x509 certificate invalid"):
+            self.runner.calls.clear()
+            self.runner.handler = lambda *a, **k: (_ for _ in ()).throw(labmod.CommandError("command_failed", detail))
+            with self.assertRaises(labmod.CommandError): self.lab.kubectl("get", "nodes")
+            self.assertEqual(len(self.runner.calls), 1)
+
+    def health_fixture(self, nodes_ready=True):
+        nodes = {"items": [{"status": {"conditions": [{"type": "Ready", "status": "True" if nodes_ready else "False"}]}} for _ in range(2)]}
+        pods = {"items": [{"metadata": {"labels": {"component": role}}, "status": {"phase": "Running",
+                 "conditions": [{"type": "Ready", "status": "True"}]}}
+                for role in ("etcd", "kube-apiserver", "kube-controller-manager", "kube-scheduler")]}
+        return nodes, pods
+
+    def test_health_wait_requires_consecutive_samples_and_tolerates_read_timeout(self):
+        state = self.state()
+        nodes, pods = self.health_fixture()
+        elapsed, api_samples = [0], [0]
+        def observe(*args, **kwargs):
+            if "--raw=/readyz" in args:
+                api_samples[0] += 1
+                if api_samples[0] == 2: raise labmod.CommandError("command_failed", "context deadline exceeded")
+                return "ok"
+            return json.dumps(nodes if "nodes" in args else pods)
+        with patch.object(self.lab, "owned", return_value=(state, state["node_ids"])), \
+             patch.object(self.lab, "node_report"), patch.object(self.lab, "kubectl", side_effect=observe), \
+             patch.object(labmod.time, "monotonic", side_effect=lambda: elapsed[0]), \
+             patch.object(labmod.time, "sleep", side_effect=lambda seconds: elapsed.__setitem__(0, elapsed[0]+seconds)):
+            result = self.lab.wait_ready(timeout=30)
+        self.assertTrue(result["ready"])
+        self.assertEqual(api_samples[0], 5)
+        self.assertEqual(result["attempts"][1]["reason"], "api_temporarily_unavailable")
+
+    def test_health_wait_is_finite_and_never_treats_unready_nodes_as_ready(self):
+        state = self.state()
+        nodes, pods = self.health_fixture(nodes_ready=False)
+        elapsed = [0]
+        def observe(*args, **kwargs):
+            return "ok" if "--raw=/readyz" in args else json.dumps(nodes if "nodes" in args else pods)
+        with patch.object(self.lab, "owned", return_value=(state, state["node_ids"])), \
+             patch.object(self.lab, "node_report"), patch.object(self.lab, "kubectl", side_effect=observe), \
+             patch.object(labmod.time, "monotonic", side_effect=lambda: elapsed[0]), \
+             patch.object(labmod.time, "sleep", side_effect=lambda seconds: elapsed.__setitem__(0, elapsed[0]+seconds)):
+            with self.assertRaises(labmod.LabError) as caught: self.lab.wait_ready(timeout=4)
+            self.assertEqual(caught.exception.reason, "control_plane_not_ready")
+            elapsed[0] = 0
+            self.assertTrue(self.lab.wait_ready(timeout=10, require_nodes=False)["ready"])
+        self.assertFalse(any("apply" in c[0] or "delete" in c[0] for c in self.runner.calls))
+
+    def test_nested_install_lock_retains_exclusion_for_other_clients(self):
+        other = labmod.Lab(self.root, self.runner)
+        with self.lab.operation_lock():
+            with self.lab.operation_lock():
+                with self.assertRaises(labmod.LabError) as caught:
+                    with other.operation_lock(): pass
+                self.assertEqual(caught.exception.reason, "operation_in_progress")
+            with self.assertRaises(labmod.LabError):
+                with other.operation_lock(): pass
+        with other.operation_lock(): pass
+
+    def test_up_resumes_in_dependency_order_and_stops_after_failed_stage(self):
+        state = self.state(network_profile="calico")
+        stages = []
+        def health(**kwargs): stages.append("health")
+        with patch.object(self.lab, "owned", return_value=(state, state["node_ids"])), \
+             patch.object(self.lab, "wait_ready", side_effect=health), \
+             patch.object(labmod, "Network") as network, patch.object(labmod, "GVisor") as runtime, \
+             patch.object(labmod, "Sessions") as sessions, patch.object(self.lab, "create") as create:
+            asset = self.root / "cached"
+            asset.touch()
+            sessions.return_value.bundle_path = asset
+            for cls, name in [(network, "calico"), (runtime, "gvisor"), (sessions, "sessions")]:
+                cls.return_value.lock = {"manifest": "cached", "archive": "cached"}
+                cls.return_value.install.side_effect = lambda *a, stage=name, **k: stages.append(stage)
+            self.lab.up(asset, "domestic.example/calico", asset, asset)
+            self.assertEqual(stages, ["health", "calico", "health", "gvisor", "health", "sessions"])
+            create.assert_not_called()
+            stages.clear();runtime.return_value.install.reset_mock();sessions.return_value.install.reset_mock()
+            network.return_value.install.side_effect = labmod.LabError("control_plane_not_ready", "injected")
+            with self.assertRaises(labmod.LabError): self.lab.up(asset, None, asset, asset)
+            runtime.return_value.install.assert_not_called();sessions.return_value.install.assert_not_called()
+            self.assertEqual(stages, ["health"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -329,6 +329,9 @@ class Sessions:
             if previous and previous.get('phase') == 'ready':
                 return dict(already_installed=True, **self.verify(bundle))
             self.load_images(bundle)
+            # Image unpacking shares the host disk with etcd. Observe recovery
+            # before submitting controller resources, never replay that apply.
+            self.lab.wait_ready()
             path = self.output / 'session-upstream.yaml'
             path.write_bytes(data)
             objects = kubectl_objects(self.lab.kubectl('create', '--dry-run=client', '--validate=false', '-f', path, '-o', 'json', timeout=60))
