@@ -111,6 +111,11 @@ func TestSessionRequestBudgets(t *testing.T) {
 	if v, err := h.service.Get(testCtx, "alice", v.ID); err != nil || !v.CleanupComplete {
 		t.Fatalf("cleanup: %#v %v", v, err)
 	}
+	record("first_closed", h, 5)
+	h.client.ClearActions()
+	if v, err := h.service.Get(testCtx, "alice", v.ID); err != nil || !v.CleanupComplete || v.ClosedAt == "" {
+		t.Fatalf("retained closure: %#v %v", v, err)
+	}
 	record("get_closed", h, 4)
 	for _, operation := range []string{"execute", "read", "write"} {
 		h, v, _ := operationSetup(t)

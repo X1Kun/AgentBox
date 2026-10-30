@@ -1,6 +1,6 @@
 # 路线图与阶段验收
 
-更新：2026-10-29｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
+更新：2026-10-30｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
 
 在现有 AgentBox 内演进，优先复用 Agent Sandbox 管理会话，Job/Kueue 管理批任务，共用 containerd/gVisor。agentboxd 进入退役，不扩展本地运行后端；两类 Kubernetes 工作负载不等于长期维护新旧双后端。
 
@@ -63,7 +63,7 @@ kind 可承担功能验收；若当前宿主无法稳定支持目标 runtime/CNI
 
 第一笔新增最小 `agentbox-api` 生命周期服务：异步创建、查询、关闭、配置身份、命名 Claim 幂等与持久 UID 绑定。状态依赖上游 Retain Claim，不建第二套生命周期 CRD/状态库；首次 Ready 后的 Pod 替换会失效而不重绑。执行/文件已在第二步补齐，MCP 和实际退役随后完成。本阶段仅做行为验收；受限凭据下的六项真实 API 检查与运行时清理已通过，见[API 验收](validation.md#session-api)。
 
-第二步已增加执行/文件适配：按原身份连接上游 sandboxd、Claim CAS 数据操作互斥、有界结果、超时/未知结果关闭。七项真实 API 行为检查、四个运行时的独立回收及完整 `make check` 已通过，见[执行验收](validation.md#session-execution)；不增加性能实验。后续收敛为两笔：新 MCP＋Agent 调用链；切换默认路径并实际退役 agentboxd/旧 Gateway。开发期复用健康集群，测试后只清本次资源。
+第二步已增加执行/文件适配：按原身份连接上游 sandboxd、Claim CAS 数据操作互斥、有界结果、超时/未知结果关闭。七项真实 API 行为检查、四个运行时的独立回收及完整 `make check` 已通过，见[执行验收](validation.md#session-execution)；不增加性能实验。另新增 closed_at 持久观察和独立管理员记录清理入口，默认预览，按保留期及原 UID/resourceVersion 删除，元数据配额/回收验收独立于执行运行时。后续收敛为两笔：新 MCP＋Agent 调用链；切换默认路径并实际退役 agentboxd/旧 Gateway。开发期复用健康集群，测试后只清本次资源。
 
 复用现有 Agent、模型客户端和 MCP 通用能力，使用上游 Go 客户端/执行协议承接会话创建、查询、命令执行、文件访问和关闭。产品只做身份/授权、稳定关联、受控模板、有限预算与结果适配；不新建池控制器、Node Agent、宿主执行器或通用会话 CRD。
 

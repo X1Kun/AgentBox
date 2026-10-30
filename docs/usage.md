@@ -28,13 +28,15 @@ Content-Type: application/json
 
 创建 body 最多 4KiB，拒绝未知/重复字段和尾随 JSON。request_id 为 1～128 个受限 ASCII 字符；TTL 默认 600 秒，默认可选 60～3600 秒，由管理员配置上限。服务端将创建标识、归属和实例关联到同一命名 Claim，并绑定有效 TTL/Pool 摘要。参数冲突为 409/request_conflict；重试不延长期限。创建响应丢失时可用相同参数重放创建请求，服务仅查询/创建同名对象，每次调用只发起一次同名创建动作，不换新标识补建；底层 client-go 的传输重试仍使用同一资源名称。
 
-返回字段为 `session_id`、`state`、`reason`、`expires_at`、`identity_revision`、`cleanup_complete`、`operation_active`。session_id 是不应解析的标识，包含 Claim 实例身份；旧标识不能操作管理员删除后重建的同名 Claim。首次 Ready 时绑定 Sandbox/Pod/Service UID 并存入 Claim 注解，服务重启不丢失此绑定。Pod UID 改变或原资源消失后标记 invalidated，绑定不覆盖；新环境应使用新的 request_id 申请。
+返回字段为 `session_id`、`state`、`reason`、`expires_at`、`identity_revision`、`cleanup_complete`、`operation_active`，以及首次确认 API 对象清理后出现的 `closed_at`。session_id 是不应解析的标识，包含 Claim 实例身份；旧标识不能操作管理员删除后重建的同名 Claim。首次 Ready 时绑定 Sandbox/Pod/Service UID 并存入 Claim 注解，服务重启不丢失此绑定。Pod UID 改变或原资源消失后标记 invalidated，绑定不覆盖；新环境应使用新的 request_id 申请。
 
 状态包括 creating、ready、unavailable、invalidated、closing、closed、failed。ready 仅反映查询时的控制面状态，不保证未来执行一定成功。跨 principal 的读取/关闭统一返回 404；身份、绑定或参数冲突为 409；配额/权限/策略明确拒绝创建为 503/admission_rejected；传输结果不确定且查不到同一对象为 503/create_outcome_unknown。HTTP 请求超时不代表上游资源已停止。
 
 关闭通过原生 `ShutdownPolicy=Retain` 和终止时间驱动。Claim 留作幂等及终止记录；只有上游确认已观察本代到期，关联 Sandbox/Pod/Service 均消失后才返回 closed/cleanup_complete。仅查无对象、仅到达时钟期限或仅收到关闭请求均不算回收完成。产品字段证明 Kubernetes 对象回收；真实运行时/进程的回收由平台验收独立核对，API 本身无 CRI 权限。
 
-停止 Go API 进程不自动删除会话，上游硬期限仍生效。保留的 Claim 记录由管理员在确认 closed 后清理，计入记录配额；清理后同一个 request_id 可产生新 Claim UID，因此调用方应持续使用唯一创建标识。这是元数据保留边界，不是空闲资源回收策略。
+停止 Go API 进程不自动删除会话，上游硬期限仍生效。首次确认 closed/cleanup_complete 时，服务以 UID/resourceVersion CAS 将观察时间写入 Claim 的 `agentbox.dev/api-closed-at`，后续查询/重启不延长该时间；这不是实际进程退出时间，也不从创建时间或 TTL 倒推。旧记录首次被新服务或管理员工具确认关闭后，才开始完整保留窗口。
+
+独立管理员工具 `agentbox-cleanup` 默认只预览，保留期默认 24h，按 namespace/Pool/instance/principal 限定范围。未有 closed_at 的旧记录在 `--apply` 时仅补充关闭确认，本次不删除；已确认关闭且保留期届满的记录才可删除，操作与权限见[记录清理](operations.md#claim-retention)。部署方应发布固定保留期，缩短保留期需要明确管理变更。超过保留期不自动删除，未删除前仍保持创建幂等；实际删除后同一个 request_id 可产生新 Claim UID，旧 session_id 不能操作新对象，因此调用方应持续使用唯一创建标识。记录计入 namespace 配额；清理记录不等于回收运行资源。
 
 `/healthz` 表示进程存活；`/readyz` 读取后台检查快照，不随探针请求增加 Kubernetes 查询。每实例一个检查循环，每 2 秒刷新，单次预算不超过 2 秒；启动尚未完成检查、最近检查失败、快照达到 5 秒或服务停止检查时返回 503。readiness 不表示会话容量或现有命令健康。
 

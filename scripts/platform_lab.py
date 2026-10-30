@@ -24,6 +24,7 @@ from lib.platform_gvisor import CASES, GVisor, GVisorError
 from lib.platform_network import Network, NetworkError
 from lib.platform_sessions import Sessions, SessionError, checked_source as session_source
 from lib.platform_api import APIAcceptance
+from lib.platform_retention import APIRetentionAcceptance
 from lib.platform_api_execution import APIExecutionAcceptance
 
 sys.dont_write_bytecode = True
@@ -605,7 +606,7 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "up", "ready"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "up", "ready"))
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
     parser.add_argument("--node-image-source", help="mirror repository with the SAME locked node digest (create)")
@@ -680,6 +681,9 @@ def main(argv=None):
                                  source_root / "scripts/lib/session_faults.py",
                                  source_root / "scripts/lib/platform_api.py",
                                  source_root / "scripts/lib/platform_api_execution.py",
+                                 source_root / "scripts/lib/platform_retention.py",
+                                 source_root / "deploy/platform/cleanup-rbac.json",
+                                 *sorted((source_root / "cmd/agentbox-cleanup").glob("*.go")),
                                  *sorted((source_root / "internal/sessionruntime").glob("*.go")),
                                  source_root / "deploy/platform/api.Dockerfile",
                                  source_root / "deploy/platform/api-deployment.json",
@@ -743,6 +747,9 @@ def main(argv=None):
         elif args.action == "session-test":
             report["result"] = Sessions(lab).test(args.session_profile)
             report["ok"] = True
+        elif args.action == "api-retention-test":
+            report["result"] = APIRetentionAcceptance(lab).test()
+            report["ok"] = True
         elif args.action == "api-exec-test":
             report["result"] = APIExecutionAcceptance(lab).test()
             report["ok"] = True
@@ -755,7 +762,7 @@ def main(argv=None):
     except (LabError, GVisorError, NetworkError, SessionError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
         reason = "interrupted" if isinstance(error, KeyboardInterrupt) else getattr(error, "reason", "invalid_state")
         report.update(reason=reason, detail=str(error))
-        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-install", "session-test", "api-test", "api-exec-test", "up", "ready") and reason not in {
+        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "up", "ready") and reason not in {
                 "operation_in_progress", "existing_state", "unowned_cluster", "preflight_failed",
                 "image_digest_mismatch", "invalid_image", "tool_unavailable", "calico_checksum_mismatch",
                 "invalid_image_prefix", "wrong_network_profile", "network_definition_changed",
