@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -73,45 +72,46 @@ func validPath(p string) bool {
 	}
 	return true
 }
-func (s *Service) checkTarget(ctx context.Context, principal, id, expected string) (*unstructured.Unstructured, *Binding, error) {
-	v, err := s.Get(ctx, principal, id)
+func (s *Service) checkTarget(ctx context.Context, principal, id, expected string) (*unstructured.Unstructured, *Binding, *unstructured.Unstructured, error) {
+	// Reuse only this observation's validated Pod. Each connection boundary
+	// makes a new observation, including the full uniqueness/selector scans.
+	v, err := s.snapshot(ctx, principal, id)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if v.State != "ready" {
-		return nil, nil, fail("session_not_ready")
+		return nil, nil, nil, fail("session_not_ready")
 	}
 	if expected == "" || v.IdentityRevision != expected {
-		return nil, nil, fail("identity_changed")
+		return nil, nil, nil, fail("identity_changed")
 	}
+	// Re-read after observing backing objects: Close or another holder may
+	// have changed the Claim while those API reads were in flight.
 	c, err := s.load(ctx, principal, id)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	b, err := readBinding(c)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	if b == nil || revision(b) != expected || c.GetAnnotations()[invalidKey] != "" || c.GetAnnotations()[closeKey] == "true" {
-		return nil, nil, fail("identity_changed")
+	if b == nil || v.pod == nil || ref(v.pod) != b.Pod || revision(b) != expected || c.GetAnnotations()[invalidKey] != "" || c.GetAnnotations()[closeKey] == "true" {
+		return nil, nil, nil, fail("identity_changed")
 	}
-	return c, b, nil
+	return c, b, v.pod, nil
 }
 
 // The Claim CAS serializes all data-plane calls across API replicas/restarts.
 // There is no expiring lease: a crash cannot quietly admit a second execution.
 func (s *Service) acquire(ctx context.Context, principal, id, expected string) (Target, string, error) {
+	started := time.Now()
 	for attempts := 0; attempts < 3; attempts++ {
-		c, b, err := s.checkTarget(ctx, principal, id, expected)
+		c, b, pod, err := s.checkTarget(ctx, principal, id, expected)
 		if err != nil {
 			return Target{}, "", err
 		}
 		if c.GetAnnotations()[operationKey] != "" {
 			return Target{}, "", fail("session_busy")
-		}
-		pod, err := s.resource(Pods).Get(ctx, b.Pod.Name, metav1.GetOptions{})
-		if err != nil {
-			return Target{}, "", err
 		}
 		ip, _, _ := unstructured.NestedString(pod.Object, "status", "podIP")
 		if string(pod.GetUID()) != b.Pod.UID || net.ParseIP(ip) == nil {
@@ -128,20 +128,18 @@ func (s *Service) acquire(ctx context.Context, principal, id, expected string) (
 				continue
 			}
 			// A lost CAS reply may have installed the lock. Do not dispatch or replay.
+			s.operationEvent(ctx, id, token, "acquire", "unknown", err, started)
 			return Target{}, "", fail("operation_outcome_unknown")
 		}
+		s.operationEvent(ctx, id, token, "acquire", "complete", nil, started)
 		target := Target{IP: ip}
 		target.Validate = func(callCtx context.Context) error {
-			current, binding, e := s.checkTarget(callCtx, principal, id, expected)
+			current, _, p, e := s.checkTarget(callCtx, principal, id, expected)
 			if e != nil {
 				return e
 			}
 			if current.GetAnnotations()[operationKey] != token {
 				return fail("state_conflict")
-			}
-			p, e := s.resource(Pods).Get(callCtx, binding.Pod.Name, metav1.GetOptions{})
-			if e != nil {
-				return e
 			}
 			currentIP, _, _ := unstructured.NestedString(p.Object, "status", "podIP")
 			if string(p.GetUID()) != b.Pod.UID || currentIP != ip {
@@ -167,6 +165,12 @@ func (s *Service) release(ctx context.Context, principal, id, token string) erro
 			return nil
 		}
 		if !retryPatch(err) {
+			// Resolve only by reading the same Claim UID. Never replay a data
+			// operation or clear a different holder's marker after a lost reply.
+			current, readErr := s.load(ctx, principal, id)
+			if readErr == nil && current.GetAnnotations()[operationKey] == "" {
+				return nil
+			}
 			return err
 		}
 	}
@@ -177,13 +181,17 @@ func (s *Service) finish(ctx context.Context, principal, id, expected, token str
 	// shutdown with a detached budget. Timeout/cancellation alone is not cleanup.
 	uncertain := operationErr != nil && mutating
 	if operationErr == nil {
-		_, _, operationErr = s.checkTarget(ctx, principal, id, expected)
+		started := time.Now()
+		_, _, _, operationErr = s.checkTarget(ctx, principal, id, expected)
 		uncertain = operationErr != nil
+		if uncertain {
+			s.operationEvent(ctx, id, token, "validate", "unknown", operationErr, started)
+		}
 	}
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if uncertain {
-		_, _ = s.Close(cleanup, principal, id)
+		s.requestOperationClose(cleanup, principal, id, token)
 		switch Code(operationErr) {
 		case "execution_output_limit":
 			return fail("execution_output_limit")
@@ -193,9 +201,13 @@ func (s *Service) finish(ctx context.Context, principal, id, expected, token str
 		}
 		return fail("operation_outcome_unknown")
 	}
+	started := time.Now()
 	if err := s.release(cleanup, principal, id, token); err != nil {
+		s.operationEvent(cleanup, id, token, "release", "unknown", err, started)
+		s.requestOperationClose(cleanup, principal, id, token)
 		return fail("operation_outcome_unknown")
 	}
+	s.operationEvent(cleanup, id, token, "release", "complete", nil, started)
 	return operationErr
 }
 func (s *Service) Execute(ctx context.Context, principal, id string, r ExecuteRequest) (ExecutionView, error) {
@@ -217,11 +229,17 @@ func (s *Service) Execute(ctx context.Context, principal, id string, r ExecuteRe
 		return ExecutionView{}, err
 	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
+	started := time.Now()
 	result, err := s.runtime.Execute(runCtx, target, r.Code)
 	if runCtx.Err() != nil {
 		err = runCtx.Err()
 	}
 	cancel()
+	outcome := "complete"
+	if err != nil {
+		outcome = "unknown"
+	}
+	s.operationEvent(ctx, id, token, "execute", outcome, err, started)
 	if err = s.finish(ctx, principal, id, r.IdentityRevision, token, err, true); err != nil {
 		return ExecutionView{}, err
 	}
@@ -248,6 +266,7 @@ func (s *Service) file(ctx context.Context, principal, id string, r FileRequest,
 		return FileView{}, err
 	}
 	var content []byte
+	started := time.Now()
 	if write {
 		err = s.runtime.Write(ctx, target, r.Path, r.Content)
 	} else {
@@ -255,6 +274,17 @@ func (s *Service) file(ctx context.Context, principal, id string, r FileRequest,
 	}
 	// Definite filesystem rejections are safe to report without closing the session.
 	mutating := write && Code(err) != "file_not_found" && Code(err) != "file_access_denied" && Code(err) != "invalid_path"
+	phase, outcome := "read", "complete"
+	if write {
+		phase = "write"
+	}
+	if err != nil {
+		outcome = "failed"
+		if mutating {
+			outcome = "unknown"
+		}
+	}
+	s.operationEvent(ctx, id, token, phase, outcome, err, started)
 	if err = s.finish(ctx, principal, id, r.IdentityRevision, token, err, mutating); err != nil {
 		return FileView{}, err
 	}

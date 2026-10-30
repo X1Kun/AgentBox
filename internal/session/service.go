@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -91,6 +92,7 @@ type Service struct {
 	cfg     Config
 	now     func() time.Time
 	runtime Runtime
+	logger  *slog.Logger
 }
 
 func ValidPrincipal(value string) bool { return principalPattern.MatchString(value) }
@@ -288,15 +290,27 @@ func (s *Service) patch(ctx context.Context, c *unstructured.Unstructured, field
 }
 func retryPatch(err error) bool { return apierrors.IsConflict(err) || apierrors.IsInvalid(err) }
 
+// observation is local to one fresh API observation; it is never cached across
+// connection checks or requests. The Pod has passed the full backing checks.
+type observation struct {
+	View
+	pod *unstructured.Unstructured
+}
+
 func (s *Service) Get(ctx context.Context, principal, id string) (View, error) {
+	snapshot, err := s.snapshot(ctx, principal, id)
+	return snapshot.View, err
+}
+
+func (s *Service) snapshot(ctx context.Context, principal, id string) (observation, error) {
 	for attempts := 0; attempts < 3; attempts++ {
 		c, err := s.load(ctx, principal, id)
 		if err != nil {
-			return View{}, err
+			return observation{}, err
 		}
 		v, change, err := s.observe(ctx, c)
 		if err != nil {
-			return View{}, err
+			return observation{}, err
 		}
 		if len(change) == 0 {
 			return v, nil
@@ -305,24 +319,27 @@ func (s *Service) Get(ctx context.Context, principal, id string) (View, error) {
 			if retryPatch(err) {
 				continue
 			}
-			return View{}, err
+			return observation{}, err
 		}
+		// The observation becomes publishable only after its UID/version CAS
+		// succeeds. Re-listing cannot make that earlier snapshot atomic.
+		return v, nil
 	}
-	return View{}, fail("state_conflict")
+	return observation{}, fail("state_conflict")
 }
-func (s *Service) observe(ctx context.Context, c *unstructured.Unstructured) (View, map[string]string, error) {
+func (s *Service) observe(ctx context.Context, c *unstructured.Unstructured) (observation, map[string]string, error) {
 	expires, _, _ := unstructured.NestedString(c.Object, "spec", "lifecycle", "shutdownTime")
 	deadline, err := time.Parse(time.RFC3339, expires)
 	if err != nil {
-		return View{}, nil, fail("integrity_error")
+		return observation{}, nil, fail("integrity_error")
 	}
 	b, err := readBinding(c)
 	if err != nil {
-		return View{}, nil, err
+		return observation{}, nil, err
 	}
-	v := View{ID: sessionID(c), State: "creating", ExpiresAt: expires, IdentityRevision: revision(b), OperationActive: c.GetAnnotations()[operationKey] != ""}
+	v := observation{View: View{ID: sessionID(c), State: "creating", ExpiresAt: expires, IdentityRevision: revision(b), OperationActive: c.GetAnnotations()[operationKey] != ""}}
 	if c.GetDeletionTimestamp() != nil {
-		return View{}, nil, fail("identity_changed")
+		return observation{}, nil, fail("identity_changed")
 	}
 	closing := c.GetAnnotations()[closeKey] == "true" || !s.now().Before(deadline)
 	if closing {
@@ -333,13 +350,14 @@ func (s *Service) observe(ctx context.Context, c *unstructured.Unstructured) (Vi
 		}
 		remaining, e := s.remaining(ctx, c, b)
 		if e != nil {
-			return View{}, nil, e
+			return observation{}, nil, e
 		}
 		if !remaining {
 			v.State = "closed"
 			v.Reason = ""
 			v.CleanupComplete = true
 			if v.OperationActive {
+				v.OperationActive = false
 				return v, map[string]string{operationKey: ""}, nil
 			}
 		}
@@ -352,10 +370,13 @@ func (s *Service) observe(ctx context.Context, c *unstructured.Unstructured) (Vi
 	}
 	current, ready, reason, e := s.backing(ctx, c)
 	if e != nil {
-		return View{}, nil, e
+		return observation{}, nil, e
+	}
+	if current != nil {
+		v.pod = current.pod
 	}
 	if b != nil {
-		if current == nil || *current != *b {
+		if current == nil || *current.binding != *b {
 			v.State = "invalidated"
 			v.Reason = "backing_identity_changed"
 			return v, map[string]string{invalidKey: v.Reason}, nil
@@ -383,11 +404,18 @@ func (s *Service) observe(ctx context.Context, c *unstructured.Unstructured) (Vi
 		v.Reason = reason
 		return v, nil, nil
 	}
-	raw, _ := json.Marshal(current)
+	v.State = "ready"
+	v.IdentityRevision = revision(current.binding)
+	raw, _ := json.Marshal(current.binding)
 	return v, map[string]string{bindingKey: string(raw)}, nil
 }
 
-func (s *Service) backing(ctx context.Context, c *unstructured.Unstructured) (*Binding, bool, string, error) {
+type backingSnapshot struct {
+	binding *Binding
+	pod     *unstructured.Unstructured
+}
+
+func (s *Service) backing(ctx context.Context, c *unstructured.Unstructured) (*backingSnapshot, bool, string, error) {
 	name, _, _ := unstructured.NestedString(c.Object, "status", "sandbox", "name")
 	if name == "" {
 		return nil, false, "awaiting_assignment", nil
@@ -434,7 +462,7 @@ func (s *Service) backing(ctx context.Context, c *unstructured.Unstructured) (*B
 	if service == nil {
 		return nil, false, "awaiting_service", nil
 	}
-	value := &Binding{Version: 1, Sandbox: ref(box), Pod: ref(pod), Service: ref(service)}
+	value := &backingSnapshot{binding: &Binding{Version: 1, Sandbox: ref(box), Pod: ref(pod), Service: ref(service)}, pod: pod}
 	clusterIP, _, _ := unstructured.NestedString(service.Object, "spec", "clusterIP")
 	selector, _, _ := unstructured.NestedStringMap(service.Object, "spec", "selector")
 	selection := labels.SelectorFromSet(selector)

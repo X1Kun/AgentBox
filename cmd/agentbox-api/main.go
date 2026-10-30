@@ -117,6 +117,16 @@ func run() error {
 		BaseContext: func(net.Listener) context.Context { return ctx }}
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
+	monitorCtx, cancelMonitor := context.WithCancel(ctx)
+	monitorDone := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		handler.RunReadiness(monitorCtx)
+	}()
+	defer func() {
+		cancelMonitor()
+		<-monitorDone
+	}()
 	logger.Info("session lifecycle API listening", "address", listener.Addr().String(), "namespace", cfg.Namespace, "pool", cfg.Pool, "instance", cfg.Instance, "tls", cert != "")
 	done := make(chan error, 1)
 	go func() {

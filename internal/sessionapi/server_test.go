@@ -147,10 +147,12 @@ func TestCapacityRejectsImmediatelyWithoutQueue(t *testing.T) {
 func TestReadinessIsNotCapacityOrSessionReadiness(t *testing.T) {
 	b := &backend{}
 	h := handler(t, b, 1)
+	h.checkReadiness(context.Background())
 	if w := call(h, "GET", "/readyz", "", ""); w.Code != 200 {
 		t.Fatal("readiness failed")
 	}
 	b.err = errors.New("backend failed")
+	h.checkReadiness(context.Background())
 	if w := call(h, "GET", "/readyz", "", ""); w.Code != 503 {
 		t.Fatal("unavailable backend looked ready")
 	}

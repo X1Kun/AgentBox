@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -39,18 +40,21 @@ type credential struct {
 	sum       [32]byte
 }
 type Server struct {
-	backend     Backend
-	credentials []credential
-	timeout     time.Duration
-	permits     chan struct{}
-	operations  chan struct{}
+	backend          Backend
+	credentials      []credential
+	timeout          time.Duration
+	permits          chan struct{}
+	operations       chan struct{}
+	readinessStarted atomic.Bool
+	readiness        atomic.Pointer[readinessResult]
+	now              func() time.Time
 }
 
 func New(backend Backend, principals []Principal, timeout time.Duration, maxInflight int) (*Server, error) {
 	if backend == nil || len(principals) == 0 || len(principals) > 64 || timeout < time.Second || timeout > 30*time.Second || maxInflight < 1 || maxInflight > 128 {
 		return nil, errors.New("invalid lifecycle HTTP configuration")
 	}
-	s := &Server{backend: backend, timeout: timeout, permits: make(chan struct{}, maxInflight), operations: make(chan struct{}, maxInflight)}
+	s := &Server{backend: backend, timeout: timeout, permits: make(chan struct{}, maxInflight), operations: make(chan struct{}, maxInflight), now: time.Now}
 	seen := map[[32]byte]bool{}
 	for _, p := range principals {
 		if !session.ValidPrincipal(p.ID) || len(p.Token) < 32 || len(p.Token) > 4096 || strings.IndexFunc(p.Token, func(r rune) bool { return r < 33 || r > 126 }) >= 0 {
@@ -110,11 +114,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			problem(w, 405, "method_not_allowed")
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), min(s.timeout, 2*time.Second))
-		defer cancel()
-		if err := s.backend.Ready(ctx); err != nil {
-			// Report only the status category, never native messages or credentials.
-			slog.Warn("lifecycle backend readiness failed", "reason", apierrors.ReasonForError(err))
+		if !s.isReady() {
 			problem(w, 503, "backend_unavailable")
 			return
 		}
