@@ -32,6 +32,8 @@ gVisor 运行时使用独立的 `make platform-gvisor-install` / `make platform-
 
 Go 会话 API 提供创建、查询、关闭，以及逐次 Python 执行和工作目录文件读写；绑定归属与上游 UID，支持同创建标识恢复、服务重启和持久操作互斥。七项真实行为与清理检查已通过，见[执行验收](docs/validation.md#session-execution)。接口与边界见[使用指南](docs/usage.md#session-api)，操作见[运维指南](docs/operations.md#session-api)。
 
+新增独立管理员工具 `agentbox-cleanup`：记录首次确认关闭的时间、默认预览、保留期及身份/版本保护删除，报告记录配额压力。元数据闭环入口为 `make platform-api-retention-test`，范围和操作见[记录清理](docs/operations.md#claim-retention)。
+
 后续顺序：MCP/Agent 接入 → Daemon 退役 → 图片批任务/Kueue → 健康准入对照。只有在途竞争成为明确瓶颈时，再评价 Koordinator。阶段与门槛见[路线图](docs/roadmap.md)。
 
 Go 用于产品服务和自研 Controller；Python 用于环境验收、实验分析及执行负载。当前检查仍覆盖尚未移除的旧代码，不能通过下列命令启动目标平台：

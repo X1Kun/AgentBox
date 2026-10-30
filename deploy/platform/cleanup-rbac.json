@@ -1,0 +1,10 @@
+{"apiVersion":"v1","kind":"List","items":[
+ {"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"agentbox-cleanup","namespace":"__CLIENT_NS__"},"automountServiceAccountToken":false},
+ {"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"agentbox-cleanup","namespace":"__WORK_NS__"},"rules":[
+  {"apiGroups":["extensions.agents.x-k8s.io"],"resources":["sandboxclaims"],"verbs":["get","list","patch","delete"]},
+  {"apiGroups":["agents.x-k8s.io"],"resources":["sandboxes"],"verbs":["get","list"]},
+  {"apiGroups":[""],"resources":["pods","services"],"verbs":["get","list"]},
+  {"apiGroups":[""],"resources":["resourcequotas"],"resourceNames":["agentbox-api-budget"],"verbs":["get"]}
+ ]},
+ {"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"name":"agentbox-cleanup","namespace":"__WORK_NS__"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"Role","name":"agentbox-cleanup"},"subjects":[{"kind":"ServiceAccount","name":"agentbox-cleanup","namespace":"__CLIENT_NS__"}]}
+]}

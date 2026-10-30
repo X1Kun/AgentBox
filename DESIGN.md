@@ -1,6 +1,6 @@
 # AgentBox 系统设计
 
-版本：V3.0｜更新：2026-10-29｜方向已确定；当前提供普通 Job、gVisor 运行时与 Calico 网络策略实验入口；已增加上游冷会话、固定预热池/Go SDK 验收入口；Go 生命周期、执行/文件 API 已加入；MCP、完整产品安全边界与 agentboxd 实际退役仍待实现。
+版本：V3.0｜更新：2026-10-30｜方向已确定；当前提供普通 Job、gVisor 运行时与 Calico 网络策略实验入口；已增加上游冷会话、固定预热池/Go SDK 验收入口；Go 生命周期、执行/文件 API 已加入；MCP、完整产品安全边界与 agentboxd 实际退役仍待实现。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
@@ -79,7 +79,7 @@ flowchart TD
 
 故障验收增加控制器重启时的数据面连续性、执行 Pod 丢失后的 UID/工作目录变化，以及到期与关闭的终态收敛。Claim 或 Service 名称相同不等于原环境仍存在；验收器按实际 Pod UID 识别变化，不对旧句柄重放命令。生命周期 API 已加入逐请求归属和持久 UID 检查；执行/文件请求进一步要求 revision、持久操作互斥和固定连接，当前不承诺 Pod 丢失后的透明恢复。
 
-首个 Go 产品提交提供生命周期 v2 API：固定 namespace/Pool、配置身份、命名 Claim 幂等、Claim UID 标识与首次 Ready 的持久绑定。关闭复用上游 Retain 生命周期并等待控制器终止确认和关联对象消失；元数据记录由管理员清理。API 只声明资源与映射状态，不运行任务，也不自行补池。执行/文件通过上游 sandboxd 协议适配：每次新 Python 进程、文件跨调用保留，Claim CAS 限制单会话在途操作，超时/不确定结果请求关闭且不重放；不自研节点执行服务。MCP 仍待接入，接口见[使用指南](docs/usage.md#session-api)。新链路验收通过前保留旧调用方，切换与退役见[路线图](docs/roadmap.md#retirement)。
+首个 Go 产品提交提供生命周期 v2 API：固定 namespace/Pool、配置身份、命名 Claim 幂等、Claim UID 标识与首次 Ready 的持久绑定。关闭复用上游 Retain 生命周期并等待控制器终止确认和关联对象消失；首次确认 API 对象回收时持久化 closed_at，元数据由独立管理员工具按保留期清理，默认只预览，删除使用 UID/resourceVersion 前置条件；创建幂等持续到记录实际删除。API 只声明资源与映射状态，不运行任务，也不自行补池。执行/文件通过上游 sandboxd 协议适配：每次新 Python 进程、文件跨调用保留，Claim CAS 限制单会话在途操作，超时/不确定结果请求关闭且不重放；不自研节点执行服务。MCP 仍待接入，接口见[使用指南](docs/usage.md#session-api)。新链路验收通过前保留旧调用方，切换与退役见[路线图](docs/roadmap.md#retirement)。
 
 <a id="platform"></a>
 ## 5. 平台与隔离契约

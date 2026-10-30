@@ -38,6 +38,7 @@ const poolKey = "agentbox.dev/api-pool-uid"
 const bindingKey = "agentbox.dev/api-binding"
 const invalidKey = "agentbox.dev/api-invalidated"
 const closeKey = "agentbox.dev/api-close-requested"
+const closedAtKey = "agentbox.dev/api-closed-at"
 
 var dns = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 var principalPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`)
@@ -76,6 +77,7 @@ type View struct {
 	IdentityRevision string `json:"identity_revision,omitempty"`
 	CleanupComplete  bool   `json:"cleanup_complete"`
 	OperationActive  bool   `json:"operation_active"`
+	ClosedAt         string `json:"closed_at,omitempty"`
 }
 type Ref struct {
 	Name string `json:"name"`
@@ -342,6 +344,15 @@ func (s *Service) observe(ctx context.Context, c *unstructured.Unstructured) (ob
 		return observation{}, nil, fail("identity_changed")
 	}
 	closing := c.GetAnnotations()[closeKey] == "true" || !s.now().Before(deadline)
+	closedAt := c.GetAnnotations()[closedAtKey]
+	if closedAt != "" {
+		at, e := time.Parse(time.RFC3339Nano, closedAt)
+		created := c.GetCreationTimestamp()
+		if e != nil || at.After(s.now()) || (!created.IsZero() && at.Before(created.Time)) || !closing {
+			return observation{}, nil, fail("integrity_error")
+		}
+		v.ClosedAt = closedAt
+	}
 	if closing {
 		v.State = "closing"
 		v.Reason = "awaiting_upstream_cleanup"
@@ -356,10 +367,16 @@ func (s *Service) observe(ctx context.Context, c *unstructured.Unstructured) (ob
 			v.State = "closed"
 			v.Reason = ""
 			v.CleanupComplete = true
+			change := map[string]string{}
+			if closedAt == "" {
+				v.ClosedAt = s.now().UTC().Format(time.RFC3339Nano)
+				change[closedAtKey] = v.ClosedAt
+			}
 			if v.OperationActive {
 				v.OperationActive = false
-				return v, map[string]string{operationKey: ""}, nil
+				change[operationKey] = ""
 			}
+			return v, change, nil
 		}
 		return v, nil, nil
 	}

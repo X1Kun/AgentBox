@@ -158,6 +158,15 @@ Go API 在普通 Pod 内提供 TLS，实际 Python 由锁定上游 sandboxd 在 
 
 本轮真实验收的七项业务检查全部通过，但独立运行时回收超过原窗口，入口返回失败；后续补充清理的 namespace 等待也曾超时，最终已另行确认四个环境无残留进程/CRI sandbox、两个 namespace 均消失。用户确认当时存在并发大量磁盘读写，宿主 I/O PSI 明显偏高；尚未单独隔离超时根因。原失败记录保留，完整真实验收需在较低磁盘负载下按原入口/期限重跑。计数前后数据、源码哈希、原始失败和补充回收证据见[控制面查询验收记录](data/session-api-control-plane-validation.json)。
 
+<a id="claim-retention"></a>
+### Claim 保留与记录配额验收
+
+2026-10-30 `make platform-api-retention-test` 五项真实检查通过：32 条已过期 Retain Claim 耗尽记录配额，第 33 条明确因 quota 被拒绝；独立清理身份及未扩权的产品身份；默认预览不写 Kubernetes 且报告配额压力；旧记录首次补充关闭确认后仍受保留期保护；显式短保留策略清理后配额恢复、同名 Claim 获得新 UID。关闭条件来自上游本代 ClaimExpired 确认，夹具不启动执行 Pod。验收先用 1h 检查保留，再显式使用 1s 的独立管理员策略验证删除，生产默认保留期仍为 24h。四份 0600 报告保存预览、标记、保留与删除结果。
+
+同一源码随后按原期限完整通过 `make platform-api-exec-test` 七项检查，真实 API 的 closed 视图出现持久化 closed_at，四个执行环境的进程/CRI sandbox 及本轮 namespace 均已确认回收。此前高 I/O 下的失败轮次保留，本轮成功不视为普通磁盘问题已根治。完整 `make check` 通过；新增 Go 测试覆盖保留时间与重启、旧记录不倒推、无写预览、归属/UID/版本竞争、残留资源、审计失败、取消、删除响应丢失和配额未知值。首次 closed 查询因时间 CAS 为 5 次客户端调用，后续 closed 查询仍为 4 次，正常执行/文件操作仍为 23 次。
+
+本阶段源码哈希、两轮原始报告、清理报告哈希和权限边界见[保留与清理验收记录](data/session-claim-retention-validation.json)。两轮临时 namespace 均已清理，开发集群保留；元数据清理权限没有进入产品 API 或执行 Pod。竞争与写入故障注入使用假客户端，未宣称生产可用性或实时运行时证明。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>

@@ -266,6 +266,29 @@ namespace、pool、instance 在安装时固定，重启保持一致；改变 Poo
 
 操作标记不会因 API 重启自动释放。发现遗留 `operation_active=true` 时先关闭该会话并查询回收，不手工清除标记后继续执行；没有命令结果账本，不自动重放未知命令。新 API 的 MCP 和 Agent 接入仍待下一阶段，旧 `/v1/execute` 不适用于此服务。
 
+<a id="claim-retention"></a>
+### Claim 记录保留与管理员清理
+
+`agentbox-cleanup` 是一次性管理工具，独立于产品 API；显式要求受限 kubeconfig，不加载默认用户或 in-cluster 凭据。产品 API 的 Role 继续没有 Claim list/delete 权限。[cleanup-rbac.json](../deploy/platform/cleanup-rbac.json) 提供单独 ServiceAccount、工作 namespace Role 和 RoleBinding 模板；按实际 namespace 替换占位符后由管理员安装。清理身份能读取关联资源、patch/delete Claim，但不能创建 Claim、读 Secret 或修改 Pod；它是可信管理员权限，代码归属检查不等于针对恶意管理员的 IAM 隔离。
+
+```bash
+go build -o bin/agentbox-cleanup ./cmd/agentbox-cleanup
+bin/agentbox-cleanup --kubeconfig /path/to/cleanup.kubeconfig \
+  --namespace <workload-namespace> --pool <fixed-pool> \
+  --instance <stable-instance-name> --principal <owner-id> \
+  --retention 24h --report /tmp/agentbox-claim-preview.json
+```
+
+默认无 Kubernetes 写入。检查报告后，以相同范围和保留期增加 `--apply` 并使用新的 `--report` 路径执行。每次报告路径必须不存在，文件为 0600；每次 mutation 前先以原子替换、文件与目录 fsync 保存身份、绑定、摘要和操作意图，再重新读取 Claim 并复核关闭/残留/保留期。删除同时携带 UID 与 resourceVersion 前置条件；不能把同名新对象作为原记录删除。报告写入失败、读权限/传输失败或写结果不确定时停止后续操作，不主动重放不确定写入。
+
+默认保留期 24h，可显式设置整数秒 1s～8760h；判断使用工具 UTC 时钟，部署须保持时间同步；首版不新增常驻 GC 控制器。默认最多扫描 100 条同归属记录，`--max-records` 范围 1～1000；`truncated=true` 表示未扫描完整范围。总预算默认 2m，单次 Kubernetes 请求默认 5s，均有上限。首次完整关闭确认持久化 `closed_at`；旧记录无时间时仅执行 `finalized`，从此次观察开始保留，不能按已过去的 TTL 立即删除。尚未关闭、资源仍存在、时间无效/未来或身份变化的记录均跳过。
+
+预览中的 `would_finalize` 表示尚未持久化的关闭观察，`retain` 表示保留期未到，`would_delete` 表示符合清理资格。实际 `deleted`/`original_absent` 只证明原 Claim 已消失；`deleting` 表示删除已请求但对象仍在，不能当作配额已恢复。`delete_outcome_unknown`/`finalize_outcome_unknown` 需按报告中的原 UID 重新核对，不换对象补删。报告在结果不确定时也保留先前写入的意图和资源关联，供运行时排障使用。此工具只确认 API 对象状态，没有 CRI 权限；此前执行验收中的运行时回收超时仍需独立补验。
+
+`--quota-name` 默认 `agentbox-api-budget`，报告 `quota_before` 为操作前 namespace 总记录配额状态，含其他调用方记录。达到 80% 输出 warning，达到上限输出 exhausted；状态缺失或未观察本代配额时为 unknown，不补零。检查可显式用空名称关闭；自定义配额名需同步调整 Role 的 resourceNames。清理后配额统计可能延迟，应重新查询配额并用受控创建确认恢复。
+
+`make platform-api-retention-test` 使用两个临时 namespace 和独立清理凭据，创建 32 条在提交时就已过期的 Retain Claim，等待上游真实终止确认；验证第 33 条被配额拒绝、默认预览不写、旧记录补时间、保留期保护、显式短保留策略清理后重新创建及 UID 变化。夹具不启动执行 Pod；1h/1s 只用于保留与删除两阶段验收，生产默认仍为 24h。报告和 namespace 清理独立记录，开发集群保留。运行时完整验收仍使用 `make platform-api-exec-test`。
+
 <a id="platform-plan"></a>
 ## 会话与批任务平台部署计划
 
