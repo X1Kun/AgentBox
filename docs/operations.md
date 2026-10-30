@@ -2,7 +2,7 @@
 
 状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供普通 Job、gVisor 运行时及 Calico NetworkPolicy 实验入口；已增加上游冷会话、固定预热池与 Go SDK 验收入口；Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
 
-按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [冷会话验收](#cold-sessions) · [固定预热池](#warm-pool) · [会话故障](#session-faults) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
+按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [冷会话验收](#cold-sessions) · [固定预热池](#warm-pool) · [会话故障](#session-faults) · [生命周期 API](#session-api) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
 
 <a id="platform-lab"></a>
 ## 独立 Kubernetes 功能实验
@@ -34,6 +34,16 @@ preflight 只读主机/Docker 条件并保存结构化报告，区分缺失、�
 kind 删除改用独立临时 kubeconfig，避免部分节点删除失败时清除真实凭据；确认节点容器消失后才移除原专用配置。失败保留 delete_failed 状态与原始节点身份，允许再次显式 delete，不放宽外来 kubeconfig/节点的归属检查。Docker 因内核等待暂时无法终止节点时报告失败，不返回虚假的清理成功。
 
 失败保留状态，并尽力导出本集群 kind 日志，不自动删现场。create 部分失败可按记录显式 delete；崩溃导致归属无法确认时人工核对，不盲目接管。成功 smoke 使用前台级联删除，随后在独立 60s 收敛窗口核对 Pod 消失；失败 Job 留待排障。集群删除后可再次创建，旧证据不覆盖。全局镜像缓存与共享网络不属于清理范围。
+
+### 自动安装与健康等待
+
+准备好锁定 manifest、gVisor 包和 `platform-session-build` 生成的镜像 bundle 后，使用 `make platform-up`。入口复用本项目已有 Calico 集群，或在无活动集群时创建；依次等待控制面 → 准备/安装 Calico → 等待节点 → 安装 gVisor → 再次等待控制面 → 安装上游会话组件。整个流程共用归属锁，健康阶段按已有身份验证并复用，不重启已安装运行时；失败保留现场和已完成阶段，再次执行从已有状态继续。
+
+默认 Calico 镜像前缀为 `docker.m.daocloud.io/calico`，可用 `CALICO_IMAGE_PREFIX=<mirror>/calico make platform-up` 指定；镜像 digest 始终固定，已有 CNI 的来源配置仍须一致。镜像在两个归属节点逐一准备并核对 CRI 摘要，每次缺失镜像准备最多 180 秒，完成后最多等 30 秒同步 CRI 缓存；Pod rollout 继续使用原 300 秒预算，镜像准备与组件启动分开留证。原单步安装入口继续保留用于排障。
+
+`make platform-ready` 是有总期限的只读健康观察，默认 180 秒：检查 API `/readyz`（含 etcd）、四个原生控制面 Pod 和两个节点，连续三个健康样本后放行。CNI 安装前仅允许节点尚未 Ready，其余控制面检查保持。单次探测最多 5 秒，瞬时连接/服务端错误可在总预算内恢复；所有 GET/version 请求还可在其原命令总预算内重试，写入、执行、权限错误及证书错误不自动重试。不是增加固定 sleep 或放宽任务期限。
+
+安装入口负责节点软件和配置的初始化；Kubernetes/kubelet 负责已部署 Pod 的持续运行与重建。这里不新增驻留监控进程去自动改写 containerd 配置。开发期先完成平台健康与安装，再运行产品验收，最后统一执行 `make check`，避免冷启动和全量回归竞争磁盘；成功后保留健康集群，按测试资源归属清理临时 namespace。
 
 ### 下载源与超时
 
@@ -221,7 +231,34 @@ Go 客户端先在会话内启动等待文件标记的命令；host 核对本项
 
 host 独立核对三组执行 Pod 的运行时和资源归属，最后等待 API、CRI、捕获进程及本轮 namespace 回收。执行 Pod 不挂载集群凭据，Go 客户端没有删除 Pod、重启控制器或 patch Claim 的权限；故障注入仅由绑定专用 kubeconfig 的宿主验收器执行。失败保留现场，最终按现有 platform-delete 归属流程清理。
 
-Pod UID 检查目前属于验收器；上游 SDK 的缓存句柄不是产品身份防护的替代。P2 产品层仍须将此边界落实到每个请求的归属与身份核对。本轮不宣称对外多租户鉴权、持久化工作区或故障后透明续接。
+该 fault 用例本身只验证验收器的 Pod UID 检查；生命周期 API 的持久绑定与归属保护见下节，执行/文件接口另行验证原身份连接与并发边界。本轮不宣称对外多租户鉴权、持久化工作区或故障后透明续接。
+
+<a id="session-api"></a>
+## Go 会话服务部署与验收
+
+Go 服务通过上游 Kubernetes API 管理会话，开启执行后访问绑定 Pod 内的 sandboxd，不访问 agentboxd、宿主 socket 或 cgroup。首版可使用显式的受限 kubeconfig 在 loopback 提供 HTTP；省略 kubeconfig 时只加载 in-cluster 配置，不隐式读取默认用户配置。对非 loopback 地址必须配置 TLS cert/key。
+
+```bash
+go build -o bin/agentbox-api ./cmd/agentbox-api
+# principals.json 为私有文件（0600，或仅同进程组可读且无组写权限），内容是 id/token 对象数组。
+bin/agentbox-api --listen 127.0.0.1:8090 \
+  --namespace <workload-namespace> --pool <fixed-pool> --instance <stable-instance-name> \
+  --kubeconfig <scoped-kubeconfig> --principals-file <private-principals.json>
+```
+
+namespace、pool、instance 在安装时固定，重启保持一致；改变 Pool/实例标识需要明确迁移，不能把旧记录当成新配置资源。token 至少 32 个可见 ASCII 字符，启动日志不包含 token 或 kubeconfig 内容。HTTP 有独立头/体/写入期限、4KiB 创建 body 上限及有限在途请求数，满载直接拒绝，不建立等待队列。
+
+[api-rbac.json](../deploy/platform/api-rbac.json) 提供独立 ServiceAccount 和工作 namespace Role：Claim create/get/patch、Pool get，以及关联 Sandbox/Pod/Service 只读。没有 Secret 读取、Pod 创建/删除、模板更改或控制器管理权限。[api-quota.json](../deploy/platform/api-quota.json) 是实验预算示例，约束计算 Pod、声明资源和保留 Claim 数；实际部署须按资源域配置，API readiness 不是容量许可。
+
+生命周期持久状态复用 Claim：request 摘要、归属、首次 UID 绑定、失效和关闭意图使用 API 专属注解，修改携带 UID/resourceVersion 条件；上游控制器仍管理 Sandbox/Pod/Service。关闭使用 Retain，记录不会随服务进程退出丢失。管理员清理元数据前必须确认终止和依赖回收；记录配额耗尽会拒绝新 Claim，不能把保留记录当作无成本。
+
+在完成现有 Calico/gVisor/session 安装后运行 `make platform-api-test`。该验收构建普通 Go API 进程，临时签发仅限工作 namespace 的凭据，并配置两个不同调用身份。验证异步幂等创建、参数冲突、跨身份拒绝、服务重启、Pod 替换后的持久失效、关闭收敛和创建记录保留；host 独立验证实际 gVisor 与运行时回收。凭据只放私有临时目录，不进入镜像、请求日志、报告或执行 Pod，失败保留的测试 namespace 由 platform-delete 限定清理。
+
+执行/文件需显式 `--enable-execution` 并让 API 运行在可达 Pod 网络的可信环境；普通宿主进程默认只提供生命周期。`api.Dockerfile` 与 `api-deployment.json` 提供实验集群的原生部署模板：普通 API Pod 访问受限的上游端口，实际代码仍在 Worker gVisor Pod 中执行。API Pod 独有 ServiceAccount 和 TLS/调用方 Secret，执行 Pod 不挂载这些凭据。模板固定实验控制面节点、imagePullPolicy=Never、单副本，生产部署须适配镜像分发、节点选择、证书和 Secret 管理。Secret 的 principal 文件只允许 owner 或同进程组读取，不允许其他用户访问或组写入。
+
+`make platform-api-exec-test` 构建 Go API 镜像并在原有健康实验集群验证一条 CSV/脚本/产物/后续执行闭环，以及隔离、非零退出、路径边界、并发冲突、运行中关闭、命令超时和输出上限。宿主仅向普通 API Pod 建立 TLS port-forward，不向 gVisor Pod port-forward；执行连接由 API 在集群内建立。临时 TLS/调用身份不进入镜像或报告。成功后清理本次 namespace/运行时，保留开发集群、上游组件和镜像缓存供下次复用，最终释放仍使用 platform-delete。
+
+操作标记不会因 API 重启自动释放。发现遗留 `operation_active=true` 时先关闭该会话并查询回收，不手工清除标记后继续执行；没有命令结果账本，不自动重放未知命令。新 API 的 MCP 和 Agent 接入仍待下一阶段，旧 `/v1/execute` 不适用于此服务。
 
 <a id="platform-plan"></a>
 ## 会话与批任务平台部署计划

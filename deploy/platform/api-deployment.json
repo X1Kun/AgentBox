@@ -1,0 +1,15 @@
+{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"agentbox-api","namespace":"__CLIENT_NS__","labels":{"agentbox.dev/session":"__OWNER__","agentbox.dev/session-run":"__RUN__"}},"spec":{
+ "replicas":1,"strategy":{"type":"Recreate"},"selector":{"matchLabels":{"app":"agentbox-api"}},"template":{
+  "metadata":{"labels":{"app":"agentbox-api","agentbox.dev/session":"__OWNER__","agentbox.dev/session-run":"__RUN__","agentbox.dev/session-role":"client"}},
+  "spec":{"serviceAccountName":"agentbox-api","automountServiceAccountToken":true,"enableServiceLinks":false,"terminationGracePeriodSeconds":12,
+   "nodeSelector":{"kubernetes.io/hostname":"agentbox-platform-lab-control-plane"},"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}],
+   "securityContext":{"runAsNonRoot":true,"runAsUser":1000,"runAsGroup":1000,"fsGroup":1000,"seccompProfile":{"type":"RuntimeDefault"}},
+   "containers":[{"name":"api","image":"__API_IMAGE__","imagePullPolicy":"Never",
+    "args":["--listen=0.0.0.0:8090","--namespace=__WORK_NS__","--pool=python-cold","--instance=api-__RUN__","--enable-execution","--principals-file=/etc/agentbox/principals.json","--tls-cert-file=/etc/agentbox/tls.crt","--tls-key-file=/etc/agentbox/tls.key","--close-wait=500ms"],
+    "ports":[{"name":"https","containerPort":8090}],
+    "resources":{"requests":{"cpu":"100m","memory":"128Mi"},"limits":{"cpu":"1000m","memory":"512Mi"}},
+    "securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}},
+    "readinessProbe":{"httpGet":{"path":"/readyz","port":"https","scheme":"HTTPS"},"periodSeconds":2,"failureThreshold":30},
+    "volumeMounts":[{"name":"credentials","mountPath":"/etc/agentbox","readOnly":true}]}],
+   "volumes":[{"name":"credentials","secret":{"secretName":"agentbox-api-credentials","defaultMode":288}}]
+ }}}}

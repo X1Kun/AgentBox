@@ -1,6 +1,7 @@
 .PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test platform-network-create platform-network-install platform-network-test
 .PHONY: platform-session-build platform-session-install platform-session-test platform-session-warm-test
 .PHONY: platform-session-fault-test
+.PHONY: platform-api-test platform-api-exec-test
 
 PLATFORM ?= kvm
 
@@ -12,6 +13,7 @@ build:
 	go build -trimpath -o bin/agentbox-agent ./cmd/agentbox-agent
 	go build -trimpath -o bin/mockcore ./cmd/mockcore
 	go build -trimpath -o bin/agentbox-session-smoke ./cmd/agentbox-session-smoke
+	go build -trimpath -o bin/agentbox-api ./cmd/agentbox-api
 
 test:
 	go test -race -count=1 ./...
@@ -88,3 +90,18 @@ platform-session-warm-test:
 
 platform-session-fault-test:
 	python3 scripts/platform_lab.py session-test --session-profile fault
+
+platform-api-test:
+	python3 scripts/platform_lab.py api-test
+
+platform-api-exec-test:
+	python3 scripts/platform_lab.py api-exec-test
+
+# Cached assets and the session image bundle must already be prepared.
+CALICO_IMAGE_PREFIX ?= docker.m.daocloud.io/calico
+.PHONY: platform-up platform-ready
+platform-up:
+	python3 scripts/platform_lab.py up --calico-image-prefix $(CALICO_IMAGE_PREFIX)
+
+platform-ready:
+	python3 scripts/platform_lab.py ready

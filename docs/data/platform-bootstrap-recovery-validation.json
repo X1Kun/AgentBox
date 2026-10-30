@@ -1,0 +1,102 @@
+{
+  "changes": [
+    "Single owned dependency-ordered up command and bounded ready observation",
+    "Three consecutive healthy samples; read-only transient retries within existing command budgets",
+    "Separate digest-verified Calico image preparation from unchanged rollout budget",
+    "Post-import control-plane gate before controller resources",
+    "Keep ownership checks and fail fast on missing prerequisites without exporting full cluster logs",
+    "Join fixture operation before closing streams on every test exit; lighter helper; production setup deadline unchanged"
+  ],
+  "development_cluster_retained": true,
+  "diagnosis": {
+    "calico_source_prefix": "docker.m.daocloud.io/calico",
+    "control_plane_failure": "API Server etcd requests timed out; later Pod Bind and ConfigMap cache synchronization also timed out",
+    "cri_duration_scope": "Includes image resolution, transfer and local preparation; not pure network download time",
+    "etcd_and_containerd_blocked_on_disk": true,
+    "etcd_slow_fdatasync_seconds": 9.032625334,
+    "legacy_test_failure": "Fatal path closed session files before joining create goroutine; helper unnecessarily re-executed race-enabled Go binary",
+    "worker_cri_image_preparation_seconds": [
+      127.356273765,
+      61.689626181
+    ]
+  },
+  "full_check": {
+    "command": "GOFLAGS=-p=2 make check",
+    "exit_code": 0,
+    "log_sha256": "425d862cbf8a3daa93c789e16d6d50ccefeb79a3fbb29080fe10dde0c6793175"
+  },
+  "limits": [
+    "Cold Calico image-preparation paths are covered by mocked regressions, not a second fresh-cluster trial",
+    "Disk contention is not eliminated by readiness observation; failed bounded attempts are retained",
+    "Execution/files API real validation is recorded separately"
+  ],
+  "phases": [
+    {
+      "detail": null,
+      "finished_at": "2026-10-29T07:08:26.187682+00:00",
+      "ok": true,
+      "reason": null,
+      "report": "artifacts/platform-ready-a46d78bff1be/report.json",
+      "report_sha256": "05767af41e82c6d2a0b39cd7b644d6ff83af60dc546824485119f8073feb5c53",
+      "source_sha256": {
+        "scripts/lib/platform_network.py": "ed9d70c2c2745bfe76b67087433d3c3e5e137ab6d6e518983c0834eca0a434c7",
+        "scripts/lib/platform_sessions.py": "502412a7c9f93534cbef439810eca32ae97eadbeb4e28bcd539c4816203f72a6",
+        "scripts/platform_lab.py": "f9fe5ef4b5067e494443fa77fddf225e5cd5ba9c9049ed984d15d9339f5944be"
+      },
+      "started_at": "2026-10-29T07:08:19.566409+00:00"
+    },
+    {
+      "detail": "kind exceeded 300s",
+      "finished_at": "2026-10-29T07:18:22.719179+00:00",
+      "ok": false,
+      "reason": "command_timeout",
+      "report": "artifacts/platform-up-cb4da5213128/report.json",
+      "report_sha256": "33be1892338cc04da68d96e2d5d270ba97a7d63369ae5a39e6d810816a568a66",
+      "source_sha256": {
+        "scripts/lib/platform_network.py": "2aebf5bfefd3e8a24e758ba2658ef6423d53d12953fb3add2bd0506eaee6aa49",
+        "scripts/lib/platform_sessions.py": "502412a7c9f93534cbef439810eca32ae97eadbeb4e28bcd539c4816203f72a6",
+        "scripts/platform_lab.py": "3c1c25d2d9d4c733330ffbd6c4c6e6e82c6c8c609b68bc6cebd8f505d2cf363b"
+      },
+      "started_at": "2026-10-29T07:11:54.858187+00:00"
+    },
+    {
+      "detail": "kubectl exited 1: error: timed out waiting for the condition",
+      "finished_at": "2026-10-29T07:29:51.258449+00:00",
+      "ok": false,
+      "reason": "command_failed",
+      "report": "artifacts/platform-up-30fed7f07219/report.json",
+      "report_sha256": "1ca37743643569fed1ab6f5593d5cc999425bd7a07ee922ba17476f7b1208eed",
+      "source_sha256": {
+        "scripts/lib/platform_network.py": "2aebf5bfefd3e8a24e758ba2658ef6423d53d12953fb3add2bd0506eaee6aa49",
+        "scripts/lib/platform_sessions.py": "892e95d8026a12b9b6af0641df09e9aab04ca90d5d72dfcb1a5966320bbc5e49",
+        "scripts/platform_lab.py": "75fe9afc36f175f0c2a5ed9f7b9abe4b8012657ce282bb8283667841e67102c4"
+      },
+      "started_at": "2026-10-29T07:23:27.368827+00:00"
+    },
+    {
+      "detail": null,
+      "finished_at": "2026-10-29T07:36:07.035880+00:00",
+      "ok": true,
+      "reason": null,
+      "report": "artifacts/platform-up-5cd96350d731/report.json",
+      "report_sha256": "e0e7471658630836a1de3a1333651f5d2048bf2a764c282f79274c0458101402",
+      "source_sha256": {
+        "scripts/lib/platform_network.py": "2aebf5bfefd3e8a24e758ba2658ef6423d53d12953fb3add2bd0506eaee6aa49",
+        "scripts/lib/platform_sessions.py": "892e95d8026a12b9b6af0641df09e9aab04ca90d5d72dfcb1a5966320bbc5e49",
+        "scripts/platform_lab.py": "75fe9afc36f175f0c2a5ed9f7b9abe4b8012657ce282bb8283667841e67102c4"
+      },
+      "started_at": "2026-10-29T07:32:51.983699+00:00"
+    }
+  ],
+  "recorded_at": "2026-10-29T14:44:47.325694+00:00",
+  "schema_version": 1,
+  "scope": "Owned development cluster recovery and behavior checks; no load tests or production SLO claim",
+  "validation_source_sha256": {
+    "internal/sandbox/runsc_test.go": "bdc549f0506ff3192e2c3b0a2ca4665ccef9ac7f55579ad6dc70560f2547e065",
+    "scripts/lib/platform_network.py": "2aebf5bfefd3e8a24e758ba2658ef6423d53d12953fb3add2bd0506eaee6aa49",
+    "scripts/lib/platform_sessions.py": "892e95d8026a12b9b6af0641df09e9aab04ca90d5d72dfcb1a5966320bbc5e49",
+    "scripts/platform_lab.py": "75fe9afc36f175f0c2a5ed9f7b9abe4b8012657ce282bb8283667841e67102c4",
+    "tests/scripts/platform_network_test.py": "8c80723c5604a3003e6261813761f81acabe09502f098eba588c5885986f1653",
+    "tests/scripts/platform_test.py": "24d7b71bb570a0166039fb4a0d929948ba7d6967bfa70ab1647b92f6bf199a19"
+  }
+}
