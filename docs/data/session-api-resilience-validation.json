@@ -1,0 +1,135 @@
+{
+  "baseline_commit": "fa9edbf",
+  "full_check": {
+    "command": "GOCACHE=/tmp/agentbox-review-go-cache make check",
+    "exit_code": 0
+  },
+  "limits": [
+    "Readiness concurrency/freshness and ambiguous release/failed close scenarios use deterministic Go tests and fake Kubernetes clients; no live control-plane transport fault injection",
+    "Live acceptance reruns the existing seven execution/file checks and independent runtime cleanup; no performance measurement or API multi-replica deployment",
+    "Control-plane query optimization, Claim retention/cleanup tooling, MCP/Agent integration and legacy daemon retirement remain later work"
+  ],
+  "live_acceptance": {
+    "api_image": {
+      "fingerprint": "ca787635da6ccfacf2980deb2fb5fc3232af3fbc30bf4f92f2eee886dd0ddb92",
+      "id": "sha256:cd37ffd17674179b1174d9407ae65c35c3171f44924dd644b19a50902170b0a0",
+      "inputs": {
+        "base": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+        "base_id": "sha256:4f228bc1cbcfc794e4878312cfc241d368eff55a21c08d1e2bb263116c4ef524",
+        "binary": "3b9d54b8818177381b7c3d5e5b94e09ab8798dfd46a9f24cf92ba0b46ee4db88",
+        "dockerfile": "8907b2c1d9e7239d7d7a00c7f4762b4cc1d126155bad2473ec6f2969c14e42a0"
+      },
+      "name": "agentbox/api:ca787635da6ccfac"
+    },
+    "checks": [
+      {
+        "name": "namespace_scoped_credentials_and_no_secret_or_pod_mutation",
+        "passed": true
+      },
+      {
+        "name": "csv_script_execution_artifact_and_incremental_call",
+        "passed": true
+      },
+      {
+        "name": "session_and_principal_isolation_binary_files_and_revision_guard",
+        "passed": true
+      },
+      {
+        "name": "program_failure_recovery_and_workspace_boundary",
+        "passed": true
+      },
+      {
+        "name": "concurrent_operation_conflicts_and_close_running_session",
+        "passed": true
+      },
+      {
+        "name": "execution_timeout_requests_full_session_cleanup_without_replay",
+        "passed": true
+      },
+      {
+        "name": "bounded_output_closes_session",
+        "passed": true
+      }
+    ],
+    "cleanup_complete": true,
+    "command": "python3 scripts/platform_lab.py api-exec-test",
+    "development_cluster_retained": true,
+    "exit_code": 0,
+    "finished_at": "2026-10-30T03:38:06.980287+00:00",
+    "report": "artifacts/platform-api-exec-test-496c1227b298/report.json",
+    "report_sha256": "f283e0441c7e3dcea0a872b8a4a1dfc736c888ae69362d569225c3fc41c9b69f",
+    "runtime_cleanup": {
+      "remaining_cri_sandboxes": [],
+      "remaining_processes": []
+    },
+    "started_at": "2026-10-30T03:24:40.377847+00:00"
+  },
+  "new_unit_coverage": [
+    "1000 concurrent probes reuse a single readiness snapshot",
+    "Readiness startup, freshness, backend failure/recovery and monitor cancellation",
+    "Failed close preserves the operation lock across restart and redacts native errors",
+    "Lost release reply resolved only by reading the same Claim UID",
+    "Unapplied release, failed readback, different holder and replacement Claim remain conservative"
+  ],
+  "recorded_at": "2026-10-30T03:38:26.576719+00:00",
+  "schema_version": 1,
+  "scope": "Session API readiness and operation cleanup hardening; no performance or production SLO claim",
+  "source_sha256": {
+    "cmd/agentbox-api/main.go": "1329dbfbd0f1f0ec6b97439aaa0b5b5aa8e61bb18ad9404f9fde910e4a84273c",
+    "cmd/agentbox-session-smoke/fault.go": "cfadfd4173711103e534480f94f521df8deecc920e9704c09e897565a715b789",
+    "cmd/agentbox-session-smoke/fault_test.go": "b999f8426d99d84a6e22500c60e9e41088e4ce17d2f17c39bbf373f8630f6527",
+    "cmd/agentbox-session-smoke/main.go": "be2bbb3415fb5984a01758ee8be677bcd1cecdb8073d8c443020e98b2e251798",
+    "cmd/agentbox-session-smoke/warm.go": "f76fed5bd97c15d3bf72310757afbac98a99c60bf516893c8f30caf98f8307f6",
+    "cmd/agentbox-session-smoke/warm_test.go": "b263569c077c88d32f151a44d721c19dc55dad5a2b5a5f1549b012b3e5249a12",
+    "deploy/platform/api-deployment.json": "4005ea5ebee177564696d7de5ab317473b7569b9ef52f65fdc9db26b11c17008",
+    "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a",
+    "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+    "deploy/platform/api.Dockerfile": "8907b2c1d9e7239d7d7a00c7f4762b4cc1d126155bad2473ec6f2969c14e42a0",
+    "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+    "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+    "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+    "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+    "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+    "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+    "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+    "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+    "deploy/platform/sandbox-runtime.Dockerfile": "7a2a450282d5dbb0d06d9457ef0acdd1a3eb120d407d564c8ab03fc1110124bc",
+    "deploy/platform/session-client-job.json": "0f62ae911ed9def1988a6135a6a196f9963427311fa570d8d0c2e28b60fca402",
+    "deploy/platform/session-client.Dockerfile": "d6d3509065f1f41fb9b7f1afeba3c0fe673ee156b4b6a105e56d05ae93e4f3b5",
+    "deploy/platform/session-rbac.json": "7b5f605988ea1ec8e897d713b334458e164fa65d09efee8abc47d6537a2c59f7",
+    "deploy/platform/session-template.json": "f61ea336d4e316fb2686943d5903cb2d4456d35bca5551cd968a92dc08847fb6",
+    "deploy/platform/session.lock.json": "e05ac3cb8ec9668ceecc2da9eb686e9dc6dd27ed8e76a76498b9b11ca2b12e94",
+    "go.mod": "6788d70352f4e17577d3ed96ffcde76b96380db2f0f19b41a17d3ca9ccc4cad4",
+    "go.sum": "a7c5debcb697cf21973d6cfe8cbabcc047da7c4543ba01b0080b001fe15eedb1",
+    "internal/session/diagnostics.go": "ba9e78cd618cbf01e1696f6cb2e0a5906bb17ca4815eef62a44458d31251b41e",
+    "internal/session/operations.go": "f363bef2e06f28a586d05f217d091ea30c0f8f66da3e90d66b0703234d4dba25",
+    "internal/session/operations_test.go": "8acd05fbfe9c082ed9f651deaba88c2794e6b3c98fa5b389de3f2152892eeab0",
+    "internal/session/service.go": "40021c029033d1544d553536c697968f85c3ec10bcc7cd9ad46ce7906de676e0",
+    "internal/session/service_test.go": "c1c8d27fb3701e873a81503cc9264ef56f995f6f27b3a3fe9364ea965ac03c1f",
+    "internal/sessionapi/operations_test.go": "248448d70b0a4a154482ca74b250a956e6edc4fd07c8c73d6a18653e5c2171ce",
+    "internal/sessionapi/readiness.go": "2f76ff2a4f843a50e5111c8a3b734f3104f85795283e83fbe7d3ee230bf296c8",
+    "internal/sessionapi/readiness_test.go": "1c994e03546690f622c3e29f75aa70a43145d8129b984500bce17ee729021903",
+    "internal/sessionapi/server.go": "2d17a8e09099703041f8629251a4242bb8a482345a4e23b80dcf931b371b1c4c",
+    "internal/sessionapi/server_test.go": "6c7aa1732beab3e2017fa853f85d4d1acf0bbdebfb50353eb7bf12dbf47e0361",
+    "internal/sessionprobe/operations.go": "38a248d6c25d5b4997da6c182f286431ad7b2d2a8dabdc0236f3bb981097bd28",
+    "internal/sessionprobe/operations_test.go": "e13ab80d787eb1e2be5ebd6db3e08543a840f6dd546baeba9fd2c4727bd75d77",
+    "internal/sessionruntime/runtime.go": "79b2e470c02396eda1c8137825aefa47b9f0c26b23f5f0de1063ee0d9e07e3ca",
+    "internal/sessionruntime/runtime_test.go": "222815cea3c7067663c817391a7dec39e0d075cda26c3c1b85225398d3721f5c",
+    "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+    "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+    "scripts/lib/platform_api.py": "8514e985f2be431ab110dfde1f8b8ef37c061856f753a198bf9bcb30021f7518",
+    "scripts/lib/platform_api_execution.py": "a489853b974de577f3008943c67b4d1113102f3d5cea4fcde3d97b51d64adb57",
+    "scripts/lib/platform_gvisor.py": "09181e6ea284fb1f79be9813697629d8e490ce7d2d0a4d8eb49014ea4325d18a",
+    "scripts/lib/platform_network.py": "2aebf5bfefd3e8a24e758ba2658ef6423d53d12953fb3add2bd0506eaee6aa49",
+    "scripts/lib/platform_sessions.py": "892e95d8026a12b9b6af0641df09e9aab04ca90d5d72dfcb1a5966320bbc5e49",
+    "scripts/lib/session_faults.py": "38432be7dcdbc5e2f633b84272c6222bbb52ab45711e20e42c527be9025ebea3",
+    "scripts/platform_lab.py": "75fe9afc36f175f0c2a5ed9f7b9abe4b8012657ce282bb8283667841e67102c4"
+  },
+  "top_level_product_go_tests": {
+    "internal/session": 22,
+    "internal/sessionapi": 13,
+    "internal/sessionruntime": 2
+  }
+}

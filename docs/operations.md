@@ -258,6 +258,12 @@ namespace、pool、instance 在安装时固定，重启保持一致；改变 Poo
 
 `make platform-api-exec-test` 构建 Go API 镜像并在原有健康实验集群验证一条 CSV/脚本/产物/后续执行闭环，以及隔离、非零退出、路径边界、并发冲突、运行中关闭、命令超时和输出上限。宿主仅向普通 API Pod 建立 TLS port-forward，不向 gVisor Pod port-forward；执行连接由 API 在集群内建立。临时 TLS/调用身份不进入镜像或报告。成功后清理本次 namespace/运行时，保留开发集群、上游组件和镜像缓存供下次复用，最终释放仍使用 platform-delete。
 
+`/readyz` 由单个后台循环检查 Pool 可访问性，探针只读快照；检查每 2 秒触发，超时不超过 2 秒，5 秒未刷新即返回 503。初始检查完成前也返回 503；`/healthz` 不查询后端。服务退出会取消后台检查。
+
+结构化 `session operation` 日志按 session_id 和 operation_id 关联 acquire、execute/read/write、validate、release、close 阶段；operation_id 是操作标记的摘要，不输出原标记、代码、文件内容或原生错误消息。close 的 pending 仅表示等待回收，complete 才表示已确认回收，request_failed 表示关闭未获确认，需查询并重试关闭。release 的 unknown 表示释放未确认，会在剩余独立清理预算内尝试关闭；不能手工解锁后重放。
+
+控制面请求计数通过 `go test -run TestSessionRequestBudgets -v ./internal/session` 复现，按客户端动作分类。无重试且会话已绑定时，每次执行/文件读写为 23 次调用，包含建连前后两次校验和结果确认；首次就绪查询为 5 次。每轮仍完整检查重复资源、Service selector、运行边界和上游 UID，关闭后仍扫描关联残留。此计数不包含后台 readiness、传输重试或轮询，不是生产延迟/吞吐指标。
+
 操作标记不会因 API 重启自动释放。发现遗留 `operation_active=true` 时先关闭该会话并查询回收，不手工清除标记后继续执行；没有命令结果账本，不自动重放未知命令。新 API 的 MCP 和 Agent 接入仍待下一阶段，旧 `/v1/execute` 不适用于此服务。
 
 <a id="platform-plan"></a>

@@ -1,12 +1,20 @@
 package session
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	kt "k8s.io/client-go/testing"
 )
 
 type runtimeStub struct {
@@ -14,6 +22,146 @@ type runtimeStub struct {
 	start   chan struct{}
 	unblock chan struct{}
 	err     error
+}
+
+func captureOperationLogs(h *harness) *bytes.Buffer {
+	var output bytes.Buffer
+	h.service.logger = slog.New(slog.NewJSONHandler(&output, nil))
+	return &output
+}
+
+func requireOperationEvent(t *testing.T, output *bytes.Buffer, phase, outcome string) {
+	t.Helper()
+	decoder := json.NewDecoder(bytes.NewReader(output.Bytes()))
+	for decoder.More() {
+		var event map[string]any
+		if err := decoder.Decode(&event); err != nil {
+			t.Fatal(err)
+		}
+		if event["phase"] == phase && event["outcome"] == outcome {
+			if event["session_id"] == "" || event["operation_id"] == "" {
+				t.Fatal("missing operation correlation")
+			}
+			return
+		}
+	}
+	t.Fatalf("missing %s/%s event: %s", phase, outcome, output)
+}
+
+func TestUnknownExecutionCloseFailureIsDiagnosedWithoutReplay(t *testing.T) {
+	h, v, r := operationSetup(t)
+	logs := captureOperationLogs(h)
+	r.err = errors.New("private-code-and-bearer-secret")
+	h.client.PrependReactor("patch", "sandboxclaims", func(a kt.Action) (bool, runtime.Object, error) {
+		if bytes.Contains(a.(kt.PatchAction).GetPatch(), []byte("api-close-requested")) {
+			return true, nil, errors.New("private-cluster-address-and-secret")
+		}
+		return false, nil, nil
+	})
+	_, err := h.service.Execute(testCtx, "alice", v.ID, ExecuteRequest{IdentityRevision: v.IdentityRevision, Code: "private-user-code"})
+	if Code(err) != "operation_outcome_unknown" || r.calls.Load() != 1 {
+		t.Fatalf("execution outcome: %v, calls=%d", err, r.calls.Load())
+	}
+	requireOperationEvent(t, logs, "execute", "unknown")
+	requireOperationEvent(t, logs, "close", "request_failed")
+	if strings.Contains(logs.String(), "private-") {
+		t.Fatalf("native details leaked: %s", logs)
+	}
+	c := h.claim(t, v.ID)
+	if c.GetAnnotations()[operationKey] == "" || c.GetAnnotations()[closeKey] != "" {
+		t.Fatal("failed close released lock or falsely recorded success")
+	}
+	fresh := h.restart(t)
+	fresh.SetRuntime(r)
+	_, err = fresh.Execute(testCtx, "alice", v.ID, ExecuteRequest{IdentityRevision: v.IdentityRevision, Code: "do_not_replay()"})
+	if Code(err) != "session_busy" || r.calls.Load() != 1 {
+		t.Fatal("restart bypassed persistent lock")
+	}
+}
+
+func TestReleaseFailureReadbackAndConservativeClosure(t *testing.T) {
+	for _, mode := range []string{"lost_reply", "not_applied", "unreadable", "different_holder", "replacement"} {
+		t.Run(mode, func(t *testing.T) {
+			h, v, r := operationSetup(t)
+			logs := captureOperationLogs(h)
+			releasing := false
+			h.client.PrependReactor("get", "sandboxclaims", func(kt.Action) (bool, runtime.Object, error) {
+				if releasing && mode == "unreadable" {
+					return true, nil, io.ErrUnexpectedEOF
+				}
+				return false, nil, nil
+			})
+			h.client.PrependReactor("patch", "sandboxclaims", func(a kt.Action) (bool, runtime.Object, error) {
+				var ops []struct {
+					Path  string
+					Value any
+				}
+				if err := json.Unmarshal(a.(kt.PatchAction).GetPatch(), &ops); err != nil {
+					t.Fatal(err)
+				}
+				for _, op := range ops {
+					if !strings.HasSuffix(op.Path, "api-operation") || op.Value != "" {
+						continue
+					}
+					releasing = true
+					if mode == "lost_reply" {
+						handled, _, err := kt.ObjectReaction(h.client.Tracker())(a)
+						if !handled || err != nil {
+							t.Fatalf("apply release: %v", err)
+						}
+					} else if mode == "different_holder" || mode == "replacement" {
+						obj, err := h.client.Tracker().Get(Claims, "work", a.(kt.PatchAction).GetName())
+						if err != nil {
+							t.Fatal(err)
+						}
+						c := obj.(*unstructured.Unstructured).DeepCopy()
+						annotations := c.GetAnnotations()
+						annotations[operationKey] = "different-holder"
+						c.SetAnnotations(annotations)
+						if mode == "replacement" {
+							c.SetUID("replacement-claim")
+						}
+						if err := h.client.Tracker().Update(Claims, c, "work"); err != nil {
+							t.Fatal(err)
+						}
+					}
+					return true, nil, io.ErrUnexpectedEOF
+				}
+				return false, nil, nil
+			})
+			_, err := h.service.Execute(testCtx, "alice", v.ID, ExecuteRequest{IdentityRevision: v.IdentityRevision, Code: "print(1)"})
+			if r.calls.Load() != 1 {
+				t.Fatal("execution replayed")
+			}
+			if mode == "lost_reply" {
+				if err != nil {
+					t.Fatalf("confirmed release lost result: %v", err)
+				}
+				requireOperationEvent(t, logs, "release", "complete")
+				return
+			}
+			if Code(err) != "operation_outcome_unknown" {
+				t.Fatalf("unconfirmed release: %v", err)
+			}
+			requireOperationEvent(t, logs, "release", "unknown")
+			if mode == "unreadable" || mode == "replacement" {
+				requireOperationEvent(t, logs, "close", "request_failed")
+			} else {
+				requireOperationEvent(t, logs, "close", "pending")
+			}
+			obj, err := h.client.Tracker().Get(Claims, "work", strings.Split(v.ID, ".")[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := obj.(*unstructured.Unstructured)
+			if c.GetAnnotations()[operationKey] == "" {
+				t.Fatal("unconfirmed holder was cleared")
+			}
+			if mode == "replacement" && c.GetAnnotations()[closeKey] != "" {
+				t.Fatal("closed replacement Claim")
+			}
+		})
+	}
 }
 
 func (r *runtimeStub) Execute(ctx context.Context, target Target, _ string) (Execution, error) {
