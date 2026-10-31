@@ -1,10 +1,10 @@
 # AgentBox 系统设计
 
-版本：V3.0｜更新：2026-10-30｜方向已确定；当前提供普通 Job、gVisor 运行时与 Calico 网络策略实验入口；已增加上游冷会话、固定预热池/Go SDK 验收入口；Go 生命周期、执行/文件 API 已加入；MCP、完整产品安全边界与 agentboxd 实际退役仍待实现。
+版本：V3.1｜更新：2026-10-31｜平台、会话 API、记录保留及 MCP/Agent v2 已实现；旧宿主运行管理代码清退，批任务与资源策略仍为后续阶段。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
-继续在现有项目内演进，不另建同类平台。**agentboxd 及其直接调用 runsc 的本地后端退出目标架构，不保留长期双后端或请求级自动回退。**会话与批任务是同一平台内的两类工作负载；不再强制每条 Agent 命令创建一次性 Job。
+继续在现有项目内演进，不另建同类平台。**agentboxd 及其直接调用 runsc 的本地后端已退出活动代码，不保留长期双后端或请求级自动回退。**会话与批任务是同一平台内的两类工作负载；不再强制每条 Agent 命令创建一次性 Job。
 
 本页维护架构与取舍；阶段见[路线图](docs/roadmap.md)，契约见[使用指南](docs/usage.md)，部署边界见[运维指南](docs/operations.md)，测量与证据见[验证指南](docs/validation.md)。
 
@@ -16,7 +16,7 @@ AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 
 
 先完成真实平台、Go 接口与故障验收，再写一个资源策略。动态预热池、Koordinator、Firecracker 快照、GPU、多节点放置、多租户公平、Argo/Ray/KEDA 和额外消息队列均不同时进入首轮。性能改善允许被实验否定；不承诺旧 Warm 时延或任意运行环境兼容。
 
-已实现的本地 Cold/Warm、FIFO、PSI/AIMD、Gateway/MCP 保留为迁移收尾和历史复现。普通 Job 基线和新 gVisor 运行时子步骤分别留证；运行时探针不证明完整网络隔离、上游会话生命周期、新 API/MCP 或策略收益。
+旧本地 Cold/Warm、FIFO、PSI/AIMD、Gateway/MCP 已移出活动源码，完整历史实现固定于 c6c2e48。普通 Job 基线和新 gVisor 运行时子步骤分别留证；运行时探针不证明完整网络隔离、上游会话生命周期、新 API/MCP 或策略收益。
 
 ## 2. 组件职责与所有权
 
@@ -79,7 +79,7 @@ flowchart TD
 
 故障验收增加控制器重启时的数据面连续性、执行 Pod 丢失后的 UID/工作目录变化，以及到期与关闭的终态收敛。Claim 或 Service 名称相同不等于原环境仍存在；验收器按实际 Pod UID 识别变化，不对旧句柄重放命令。生命周期 API 已加入逐请求归属和持久 UID 检查；执行/文件请求进一步要求 revision、持久操作互斥和固定连接，当前不承诺 Pod 丢失后的透明恢复。
 
-首个 Go 产品提交提供生命周期 v2 API：固定 namespace/Pool、配置身份、命名 Claim 幂等、Claim UID 标识与首次 Ready 的持久绑定。关闭复用上游 Retain 生命周期并等待控制器终止确认和关联对象消失；首次确认 API 对象回收时持久化 closed_at，元数据由独立管理员工具按保留期清理，默认只预览，删除使用 UID/resourceVersion 前置条件；创建幂等持续到记录实际删除。API 只声明资源与映射状态，不运行任务，也不自行补池。执行/文件通过上游 sandboxd 协议适配：每次新 Python 进程、文件跨调用保留，Claim CAS 限制单会话在途操作，超时/不确定结果请求关闭且不重放；不自研节点执行服务。MCP 仍待接入，接口见[使用指南](docs/usage.md#session-api)。新链路验收通过前保留旧调用方，切换与退役见[路线图](docs/roadmap.md#retirement)。
+首个 Go 产品提交提供生命周期 v2 API：固定 namespace/Pool、配置身份、命名 Claim 幂等、Claim UID 标识与首次 Ready 的持久绑定。关闭复用上游 Retain 生命周期并等待控制器终止确认和关联对象消失；首次确认 API 对象回收时持久化 closed_at，元数据由独立管理员工具按保留期清理，默认只预览，删除使用 UID/resourceVersion 前置条件；创建幂等持续到记录实际删除。API 只声明资源与映射状态，不运行任务，也不自行补池。执行/文件通过上游 sandboxd 协议适配：每次新 Python 进程、文件跨调用保留，Claim CAS 限制单会话在途操作，超时/不确定结果请求关闭且不重放；不自研节点执行服务。MCP v2 已接入，Agent 自动管理单会话并仅向模型开放查询/执行/文件工具，退出时独立关闭；接口见[使用指南](docs/usage.md#session-api)。旧调用入口与专用部署/实验代码已清退，切换与退役证据见[路线图](docs/roadmap.md#retirement)。
 
 <a id="platform"></a>
 ## 5. 平台与隔离契约
@@ -125,7 +125,7 @@ Job/Pod UID 和 attempt 隔离输出，发布结果处理重复尝试。Job Comp
 | --- | --- |
 | kind 平台脚本、版本锁、归属保护与普通 smoke | 保留为环境和功能底座；不升级历史验收结论 |
 | Agent、模型客户端、MCP、输入与输出约束 | 按职责复用，重新定义会话/批任务契约和版本 |
-| 本地 runsc/bundle/FIFO/Warm/cgroup AIMD | 随 agentboxd 退役；保留历史版本和故障经验，不移植池控制器 |
+| 本地 runsc/bundle/FIFO/Warm/cgroup AIMD | 已清退；保留历史版本和故障经验，不移植池控制器 |
 | Agent Sandbox | 首选会话生命周期实现，先冷创建、再固定池、再 Go 接入；组合未验收前不宣称可交付 |
 | OpenSandbox | 完整平台备选；仅首选有明确缺口时评估，避免同时维护两套生命周期控制面 |
 | E2B/Firecracker | 后续快照或 VM 研究的独立对照；不从裸 VMM API 重建主线 |

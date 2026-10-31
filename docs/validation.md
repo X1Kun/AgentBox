@@ -1,6 +1,6 @@
 # 验证指南
 
-本页区分待退役旧实现的历史证据、新平台验证和 Daemon 退出验收。详细旧数据保存在[本地验收归档](archive/local-validation.md)，JSON/图表继续留在 data/assets；它们不代表新平台测试。agentboxd 已决定退役，但新平台和实际移除均未完成，状态见[路线图](roadmap.md)。
+当前验证覆盖平台、会话 API/记录保留和 Agent/MCP v2；旧运行时与旧性能数据仅保留为历史证据。活动源码已清退旧执行路径，实际主机退役另行留证。阶段见[路线图](roadmap.md)。
 
 ## 当前证据摘要
 
@@ -167,120 +167,31 @@ Go API 在普通 Pod 内提供 TLS，实际 Python 由锁定上游 sandboxd 在 
 
 本阶段源码哈希、两轮原始报告、清理报告哈希和权限边界见[保留与清理验收记录](data/session-claim-retention-validation.json)。两轮临时 namespace 均已清理，开发集群保留；元数据清理权限没有进入产品 API 或执行 Pod。竞争与写入故障注入使用假客户端，未宣称生产可用性或实时运行时证明。
 
+<a id="mcp"></a>
+<a id="agent"></a>
+## MCP/Agent v2 与旧运行链路退出
+
+2026-10-31 同一交付完成 v2 MCP/Agent、默认入口切换和旧源码/系统安装退出。新 MCP 仅注册六个 session_*_v2 工具；Agent 自动绑定一个会话，模型只获得查询/执行/文件工具，退出时独立关闭并确认，创建恢复保持同 request_id/TTL，未知执行/写入不重放。
+
+删除旧源码前，确定性模型 → 真实 Agent → stdio MCP → 原生 API → gVisor 链路先通过；随后清退 114 个跟踪文件、两个旧生成二进制及专用构建/部署/实验入口，历史代码固定于 c6c2e48，文件摘要见[移除清单](data/legacy-source-retirement.json)。当前默认构建只包含 API、管理员清理、MCP 和 Agent；SDK 验收及 mockcore 为可选 tools。
+
+最终源码再次通过五项真实检查：受限 API 身份；CSV/程序失败修正/报告导出/后续调用；超时后停止并关闭；真实成功执行经过 loopback 故障夹具后丢失响应，停止批次而不重放；API 事件核对实际执行数为 flow=3、timeout=1、lost-reply=1。三个环境的 API 对象、CRI sandbox、gVisor 进程和本轮两个 namespace 均回收，开发集群保留。模型/API 凭据边界在夹具中校验，未调用付费模型。
+
+管理员在本机核对空 bundles/runsc、安装校验和、归属、进程、cgroup 与挂载后移除旧系统安装；最终两项旧 unit 均为 not-found/ExecMainPID=0，固定旧 app/state/config/unit 路径消失，凭据和配置备份仅 root 可读。初版退役脚本漏列 runsc 的两次检查均在删除前阻断，修正后通过；本地 stdio 测试夹具未读请求体造成阻塞的失败也保留说明，修复后定向与完整回归通过。
+
+最终 `make build check`、依赖整理和文档链接检查通过；详细源码/二进制/原始报告哈希、退役记录和边界见[统一验收记录](data/agent-mcp-retirement-validation.json)。本轮不推导生产 SLO、模型质量或性能收益，不将历史普通磁盘问题视为根治。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>
 <a id="static"></a>
 <a id="gateway"></a>
-代表性数字保留在证据源：固定波次 Cold/Warm 成功 P50 为 331.64/182.98ms，而 P95 改善很小；共享 2 CPU 的固定场景中，父组 1 CPU＋PSI 仅补池配置两轮 6,480 个 Core 请求均在 50ms 内成功，但门控未触发，不能归因于动态策略。所有配置、任务代价、失败反例和版本条件见[归档](archive/local-validation.md)，不将这些数字转用于 Kubernetes 后端。
-
-## 旧代码检查与真实复现
-
-本节及后续本地/MCP 命令针对当前仍保留的旧源码，仅用于迁移期回归和历史复现，不是目标平台验收。P2c 后需使用归档代码版本；活动 CI 将改为新平台检查。所有命令在对应仓库根目录执行，普通检查不启动付费 API 或特权运行时；真实用例另需 runsc/rootfs、Docker 和可用平台。
-
-```bash
-make check
-make build
-```
-
-make check 包含 Go race、基准摘要、vet、格式/差异检查及部署和实验脚本回归。按改动范围再选择真实用例；不把单元测试或 tmpfs 验收当作普通磁盘验证。
-
-```bash
-python3 scripts/container.py runtime --platform kvm
-python3 scripts/container.py runtime --platform systrap
-python3 scripts/container.py systemd --platform kvm --mode warm
-python3 scripts/container.py systemd --platform systrap --mode warm
-```
-
-Gateway 和 QoS 短流程：
-
-```bash
-AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
-  python3 scripts/container.py gateway --platform systrap
-AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
-  python3 scripts/container.py qos --platform kvm
-```
-
-动态库存的单独机制回归：
-
-```bash
-AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
-  python3 scripts/container.py qos --platform systrap --pattern '^TestDynamicInventoryRuntime$'
-```
-
-该用例验证真实库存阻塞、扩缩及清理；不证明策略收益。宿主服务 smoke 与显式启停/SIGKILL 检查见[运维指南](operations.md#smoke)，执行前确认服务作用范围。
-
-<a id="mcp"></a>
-## 旧 MCP 与模型验证
-
-```bash
-make check build
-AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
-  python3 scripts/container.py mcp --platform systrap
-```
-
-普通 MCP 流程使用确定性模拟模型 API 和真实沙箱。历史真实 deepseek-flash 记录为 3 次模型请求、2 次执行，从除零错误修正为 42，两次确认清理；见[脱敏证据](data/deepseek-live-validation.json)。不把单次演示当作性能或普遍自愈能力。
-
-付费 API 仅通过下列显式入口调用：
-
-```bash
-AGENTBOX_LIVE_DEEPSEEK=1 \
-  AGENTBOX_TEST_DEPENDENCIES_TMPFS=1 AGENTBOX_TEST_IMAGE_ROOTFS=1 \
-  python3 scripts/container.py live --platform systrap
-```
-
-默认读取 `.local/deepseek.env`，或由 AGENTBOX_DEEPSEEK_CONFIG 指定私有文件，只解析允许的 KEY=VALUE，不执行 shell 内容。上限为 4 次模型请求、3 次工具调用、100 秒对话；只有该套件的控制容器使用 bridge 出站访问 API，runsc 任务仍禁网。普通容器验证均保持禁网。
-
 <a id="local-experiments"></a>
-## 本地性能实验入口
-
-实验需选择对应资源和工作负载口径；详细方法、参数、失败条件和逐批结果见[归档](archive/local-validation.md#pool-experiments)。
-
-| 问题 | 现有入口/详细说明 |
-| --- | --- |
-| Warm 命中、突发、持续、波次 | scripts/container.py benchmark；[供给实验](archive/local-validation.md#pool-experiments) |
-| 配额与延迟目标下的容量 | benchmark --scenario capacity；[容量扫描](archive/local-validation.md#容量扫描寻找可用边界) |
-| 补池与 Core 争用 | benchmark --scenario refill-core；[补池对照](archive/local-validation.md#补池与-core-争用对照) |
-| 固定 CPU 保护与代价 | scripts/container.py static；[静态方法](archive/local-validation.md#static-method) |
-
-### 本地动态 CPU 对照
-
-沿用现有实验入口，不新增脚本：
-
-```bash
-make build
-AGENTBOX_TEST_IMAGE_ROOTFS=1 python3 scripts/container.py static --platform kvm --comparison dynamic --duration 15 --repetitions 1
-```
-
-每组包含三个各 15 秒的阶段，固定 1 CPU、固定 2 CPU 与 AIMD 1～2 CPU 使用同一工作量、5/60/5 req/s 核心到达率、两个沙箱客户端。保持静态库存、关闭准入门控，避免把多个策略收益混在一起。预先设定 50ms 核心 SLO，记录拒绝/丢弃、超标秒数、完成量、配额轨迹和恢复；一轮结果不支持显著性推断。2026-10-21 的未达标结果及限制见[详细记录](archive/local-validation.md)。
-
 <a id="recording"></a>
-## 记录与离线分析
-
-```bash
-# 启动受控的短观测实验；已有本地依赖后执行。
-make build
-python3 scripts/container.py observe --platform kvm
-
-# 记录已运行的 observe/enforce 服务；token 从环境读取。
-python3 scripts/experiment.py record --output artifacts/observe-manual \
-  --duration 30 --rate 20 --sandbox-workers 2
-
-# 读取历史数据，不启动负载；恢复原始数据的方法见 validation.md。
-python3 scripts/experiment.py analyze artifacts/static-kvm-XCmQHtIX \
-  --output /tmp/agentbox-analysis --no-plots
-```
-
-记录器保存逐请求 Core/沙箱 CSV、状态 JSONL、配置和质量摘要。成功、拒绝、客户端丢弃、其他失败分开；enforce 的动作来自 daemon，记录器不修改策略。容器观测为 2 CPU，idle-pool 仍包含库存与观察开销，不能当独占业务基线。
-
-离线分析只写新的输出目录并记录源文件哈希。Core 三种时间口径使用同一窗口、同一批成功请求；沙箱阶段只匹配正式 CSV 中成功且清理完成的 execution_id，排除 warmup。drain 完成请求保留阶段数据，但不计入窗口吞吐。
-
-历史图表和口径核对见[分析归档](archive/local-validation.md#observation-analysis)；不要在缺失旧字段时补写新观测值。
-
 <a id="evidence"></a>
-## 历史资料与复现
+## 历史证据与复现
 
-[原始数据恢复说明](archive/local-validation.md#evidence)保存归档位置、恢复命令和版本边界。[理论分析](archive/performance-theory.md)及[引用索引](archive/performance-references.md)为历史研究资料，不再承担当前开发计划。data/assets 的现有文件未迁移或重算。
+旧运行时、Warm、QoS、Gateway 和旧模型链路的数据保留在 data/assets 和[本地验收归档](archive/local-validation.md)。旧构建、systemd、容器实验和分析命令仅在[历史版本](archive/legacy-runtime.md)运行，已经退出当前 Makefile/测试/部署入口。当前产品与旧证据不作性能或取消语义等价迁移。
 
 <a id="limits"></a>
 ## 已知限制
@@ -288,9 +199,9 @@ python3 scripts/experiment.py analyze artifacts/static-kvm-XCmQHtIX \
 普通磁盘 create/delete 超时尚未根治；tmpfs 成功不等于磁盘修复。动态库存独立收益、业务健康借用收益、采集净开销、长期生产运行、多租户公平与物理跨机性能仍缺完整证据。新会话与批任务平台、AdmissionCheck/Koordinator 不以本地证据代验。
 
 <a id="session-validation"></a>
-## 新会话功能与启动测量（计划）
+## 会话验证清单与后续启动测量
 
-P1/P2 独立验证上游 Agent Sandbox＋containerd/gVisor，不复用旧 Warm 数字。没有启动 agentboxd/旧 Gateway 时，分别通过上游客户端和新 Go API/MCP 验证：
+既有行为结果见前文各节；以下保留扩展验证及启动测量清单，未有证据的项目仍需独立取得结果，不复用旧 Warm 数字。没有启动 agentboxd/旧 Gateway 时，分别通过上游客户端和新 Go API/MCP 验证：
 
 | 项目 | 必须取得的证据 |
 | --- | --- |
@@ -314,7 +225,7 @@ P1/P2 独立验证上游 Agent Sandbox＋containerd/gVisor，不复用旧 Warm �
 为理解任务粒度，可用相同图片程序分别运行一次性 Job 和会话内命令，注明“一次操作”“一份输入”“一次会话”各自边界。预热构建/空闲成本单列，不将预热领取与冷 VM 启动或纯计算时间直接比较；不预设亚秒目标或复制厂商数字。
 
 <a id="retirement"></a>
-## 新平台迁移与 Daemon 退役验收（计划）
+## 产品链路与旧运行路径退出验收
 
 P1/P2 新会话链路独立证明安全与正确性即可切换，不要求旧同步 API 或 Warm 行为等价，也不等待批任务策略和 Koordinator。至少核对：
 
@@ -400,6 +311,6 @@ P3 完成 R/B 和多档静态批配额扫描；P4 比较 B/A；P5 仅在必要�
 
 每个不可变 run 保存源码/组件版本、配置与镜像 hash、资源域、有效开关、输入 manifest/种子/输出规则；客户端结果、Claim/Sandbox/Pod 身份与领取/执行/关闭事件、Job/Workload/attempt 与产物记录；健康样本、决策、准入与资源轨迹、validity 和 summary。对象/run/request ID 放日志，不作为无界 Prometheus 标签。
 
-正式图从原始数据生成，至少分面展示会话延迟/及时成功、批产出/等待、池状态/空闲成本、实际 CPU/预算和健康/准入。Grafana 用于运行观测，不能替代原始记录。批队列与策略实验命令随 P3/P4 实现后补入；当前平台脚本提供普通 Job、gVisor、Calico 网络及上游冷会话/Go SDK 功能验收，旧本地命令仍按历史口径使用。
+正式图从原始数据生成，至少分面展示会话延迟/及时成功、批产出/等待、池状态/空闲成本、实际 CPU/预算和健康/准入。Grafana 用于运行观测，不能替代原始记录。批队列与策略实验命令随 P3/P4 实现后补入；当前平台脚本提供普通 Job、gVisor、Calico 网络及上游冷会话/Go SDK 功能验收，旧本地命令只在归档版本按历史口径使用。
 
 报告给出环境、对手配置、独立运行数、收益/代价和失效场景。可接受结论包括“静态配额已足够”“准入保护后续命令但加剧批等待”“在途竞争限制准入作用，需要单独评价节点控制”。不宣称未验证的生产 SLO、绝对安全、跨机或 GPU 收益。

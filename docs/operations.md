@@ -1,8 +1,8 @@
 # 运维指南
 
-状态：agentboxd 已决定退役，但代码移除和服务切换尚未实施。当前提供普通 Job、gVisor 运行时及 Calico NetworkPolicy 实验入口；已增加上游冷会话、固定预热池与 Go SDK 验收入口；Kueue 与新产品接口仍待交付。下文旧服务配置只供已有部署收尾和复现。阶段状态见[路线图](roadmap.md)。
+当前默认构建和产品调用统一走 Kubernetes 会话 API/MCP/Agent。旧宿主 Daemon/Gateway 及其构建、安装和实验入口已清退；历史版本见[归档](archive/legacy-runtime.md)。Kueue/批任务和健康准入仍待后续交付。
 
-按任务跳转：[新平台入口](#platform-lab) · [gVisor 验收](#gvisor-runtime) · [网络策略验收](#network-policy) · [冷会话验收](#cold-sessions) · [固定预热池](#warm-pool) · [会话故障](#session-faults) · [生命周期 API](#session-api) · [平台部署计划](#platform-plan) · [退役流程](#retirement) · [旧安装](#deployment) · [旧配置](#config) · [生命周期](#lifecycle) · [更新与卸载](#base-update) · [旧 Gateway 配对](#gateway) · [检查](#smoke) · [排障](#diagnosis)。命令从仓库根目录执行。
+按任务跳转：[平台](#platform-lab) · [gVisor](#gvisor-runtime) · [网络](#network-policy) · [会话](#cold-sessions) · [API](#session-api) · [记录清理](#claim-retention) · [Agent 验收](#agent) · [旧安装退役](#retirement) · [排障](#diagnosis)。命令从仓库根目录执行。
 
 <a id="platform-lab"></a>
 ## 独立 Kubernetes 功能实验
@@ -55,7 +55,7 @@ kind 删除改用独立临时 kubeconfig，避免部分节点删除失败时清�
 
 Job 固定 activeDeadlineSeconds=120、backoffLimit=0；--timeout（30～600s）仅改变观察等待预算，不改 Job 期限。kind --retain 保留失败节点，超时或中断由归属记录及诊断日志处理。普通可信 smoke 不证明沙箱安全、自动重试或 SLO 收益。
 
-源码当前仍保留旧脚本入口：`scripts/setup.sh` 准备依赖；`scripts/deploy.py` 维护旧服务；`scripts/container.py` 运行旧验证；`scripts/experiment.py` 记录、分析和绘图。它们不是新平台安装器，专用入口将随 P2c 从活动发布清退。使用 --help 查看参数；container 的 --dry-run 只显示计划，不构建、不操作 Docker、不调用模型 API。
+旧单机安装、容器验证与实验脚本已经移出活动代码；仅在[历史版本](archive/legacy-runtime.md)按原环境复现。当前平台由本节已有入口管理。
 
 Makefile 的 benchmark、observe、static-experiment、qos-integration、systemd-integration 是对应入口的快捷方式，可用 PLATFORM=systrap 显式切换。环境准备和测试条件见[验证指南](validation.md)。
 
@@ -264,7 +264,7 @@ namespace、pool、instance 在安装时固定，重启保持一致；改变 Poo
 
 控制面请求计数通过 `go test -run TestSessionRequestBudgets -v ./internal/session` 复现，按客户端动作分类。无重试且会话已绑定时，每次执行/文件读写为 23 次调用，包含建连前后两次校验和结果确认；首次就绪查询为 5 次。每轮仍完整检查重复资源、Service selector、运行边界和上游 UID，关闭后仍扫描关联残留。此计数不包含后台 readiness、传输重试或轮询，不是生产延迟/吞吐指标。
 
-操作标记不会因 API 重启自动释放。发现遗留 `operation_active=true` 时先关闭该会话并查询回收，不手工清除标记后继续执行；没有命令结果账本，不自动重放未知命令。新 API 的 MCP 和 Agent 接入仍待下一阶段，旧 `/v1/execute` 不适用于此服务。
+操作标记不会因 API 重启自动释放。发现遗留 `operation_active=true` 时先关闭该会话并查询回收，不手工清除标记后继续执行；没有命令结果账本，不自动重放未知命令。MCP/Agent 使用同一 v2 API，接口见[使用指南](usage.md#mcp)。
 
 <a id="claim-retention"></a>
 ### Claim 记录保留与管理员清理
@@ -324,453 +324,33 @@ Prometheus/Grafana 与最小会话指标从 P1/P2 配套引入，P3 补齐批任
 
 卸载先停止新领取/提交并处理活动会话/批任务，再按上游固定版本流程停止补池、清理对象与控制器。共享 CRD、RuntimeClass、节点组件和存储必须确认无其他使用者才移除；输入、产物、凭据与日志按各自保留要求处理。真实操作命令在对应实现验收后补入本页。
 
+<a id="agent"></a>
+## Agent/MCP 部署与真实验收
+
+`make build` 只构建 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent。管理员先安装受控平台与 API，再向调用方提供 API URL、可信 CA 和一个配置身份；不把 Kubernetes 或模型凭据放进执行 Pod。`make tools` 另行构建上游 SDK 验收客户端和可选 mockcore，不参与默认产品路径。
+
+`make platform-agent-test` 或 `make integration` 在当前专用实验集群创建临时 API/执行 namespace，以确定性模型 HTTP 替身启动真实 Agent 与 stdio MCP 子进程。验证 CSV 写入、程序失败修正、报告导出、跨命令文件和新解释器；再验证命令超时，以及经可信 loopback 故障夹具转发一次成功执行后丢弃响应，确认 Agent 不重放、不执行批次后续命令，并在独立预算内关闭会话。API 事件核对实际执行次数，宿主确认三个 gVisor 环境的 CRI/进程回收，最后清理本轮 namespace，保留集群。该入口不调用付费模型。
+
+仅配置本项目开发集群的隔离 kubeconfig，继续使用既有安装归属/版本/UID 检查；不重建健康集群，也不清理其他项目。若真实验收失败，保留原始报告和本轮资源身份，不能改超时或删除失败记录来宣告通过。
+
 <a id="retirement"></a>
-## Daemon 退役流程（待执行）
+## 旧系统安装的一次性退役
 
-执行前置为 P1 真实沙箱会话和 P2 新 API/MCP 验收完成、调用方已具备切换条件；不等待 P3 批任务、P4 策略或 Koordinator。详细交付门槛见[路线图 P2c](roadmap.md#retirement)。
+仓库内旧运行代码、systemd 模板、直接 runsc 后端及专用 FIFO/Warm/AIMD 控制已删除。历史源代码固定于 c6c2e48；移除文件哈希见[源码退役清单](data/legacy-source-retirement.json)。旧 HTTP/MCP 入口没有兼容别名或自动回落。
 
-1. **盘点与留证。**确认旧服务、监听、调用方、配对配置、实例记录及依赖的实际归属，保存源码/构建版本和必要恢复信息；凭据不进入普通日志和公开归档。
-2. **停止旧提交。**先停止或切换所有受控调用方，阻止向旧入口新增请求。等待已接收任务结束，或明确取消并确认回收；未知执行结果不自动重放或迁入新会话/Job。
-3. **核对清理。**检查任务进程、bundle、cgroup 及残留状态。无法确认时保持旧记录并处理故障，不直接删除 owner/intent 宣告完成。
-4. **停止与移除服务。**按下文既有工具顺序先停配对服务、移除 Gateway，再卸载 base；不执行重新配对或重装步骤。不存在配对时只处理本部署的 base。
-5. **清退访问与依赖。**撤销旧端点访问和凭据分发，核对服务停止、无残留进程和监听；配置/状态的永久删除单独按保留要求处理，不默认 purge。不得删除新平台或其他服务共用的 runsc、镜像、容器存储及 cgroup。
-6. **发布收敛。**旧 Daemon、专用 Gateway 转发和本地运行时从活动构建/部署退出；恢复旧版本只作为显式人工发布操作，不做自动故障回退或任务重放。
-
-退役完成须同时证明：新 API/MCP 在 agentboxd 未安装或未运行时工作；旧入口不再接收新执行；旧工作已回收或有明确未决处置；新平台只由 Kubernetes/containerd 管理运行时。历史文档和证据保留，不要求旧服务继续在线。
-
-目标 API/MCP 使用最小必要 Kubernetes RBAC 与受限上游执行接口，不挂载 containerd/CRI socket、不申请宿主 cgroup 控制权。上游沙箱内执行服务和节点 kubelet/containerd 继续运行，不等于保留 agentboxd。新平台的安装、回退和卸载命令待实现后替代本页默认操作。
-
-<a id="deployment"></a>
-## 旧环境与安装参考
-
-- Linux cgroups v2，systemd 249 或更新版本，Python 3.10+。
-- 普通用户已执行 `make build`，准备 `.local/gvisor`、sidecar 和 Python rootfs；安装阶段不下载依赖、不构建 Go。
-- KVM 模式下，宿主提供可用的 `/dev/kvm`；systrap 需要显式选择，没有自动降级。
-- 固定宿主安装需要管理员权限。免密 sudo 为可选配置，不是前置要求。
-
-项目本地准备由普通用户执行；不会覆盖现有 .local 安装：
+`scripts/retire_legacy.py` 只处理固定 `/opt/agentbox`、`/var/lib/agentbox`、`/etc/agentbox.env` 和 agentbox.service；它不是新平台安装器。默认检查，读取私有状态需要 sudo。它核对旧安装 manifest 和 binary/runsc 校验和、固定路径、状态归属、空 bundles/runsc 目录、进程、unit、cgroup 和挂载；未知内容、未回收记录、共享目录或变化后的安装都会阻止操作。apply 持有部署/状态锁，先保存 root 私有的配置/单元/manifest 备份和删除意图，再移除已验证旧安装和凭据入口、禁用并重载 systemd。备份目录仅 root 可读，报告不含凭据值。
 
 ```bash
-make build
-bash scripts/setup.sh runsc
-bash scripts/setup.sh rootfs
-./bin/agentboxd -doctor -runsc .local/gvisor/runsc -platform kvm
+sudo python3 scripts/retire_legacy.py --report /tmp/agentbox-retirement-inspect.json
+# 仅在报告 inspected 且核对计划后，使用新的报告路径执行。
+sudo python3 scripts/retire_legacy.py --apply --report /tmp/agentbox-retirement-apply.json
 ```
 
-没有 KVM 时显式使用 systrap；不要自动切换已写入状态所有权的平台。安装程序不下载、不编译，也不自动启动服务。
+本机旧 service 已由管理员执行退役，配置备份在 `/var/backups/agentbox-retired-j5l3hhpd`，随后只读复核两项旧 unit 为 not-found/ExecMainPID=0，旧 app/unit/config 路径消失。此前脚本漏列 runsc 目录的阻断轮次及修正后报告分别保存，不把阻断当作已执行删除。新 Kubernetes、宿主共享运行时和工作区缓存均未由该脚本处理。其他机器仍须各自核对迁移，不能以本机记录代验。
 
-### 路径与权限
-
-| 路径 | 用途 |
-|---|---|
-| `/opt/agentbox/bin/agentboxd` | root 拥有的部署二进制 |
-| `/opt/agentbox/.local/gvisor` | 固定 runsc 与 sidecar |
-| `/opt/agentbox/.local/rootfs` | 基础 Python 文件系统，保留镜像访问权限 |
-| `/opt/agentbox/INSTALL.json` | 程序与 runsc 校验值、镜像 digest 和平台 |
-| `/opt/agentbox/previous` | 更新前的程序、unit 和 manifest，目录 0700 |
-| `/etc/agentbox.env` | 私有配置，0600；不打印 token |
-| `/etc/systemd/system/agentbox.service` | 固定服务 unit |
-| `/var/lib/agentbox` | 0700 状态目录，包含 ownership、锁和执行记录 |
-
-安装程序和依赖由 root 复制到固定目录；服务不执行工作区中的二进制。镜像目录保留所需访问权限，输入权限显式建立，不依赖进程 umask。
-
-### 历史安装与启动
-
-在项目根目录，由普通用户完成构建，然后执行管理员操作：
-
-```bash
-make build
-sudo python3 scripts/deploy.py base
-sudo systemctl start agentbox.service
-sudo python3 scripts/deploy.py smoke
-```
-
-首次使用 systrap 时给安装脚本传入 `--platform systrap`。安装脚本不会自动启动服务或设置开机自启；需要开机自启时单独执行 `sudo systemctl enable agentbox.service`。
-
-<a id="config"></a>
-## 服务配置
-
-/etc/agentbox.env 使用无引号 KEY=VALUE；解析器不执行 shell，修改后重启生效。AGENTBOX_API_TOKEN 首次随机生成、后续保留，至少 32 字符；AGENTBOX_PLATFORM 为 kvm/systrap；AGENTBOX_LISTEN 默认 127.0.0.1:8080，仅显式 loopback。状态所有权包含平台/rootfs/cgroup，不能删除 owner.json 绕过不匹配。
-
-<a id="pool-config"></a>
-### 容量与资源
-
-| CLI | systemd 环境变量 | 默认值 | 含义 |
-|---|---|---|---|
-| `-mode` | `AGENTBOX_MODE` | `cold` | cold 或 warm |
-| `-concurrency` | `AGENTBOX_CONCURRENCY` | 1 | 任务并发，1～8，直到清理完成才释放 |
-| `-warm-size` | `AGENTBOX_WARM_SIZE` | 3 | 固定 READY 目标；也作为动态最大值的默认来源 |
-| `-warm-refill-policy` | `AGENTBOX_WARM_REFILL_POLICY` | `slots` | slots 在槽满或有排队时退让；idle 在任一前台任务在途时退让，仅适用 warm |
-| `-warm-dynamic` | `AGENTBOX_WARM_DYNAMIC` | false | 启用有界 READY 调整，参数见[动态库存配置](#inventory-config) |
-| `-max-sandboxes` | `AGENTBOX_MAX_SANDBOXES` | 6 | 所有创建、空闲、领取、运行、销毁实例的总上限，最多 8 |
-| `-create-concurrency` | `AGENTBOX_CREATE_CONCURRENCY` | 1 | 按需与后台共享的创建并发，1～4；不受 READY 目标限制 |
-| `-queue-size` | `AGENTBOX_QUEUE_SIZE` | 16 | 最多排队请求数，1～128 |
-| `-queue-bytes` | `AGENTBOX_QUEUE_BYTES` | 8388608 | 排队请求的解码后文本字节预算，最多 64 MiB |
-| `-queue-timeout` | `AGENTBOX_QUEUE_TIMEOUT` | `100ms` | 最大排队时间，1ms～5s |
-| `-sandbox-cpu-milli` | `AGENTBOX_SANDBOX_CPU_MILLI` | 1000 | 每实例 CPU 带宽上限，50～4000；1000 表示 1 CPU |
-| `-parent-cpu-milli` | `AGENTBOX_PARENT_CPU_MILLI` | 4000 | 沙箱父组静态 CPU 上限，50～4000；AIMD 最大值不得超过它 |
-
-库存目标、执行并发、创建并发分别不得超过总实例上限；例如执行并发 8 需同时显式设置 max-sandboxes=8。扩大可配置范围不增加 CPU/内存配额，也不说明上限配置更快。CLI 接受 Go duration；固定服务配置解析器接受整数 `ms` 或 `s`。创建与排队参数对 Cold/Warm 同时生效；cold 显式启用动态库存会被拒绝。排队预算仅覆盖等待资源名额，预留成功后的创建计入 setup，不占用 queue-timeout。
-
-字节预算计算 code、stdin、request_id、runtime 和 env 键值的字节长度，不是对 Go 堆内存的精确计量。HTTP 原始 body 另有既有上限。
-
-CPU 默认父级 4 CPU 等效带宽、每实例 1 CPU，实例 swap=0、host pids.max=256。内存预算改为启动校验：读取宿主 MemTotal 与可见祖先 memory.max 的最小值，扣除外部保留量；父组默认取剩余额度与 4GiB 的较小值，单实例默认 512MiB，各自 memory.high 为硬上限的 75%。模式下可能同时存在的实例上限乘以单实例内存上限不得超过父组预算，否则拒绝启动：Warm 按 max-sandboxes 校验，Cold 因不存库存且清理前不释放执行槽，按 concurrency 校验。
-
-单实例 CPU 是服务端统一模板，Cold 创建、Warm 初始库存与后续补池都在创建时写入子 cgroup。`500` 对应 `cpu.max=10000 20000`，`1500` 对应 `30000 20000`；整数 milli-CPU 避免浮点换算误差，周期固定 20ms。它是上限，不是绑核或算力预留，也不抬高父组预算。各子组额度可以合计超过父组，竞争时仍共同受父组约束；CPU 超配与内存预算校验的语义不同。
-
-鉴权 status 的 `sandbox_cpu_milli` 报告配置值，不冒充外部修改后的实时读回。修改部署配置后需重启；启动回收旧实例再创建新实例。不支持请求携带 CPU/内存额度，也不在运行中动态调整单实例。需要差异化规格时再处理规格匹配、容量与公平性，当前不拆分多套预热库存。
-
-`parent_cpu_milli` 报告配置的父组上限，默认仍 4000；例如 1000 对应父组 `cpu.max=20000 20000`。动态 CPU 控制可在此上限以下运行，实时值见 QoS 的 `actual_cpu`；配置的 `qos-max-cpu` 超出父组上限会拒绝启动。父组预算通过 CLI/systemd 正式部署，不再仅依赖实验直接修改 cgroup。
-
-| CLI | systemd 环境变量 | 默认 MiB |
-|---|---|---|
-| `-parent-memory-mib` | `AGENTBOX_PARENT_MEMORY_MIB` | 0（按部署容量计算） |
-| `-sandbox-memory-mib` | `AGENTBOX_SANDBOX_MEMORY_MIB` | 512 |
-| `-memory-reserve-mib` | `AGENTBOX_MEMORY_RESERVE_MIB` | 512 |
-
-保留量是规划额度，并不为其他服务建立独占内存保护，也不等同于当前可用内存。2GiB 部署可显式使用 parent=1024、sandbox=256、reserve=768、max-sandboxes=4、warm-size=1、concurrency=2；仍须结合业务实际内存调整。宿主共享依赖、管理进程与可见层级之外的竞争需要纳入部署评估。
-
-<a id="inventory-config"></a>
-### 动态库存配置
-
-| CLI | systemd 环境变量 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `-warm-dynamic` | `AGENTBOX_WARM_DYNAMIC` | false | 仅 warm 模式可启用 |
-| `-warm-min-size` | `AGENTBOX_WARM_MIN_SIZE` | 1 | 最小 READY 目标，至少 1 |
-| `-warm-max-size` | `AGENTBOX_WARM_MAX_SIZE` | 0 | 0 沿用 warm-size；有效最大值不超过 max-sandboxes |
-| `-warm-adjust-interval` | `AGENTBOX_WARM_ADJUST_INTERVAL` | 1s | 最小目标动作间隔，100ms～60s |
-| `-warm-downscale-window` | `AGENTBOX_WARM_DOWNSCALE_WINDOW` | 30s | 缩容推荐稳定窗口，不短于动作间隔，最多 3600s |
-
-满足 `1 <= min <= max <= max-sandboxes <= 8`；创建并发受独立上限和总容量约束，不受 READY 目标限制。CLI 接受 Go duration，固定服务配置使用整数 ms 或 s。100ms 短窗与控制器节拍是内部常量，状态变更还会触发观察和唤醒；动作间隔独立限制目标变化频率。启动仍在第一个 READY 后就绪，目标从最小值起步。
-
-稳定窗口针对缩容建议，不表示“整池无任务”的连续时长。早期实验参数 `-warm-idle-for` / `AGENTBOX_WARM_IDLE_FOR` 不再支持，也没有别名。更新程序与 unit 后，可在 `/etc/agentbox.env` 中设置：
-
-```text
-AGENTBOX_MODE=warm
-AGENTBOX_WARM_DYNAMIC=true
-AGENTBOX_WARM_MIN_SIZE=1
-AGENTBOX_WARM_MAX_SIZE=3
-AGENTBOX_WARM_ADJUST_INTERVAL=1s
-AGENTBOX_WARM_DOWNSCALE_WINDOW=30s
-```
-
-配置修改按[更新流程](#base-update)及服务重启生效。
-
-<a id="qos-config"></a>
-### QoS 模式
-
-| 配置 | 实际行为 |
-| --- | --- |
-| `-qos=off` | 静态资源限制，不启动采样 |
-| `-qos=observe` | 只读采样 |
-| `-qos=observe -qos-cpu-control` | 预演 CPU 预算，不写配额 |
-| `-qos=observe -qos-scheduling` | 预演压力门控，不改变接单或补池 |
-| `-qos=enforce` | 执行 CPU 控制并读回确认；调度门控仍默认关闭 |
-| `-qos=enforce -qos-scheduling` | 同时执行 CPU 控制、压力准入和补池门控 |
-| `-qos=enforce -qos-refill-only` | 仅按 PSI 暂停/恢复新的 Warm 后台补池，不修改 CPU 配额或准入 |
-
-observe/enforce 都需显式指定受保护服务：`-qos-protected-cgroup=/sys/fs/cgroup/...`。该路径不得与沙箱子树相互包含。systemd 配置示例：
-
-```ini
-AGENTBOX_QOS=enforce
-AGENTBOX_QOS_SCHEDULING=true
-AGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/system.slice/mockcore.service
-```
-
-预演可改为 observe，并设置 `AGENTBOX_QOS_CPU_CONTROL=true`。模式默认 off，CPU 预演、完整压力调度和仅补池三个开关默认 false。父组预算及 CPU 上下界支持固定服务配置，其余策略参数通过 daemon CLI 设置；部署与更新见 [systemd](#deployment)。
-
-| 参数 | 默认值 | CLI |
-| --- | --- | --- |
-| CPU 下界 / 上界 | 0.5 / 4 核等效带宽 | qos-min-cpu / qos-max-cpu |
-| protected CPU PSI 低 / 高阈值 | 10% / 20% | qos-cpu-low / qos-cpu-high |
-| 压力确认与最小动作间隔 | 1s | qos-control-interval |
-| 恢复前持续低压 | 2s | qos-stable-for |
-| 乘法下降系数 | 0.8 | qos-decrease-factor |
-| 加法恢复速率 | 0.25 核/秒 | qos-increase-cpu |
-| CPU bandwidth 周期 | 固定 20ms | 不动态修改 |
-
-CPU 上下界的 systemd 变量为 AGENTBOX_QOS_MIN_CPU/MAX_CPU；最大值不得超过 AGENTBOX_PARENT_CPU_MILLI。其余 CPU 策略参数使用 daemon CLI。周期固定 20ms，控制参数不表示最优或保证 SLO。策略与故障动作见[CPU 控制](runtime.md#cpu)。
-
-### 仅控制补池
-
-Warm/slots 可设置 AGENTBOX_QOS_REFILL_ONLY=true；与 CPU 控制、完整压力准入、业务借用互斥。observe 只预演，enforce 也不启用 CPU 写入；前台按需创建仍可进行。示例：
-
-```ini
-AGENTBOX_MODE=warm
-AGENTBOX_WARM_REFILL_POLICY=slots
-AGENTBOX_PARENT_CPU_MILLI=1000
-AGENTBOX_QOS=enforce
-AGENTBOX_QOS_REFILL_ONLY=true
-AGENTBOX_QOS_PROTECTED_CGROUP=/sys/fs/cgroup/system.slice/core.service
-```
-
-<a id="business-config"></a>
-### 业务健康约束配置
-
--qos-base-cpu 与 -qos-business-file 必须成对设置；systemd 对应 AGENTBOX_QOS_BASE_CPU（默认 0）、AGENTBOX_QOS_BUSINESS_FILE（默认 none）。样本由可信采集器在受保护目录原子发布，不接受模型或任务指定路径。
-
-```text
--qos=enforce -qos-min-cpu=0.5 -qos-base-cpu=1 -qos-max-cpu=2
--qos-protected-cgroup=/sys/fs/cgroup/.../core
--qos-business-file=/run/core/agentbox-health.json
-```
-
-```json
-{"sampled_at":"2026-10-21T01:00:00Z","window_ms":1000,"requests":100,"rejected":2,"slo_violations":3}
-```
-
-JSON 是格式示例，时间须持续更新；五字段必需，窗口 500～5000ms，最多保鲜两个窗口。拒绝/超标允许重叠，但各自不能超过请求数。文件最多 4KiB，禁止最终路径符号链接、非普通文件和全员可写文件；缺文件、缺字段、null、未来/陈旧时间或计数异常都不按健康处理。新鲜的零请求窗口可以表示空闲，但不能用永久全零文件替代采集。这是本地借用规则，与规划中的 AdmissionCheck 最低样本量要求分别定义。
-
-建议放在 /run；采集器覆盖实际业务错误、拒绝及 SLO 超标。策略解释见[业务反馈](runtime.md#business)。
-
-<a id="lifecycle"></a>
-## 服务生命周期
-
-unit 使用 `Type=notify` 与 `NotifyAccess=main`。daemon 完成配置检查、状态加锁、cgroup 初始化、残留回收、可信 Python 创建/执行/销毁探测、Warm 最低库存初始化和 HTTP listener 创建后发送 `READY=1`。初始化错误会使 `systemctl start` 失败。手动运行时没有 `NOTIFY_SOCKET`，通知自动跳过。
-
-当前保留 `Restart=no`，运行期可用性以 `/readyz` 为准；清理故障会停止接单，service 的 active 状态不代表仍然可用。
-
-```text
-agentbox.service
-├── manager
-│   └── agentboxd / 控制命令
-└── sandboxes
-    └── ab-...
-        └── Sentry / Gofer / 沙箱任务
-```
-
-`Delegate=cpu memory pids` 明确委派范围。daemon 移到 manager 叶节点后才启用子树控制器。停止时先传播请求取消、等待清理；unit 使用 `KillMode=mixed`，先向主进程发送 SIGTERM，让 daemon 完成 runsc 清理；主进程退出或停止超时后对剩余服务进程执行 SIGKILL，保留整个服务范围的兜底。`TimeoutStartSec=30`、`TimeoutStopSec=45`。HTTP drain 和引擎关闭并行开始；空闲库存最多四路清理，停止预算覆盖正在创建的实例完成当前操作、运行任务退出和库存回收。
-
-<a id="warm-enable"></a>
-### 切换 Warm
-
-已经安装固定服务时，由管理员更新二进制和 unit，再用编辑器在 `/etc/agentbox.env` 中添加 `AGENTBOX_MODE=warm`，保留原 token、平台和其他配置：
-
-下面适用于独立 base 服务；已配对 Gateway 的部署须先按[配对更新](#gateway)移除组件，再更新和重新配对。
-
-```bash
-make build
-sudo systemctl stop agentbox.service
-sudo python3 scripts/deploy.py base --update
-sudoedit /etc/agentbox.env
-sudo systemctl start agentbox.service
-mkdir -p artifacts
-sudo python3 scripts/deploy.py smoke --lifecycle --output "$PWD/artifacts/host-warm-systemd.json"
-```
-
-证据路径必须不存在。切回 cold 时修改模式、将 warm-refill-policy 恢复为 slots，并关闭动态库存和仅补池 QoS 等 Warm 专用开关后重启。预热实例是正常库存，smoke 只要求已完成任务的 ID 无残留，并检查总容量；停止服务后仍要求进程完全回收。功能用例先等待可领取库存，满载拒绝用例直接发送且不重试；不会把库存耗尽时合法的 503 当成用户代码执行错误。
-
-<a id="base-update"></a>
-## 更新、回退与卸载
-
-更新只替换程序和 unit，保留配置、状态、runsc 与 rootfs：
-
-```bash
-sudo systemctl stop agentbox.service
-sudo python3 scripts/deploy.py base --update
-sudo systemctl start agentbox.service
-sudo python3 scripts/deploy.py smoke
-```
-
-更新会检查服务已停止、状态锁已释放、执行记录已回收，以及依赖信息未改变。存在残留时先用原服务启动恢复，再停止更新；不会自动删除 owner.json 或执行记录。
-
-单文件使用临时文件与原子替换。保留一份 previous 快照，更新异常时尝试恢复；需要回退时：
-
-```bash
-sudo systemctl stop agentbox.service
-sudo python3 scripts/deploy.py base --rollback
-sudo systemctl start agentbox.service
-sudo python3 scripts/deploy.py smoke
-```
-
-本阶段不提供 runsc、镜像或平台的自动迁移。此类变化需要先确认实例完全回收，再明确决定状态归档或清除。
-
-### 卸载与重装
-
-```bash
-sudo python3 scripts/deploy.py base --uninstall
-```
-
-默认停止并禁用服务，删除程序和 unit，保留配置与状态。相同固定配置可重新安装；如果状态所有权不匹配或执行记录未回收，则拒绝安装。
-
-需要一次性完整移除配置和状态时显式选择：
-
-```bash
-sudo python3 scripts/deploy.py base --uninstall --purge
-```
-
-该操作仅对仍具有有效 INSTALL.json 的托管部署执行，且要求没有未回收记录。已默认卸载后，不能对缺少托管标记的目录盲目执行 purge。
-
-<a id="gateway"></a>
-## 旧 Gateway 配对部署
-
-独立 daemon 可直接监听 loopback；配对时改为 Unix socket，由普通用户 Gateway 占用外部端口。配对期间 base 更新/回退/卸载会拒绝操作，必须先按下述步骤移除组件。
-
-先完成普通构建，以及现有 daemon 的安装/更新。安装工具不编译、不下载依赖，也不自动启用或启动服务。已有部署的示例：
-
-```bash
-make build
-sudo systemctl stop agentbox.service
-sudo python3 scripts/deploy.py base --update
-sudo python3 scripts/deploy.py gateway
-sudo systemctl start agentbox-gateway.service
-sudo python3 scripts/deploy.py smoke
-```
-
-首次安装 base daemon 使用 `python3 scripts/deploy.py base`，不传 `--update`。启动 Gateway 会通过 Requires/After 启动并等待 daemon。安装前两个服务必须停止、状态锁释放且无未回收任务记录；首次创建专用系统账号，不删除或修改其他账号。
-
-附加安装文件：
-
-| 路径 | 用途 |
-| --- | --- |
-| `/opt/agentbox/bin/agentbox-gateway` | 普通用户服务二进制 |
-| `/opt/agentbox/GATEWAY_INSTALL.json` | 组件归属和二进制哈希，不含凭据 |
-| `/etc/systemd/system/agentbox-gateway.service` | Gateway unit |
-| `/etc/systemd/system/agentbox.service.d/gateway.conf` | daemon 组、RuntimeDirectory 和附加环境文件 |
-| `/etc/agentbox-gateway.env` | 外部与内部 token、Gateway 参数，0600 |
-| `/etc/agentbox-gateway-daemon.env` | daemon Unix 地址与内部 token，0600 |
-
-base 的 `/etc/agentbox.env`、INSTALL.json、依赖和任务状态不变。首次安装默认沿用 base API token 作为外部 token，另生成内部 token，保留现有客户端认证方式。附加环境文件排在 base EnvironmentFile 后覆盖 daemon 地址和 token；不会把内部 token 传给外部客户端。
-
-Gateway 环境配置采用无引号 KEY=VALUE：
-
-| 配置 | 默认值/约束 |
-| --- | --- |
-| `AGENTBOX_GATEWAY_LISTEN` | base 的 loopback 地址，通常 127.0.0.1:8080；首次也可传 `--listen` |
-| `AGENTBOX_GATEWAY_TOKEN` | 外部 token，32～4096 可见 ASCII 字符 |
-| `AGENTBOX_DAEMON_TOKEN` | 内部 token，同上，且不能等于外部 token |
-| `AGENTBOX_GATEWAY_MAX_INFLIGHT` | 8；1～64，增加时同步考虑 unit 的 MemoryMax |
-| `AGENTBOX_GATEWAY_TIMEOUT` | 50s；整数 ms/s，1ms～60s |
-
-unit 默认无 capabilities、NoNewPrivileges、只读系统路径、512MiB MemoryMax 和 64 TasksMax。它仍是本机单 worker 功能部署，不提供外网入口或生产高可用承诺。
-
-<a id="unix"></a>
-### Unix socket 与凭据
-
-daemon 的 `-listen` 接受显式 loopback IP，或 `unix:/绝对路径`。Unix 父目录须已存在、由 daemon 用户所有、权限为 0700 或 0750，且不能通过符号链接访问。socket 固定为 0660，组由 daemon 的有效主组决定。
-
-监听器持有私有旁路锁，拒绝替换活跃 socket、普通文件、符号链接或其他用户的 socket。仅能确认连接被拒绝、归属正确且检查期间 inode 未变化的残留 socket 才回收。关闭时只删除自身 inode；私有锁文件可留在目录中，systemd RuntimeDirectory 会在服务停止后清理运行目录。
-
-配对模式下：
-
-- daemon 仍为 root，主组为 `agentbox-gateway`；运行目录为 root:agentbox-gateway、0750。
-- Gateway 使用同名专用非 root 系统用户/组，通过组权限连接 socket，不能在运行目录中替换端点。
-- 外部 token 与内部 token 不同。两份凭据文件均 root:root、0600，由 systemd 管理器读取后传入相应进程；Gateway 不需要直接读取 root 的配置文件。
-- `/var/lib/agentbox` 保留 0700，Gateway 不访问 bundle、rootfs、cgroup 或 Docker socket。任务环境继续由 daemon 显式构造，不继承两个服务的 token。
-
-### 配对更新与移除
-
-只更新 Gateway：
-
-```bash
-sudo systemctl stop agentbox-gateway.service agentbox.service
-sudo python3 scripts/deploy.py gateway --update
-sudo systemctl start agentbox-gateway.service
-```
-
-凭据保留，文件写入异常会恢复写入前的组件文件。首版不提供独立的 Gateway 二进制历史回退命令。
-
-base 更新/回退/卸载会拒绝仍装有 Gateway 的部署，避免旧 daemon 或目录删除破坏配对关系。先移除组件，保留 Gateway 配置，再更新 base 并重新配对：
-
-```bash
-sudo systemctl stop agentbox-gateway.service agentbox.service
-sudo python3 scripts/deploy.py gateway --uninstall
-sudo python3 scripts/deploy.py base --update
-sudo python3 scripts/deploy.py gateway
-sudo systemctl start agentbox-gateway.service
-```
-
-仅移除组件时执行上面的 stop 和 `--uninstall`，然后 `systemctl start agentbox.service` 即恢复原 base 配置。`--uninstall --purge` 额外删除保留的 Gateway 配置；专用系统账号保留。不会删除 base token、任务状态、runsc 或 rootfs。
-
-`--destdir` 支持在已有暂存 base 安装上生成组件文件，不创建主机账号或操作 systemd。root smoke 在配对模式读取附加凭据，经 Unix socket 直接检查 daemon，生命周期操作不依赖 Gateway 进程存活。
-
-<a id="smoke"></a>
-## 服务检查与 staging
-
-`python3 scripts/deploy.py smoke` 默认检查实际服务的就绪、鉴权、manager 归属、父级配额、Python 模块语义、用户退出、超时、输出限额、后台进程和工作目录隔离。
-
-显式生命周期检查会启停服务、注入一次主进程 SIGKILL，并在结束后恢复服务：
-
-```bash
-mkdir -p artifacts
-sudo python3 scripts/deploy.py smoke --lifecycle --output "$PWD/artifacts/host-systemd.json"
-```
-
-它额外检查单实例配额、Sentry/Gofer 归属、满载拒绝、三轮重启、执行中停止、进程回收和崩溃后的状态恢复。输出包含结果和 cgroup 路径，不包含 token；证据文件要求不存在，避免覆盖旧记录。
-
-服务停止或崩溃时，已有 HTTP 请求可能收到结果或连接关闭，不自动重试不确定结果。
-
-无管理员权限时可以先进行文件部署 staging，不管理宿主服务：
-
-```bash
-python3 scripts/deploy.py base --destdir /tmp/agentbox-stage
-```
-
-staging 是文件验证，不代表 systemd、KVM 或宿主验收通过。再次测试需使用新的目录或通过该 staging 部署的卸载流程清理。
-
-<a id="observability"></a>
 <a id="diagnosis"></a>
-## 观测与排障
+## 当前排障与升级边界
 
-| 顺序 | 问题 | 证据 |
-| --- | --- | --- |
-| 1. 业务结果 | 成功、拒绝、超时或客户端丢弃发生了什么？ | offered/成功/拒绝/失败分开统计，禁止仅看成功请求分位数 |
-| 2. 时间分解 | 请求在排队、准备、执行还是清理？ | 单请求 timings、客户端计划发送与实际发送时间 |
-| 3. 供给约束 | 缺 READY、创建产能还是执行名额？ | idle/creating/execution_in_flight、队首等待原因和库存目标 |
-| 4. 资源归因 | 谁在消耗或受约束？ | 同一来源的 CPU、PSI、节流、内存与祖先预算 |
-| 5. 生命周期 | 创建和清理能否继续收敛？ | 失败计数、cleanup.active/recent、intent 与就绪状态 |
-| 6. 对照 | 变更与业务结果是否有可复现关联？ | 固定其余条件的重复对照，同时报告业务保护与沙箱产出 |
+优先保留 API/MCP/Agent 的 session_id、request_id、identity_revision、错误类别与关闭确认；从上游 Claim/Sandbox/Pod 的 UID、generation、条件、事件及 API operation 日志关联。执行/写入结果未知时停止数据调用并关闭原会话，不手工清除操作标记后重放。关闭未确认和实际运行时回收分别记录；普通磁盘竞争仍可能使 kubelet/containerd 回收延迟。
 
-CPU 高使用率不等于饱和，PSI 也不直接证明邻居是根因。更多 READY 不能解除执行名额或长期创建产能限制。计算资源之间、阶段分位数之间都不能简单相加减。完整推导见 [性能理论](archive/performance-theory.md)与[引用索引](archive/performance-references.md)。
-
-<a id="sampling"></a>
-### 数据有效性
-
-`-qos=observe|enforce` 显式配置受保护 cgroup，采样周期默认 100ms、范围 50ms～1s；off 不启动采样。计数器差分使用实际单调时间间隔。
-
-| 来源 | 范围 |
-| --- | --- |
-| host | `/proc/pressure`，反映宿主背景，不是容器独有压力 |
-| sandboxes | 沙箱父级 cgroup |
-| protected | 显式指定且与沙箱树分开的服务 cgroup |
-| manager | daemon 实际所在组，可能还有其他进程 |
-| ancestor_0 等 | 最多八级可见祖先，记录发现边界与原因 |
-
-祖先包含后代，manager 也可能与某祖先重合，不能将用量相加。私有命名空间看不到的祖先不在报告中，不声称采集整个宿主层级。系统级只采 PSI，没有 `/proc/stat` 利用率。
-
-- CPU 核等效用量为 Δusage_usec/实际间隔微秒；可超过 1。PSI 短窗百分比为 100×Δtotal_usec/实际间隔微秒；avg10/60/300 用于趋势。
-- 首次/恢复、目录身份变化、计数回退、非正或超过五个采样周期的间隔都重建基线。
-- 主快照年龄或采集耗时超过三个周期、或采样停止时为 stale。有效零为 0，缺测与无效差分为 null；系统 CPU full 始终无有效值。
-- 每来源有时间戳；sequence 在进程内递增，HTTP 多次轮询可能返回同一采样，不能按查询次数累加事件。
-- 原始文件最多 64KiB，读取不是跨文件原子快照。cpu.max 的 max 与数值 0 不混淆；所有速率都需检查来源与窗口有效性。
-
-I/O/PID 每秒刷新一次，独立时间戳、年龄、读耗时和 stale。io.stat 最多 128 个设备，只提供累计次数/字节，不提供 await。辅助数据超过三秒或主快照过期时不报告速率；按辅助 sampled_at 去重。可选文件缺失不会使 CPU/内存失效，也不会为采集额外委派 I/O 控制器。
-
-### 状态与清理指标
-
-GET /v1/status 报告模式、readiness、目标、实例状态、排队和配置预算。Cold 的 target=0，Warm 的 target 为接受的库存目标。qos.pressure 是压力判断，qos.scheduling 是实际门控，qos.cpu_control 区分建议与实际预算；observe 不表示动作已生效。资源配置值与实际读回值不能混用。
-
-- execution_in_flight 包含领取至清理结束；creation_limit/attempts 与成功、失败、中止创建分开，不能用旧 creation_count 和旧 total_ms 混算均值。
-- queue_entered 和 assigned/canceled/timed_out/unavailable/pressure_rejected 分开；立即领取不计入队，数量或字节满也不混入排队耗时。
-- 耗时直方图为非累计桶，边界为 1、5、10、25、50、100、250、500、1000、5000、10000ms，null 为溢出，不承诺精确分位数。
-- 同一池快照满足 attempts=成功+失败+中止+creating，以及入队=各离队分类+queued。跨组件快照并非原子事务。
-- 503 包含拒绝 reason，只有实际入队才有 queue_ms。request_id 用于关联，不提供去重。
-
-清理阶段保持顺序：
-
-```text
-runtime_delete → cgroup_kill → cgroup_empty_and_remove
-               → output_readers → bundle_remove
-```
-
-`cleanup.active` 在操作开始时出现；recent 保存最近 64 个结束阶段，dropped 表示淘汰数量。结果 cleanup_phases 包含实例、起止时间、耗时与错误。无法确认外部资源清理时保留 bundle/intent。事件缓存不持久化；下述运行时控制命令超时快照另行采集有界内核现场。
-
-### 超时现场
-
-create/start/state/delete 控制命令达到上下文截止时，在终止 CLI 前记录 `runtime failure snapshot`：操作名、实例 ID、CLI 与至多三个 cgroup 进程的 status/wchan/stack/io、宿主 PSI、实例内存与 CPU 计数、父组 dying cgroup 数。每个文件最多读取 4KiB，不采集 cmdline、环境、用户代码或任务输出；字段读取失败保留 unavailable，不补成零。现场进入现有结构化日志，不在可能阻塞的运行时磁盘路径额外写诊断文件。
-
-这是截止时的一次采样，不是完整因果追踪；特别是进程空组不代表内核对象已经全部释放。不可中断内核 I/O 仍可能超过用户态超时。
-
-故障快照新增 `storage`，关联 runsc、rootfs 和状态目录的挂载点、文件系统、设备号及设备累计计数。create/delete 开始时采集去重后的设备计数，超时快照保留 `storage_before` 与采样时间，可离线对齐 I/O 增量和命令耗时。设备计数是设备整体活动，不能归因于单个沙箱；tmpfs/overlay 等可能没有可读块设备计数，缺测保留 unavailable。挂载匹配使用路径边界和最长挂载点，不在超时现场遍历或读取可能阻塞的数据目录。
-
-日志不记录用户代码、任务输出或凭据。创建/删除不可中断 I/O 可能超过用户态超时；先保存现场，清理不确定时停止接单并保留记录，不删除 intent 伪装恢复。普通磁盘问题尚未根治；已知限制与实验依据见[验证指南](validation.md#limits)。
+API 日志不输出代码、文件内容、原始传输错误或凭据。运行时身份只能由拥有专用集群凭据的宿主验收器核对；产品 API/MCP 没有 CRI socket/cgroup 权限。生产部署还需独立评估容量、升级兼容、持久化策略、证书/凭据轮换和监控，当前 kind 行为证据不代表生产 SLO。

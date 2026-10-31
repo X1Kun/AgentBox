@@ -1,5 +1,7 @@
 # AgentBox 性能理论：引用与证据索引
 
+当前运行入口已清退；本页仅为历史记录，源码和命令按[归档版本](legacy-runtime.md)复现。
+
 配套正文：[性能理论与瓶颈判断](performance-theory.md)。本索引记录实际选读页面，不将未读章节作为依据。
 
 本页索引对应历史单机分析与证据，不代表 Kueue/Koordinator 的实现或验收。新架构官方依据集中在 [DESIGN](../../DESIGN.md)，开发顺序见[实施计划](../roadmap.md)。
@@ -16,7 +18,7 @@ Brendan Gregg, *Systems Performance: Enterprise and the Cloud*, 2nd edition, Add
 
 选读印刷页：23–24、33–35、44–45、47–54、56–57、64–69、74–77、167、173、177–180、189–194、225–227、309–310、324、330–331、585、613–624、631–633、643–650、657–659、662–666。
 
-2026-10-20 新增引用页：72–73、317–318、321–322、582–583；用于[动态库存理论复核](../runtime.md#inventory-history)。本轮重核 PDF SHA-256 与原记录一致。
+2026-10-20 新增引用页：72–73、317–318、321–322、582–583；用于[动态库存理论复核](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/runtime.md#inventory-history)。本轮重核 PDF SHA-256 与原记录一致。
 
 ## 书中依据
 
@@ -365,63 +367,63 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 
 ### C01 · 请求处理与端到端入口
 
-- [internal/httpapi/server.go:24](../../internal/httpapi/server.go#L24)：`func Handler`。
-- [cmd/agentboxd/main.go:30](../../cmd/agentboxd/main.go#L30)：`func run`。
+- [internal/httpapi/server.go:24](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/httpapi/server.go#L24)：`func Handler`。
+- [cmd/agentboxd/main.go:30](https://github.com/X1Kun/AgentBox/blob/c6c2e48/cmd/agentboxd/main.go#L30)：`func run`。
 
 <a id="c02"></a>
 
 ### C02 · cold/warm 执行、计时、创建和销毁
 
-- [internal/sandbox/engine.go:323](../../internal/sandbox/engine.go#L323)：`func (e *Engine) Execute`。
-- [internal/sandbox/engine.go:377](../../internal/sandbox/engine.go#L377)：`func (e *Engine) executeWarm`。
-- [internal/sandbox/engine.go:492](../../internal/sandbox/engine.go#L492)：`func (e *Engine) destroyInstanceResources`。
-- [internal/sandbox/engine.go:532](../../internal/sandbox/engine.go#L532)：`func (e *Engine) runAndCollectResult`。
+- [internal/sandbox/engine.go:323](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/engine.go#L323)：`func (e *Engine) Execute`。
+- [internal/sandbox/engine.go:377](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/engine.go#L377)：`func (e *Engine) executeWarm`。
+- [internal/sandbox/engine.go:492](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/engine.go#L492)：`func (e *Engine) destroyInstanceResources`。
+- [internal/sandbox/engine.go:532](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/engine.go#L532)：`func (e *Engine) runAndCollectResult`。
 
 <a id="c03"></a>
 
 ### C03 · FIFO 准入、库存补充、总容量与清理
 
-- [internal/sandbox/scheduler.go:24](../../internal/sandbox/scheduler.go#L24)：`func (p *warmPool) acquire`。
-- [internal/sandbox/pool.go:118](../../internal/sandbox/pool.go#L118)：`func (p *warmPool) refill`。
-- [internal/sandbox/pool.go:204](../../internal/sandbox/pool.go#L204)：`func (p *warmPool) release`。
-- [internal/sandbox/pool.go:227](../../internal/sandbox/pool.go#L227)：`func (p *warmPool) drain`。
-- [internal/sandbox/config.go:8](../../internal/sandbox/config.go#L8)：`func normalizePoolConfig`。
+- [internal/sandbox/scheduler.go:24](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/scheduler.go#L24)：`func (p *warmPool) acquire`。
+- [internal/sandbox/pool.go:118](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/pool.go#L118)：`func (p *warmPool) refill`。
+- [internal/sandbox/pool.go:204](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/pool.go#L204)：`func (p *warmPool) release`。
+- [internal/sandbox/pool.go:227](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/pool.go#L227)：`func (p *warmPool) drain`。
+- [internal/sandbox/config.go:8](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/config.go#L8)：`func normalizePoolConfig`。
 
 <a id="c04"></a>
 
 ### C04 · runsc create/start/exec/wait 与管道收尾
 
-- [internal/sandbox/runsc.go:110](../../internal/sandbox/runsc.go#L110)：`func (s *session) create`。
-- [internal/sandbox/runsc.go:136](../../internal/sandbox/runsc.go#L136)：`func (s *session) start`。
-- [internal/sandbox/runsc.go:154](../../internal/sandbox/runsc.go#L154)：`func (s *session) wait`。
-- [internal/sandbox/runsc.go:186](../../internal/sandbox/runsc.go#L186)：`func (s *session) finishStreams`。
+- [internal/sandbox/runsc.go:110](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/runsc.go#L110)：`func (s *session) create`。
+- [internal/sandbox/runsc.go:136](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/runsc.go#L136)：`func (s *session) start`。
+- [internal/sandbox/runsc.go:154](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/runsc.go#L154)：`func (s *session) wait`。
+- [internal/sandbox/runsc.go:186](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/runsc.go#L186)：`func (s *session) finishStreams`。
 
 <a id="c05"></a>
 
 ### C05 · 父级/单实例 cgroup 配额与退出统计
 
-- [internal/cgroup/cgroup_linux.go:43](../../internal/cgroup/cgroup_linux.go#L43)：`func New`。
-- [internal/cgroup/cgroup_linux.go:96](../../internal/cgroup/cgroup_linux.go#L96)：`func (m *Manager) NewGroup`。
-- [internal/cgroup/cgroup_linux.go:191](../../internal/cgroup/cgroup_linux.go#L191)：`func (g *Group) Usage`。
-- [internal/cgroup/stats.go:33](../../internal/cgroup/stats.go#L33)：`func ReadStats`。
+- [internal/cgroup/cgroup_linux.go:43](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/cgroup/cgroup_linux.go#L43)：`func New`。
+- [internal/cgroup/cgroup_linux.go:96](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/cgroup/cgroup_linux.go#L96)：`func (m *Manager) NewGroup`。
+- [internal/cgroup/cgroup_linux.go:191](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/cgroup/cgroup_linux.go#L191)：`func (g *Group) Usage`。
+- [internal/cgroup/stats.go:33](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/cgroup/stats.go#L33)：`func ReadStats`。
 
 <a id="c06"></a>
 
 ### C06 · PSI、采样增量、缓存有效性
 
-- [internal/qos/reader.go:30](../../internal/qos/reader.go#L30)：`func (FileReader) Read`。
-- [internal/qos/observer.go:145](../../internal/qos/observer.go#L145)：`func (o *Observer) collect`。
-- [internal/qos/observer.go:178](../../internal/qos/observer.go#L178)：`func (o *Observer) Snapshot`。
-- [internal/qos/observer.go:223](../../internal/qos/observer.go#L223)：`func derive`。
-- [internal/sandbox/observation.go:11](../../internal/sandbox/observation.go#L11)：`func (e *Engine) observationReport`。
+- [internal/qos/reader.go:30](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/qos/reader.go#L30)：`func (FileReader) Read`。
+- [internal/qos/observer.go:145](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/qos/observer.go#L145)：`func (o *Observer) collect`。
+- [internal/qos/observer.go:178](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/qos/observer.go#L178)：`func (o *Observer) Snapshot`。
+- [internal/qos/observer.go:223](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/qos/observer.go#L223)：`func derive`。
+- [internal/sandbox/observation.go:11](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/observation.go#L11)：`func (e *Engine) observationReport`。
 
 <a id="c07"></a>
 
 ### C07 · Python 引导、只读根、tmpfs、输出预算
 
-- [internal/sandbox/spec.go:74](../../internal/sandbox/spec.go#L74)：`func makeTaskProcess`。
-- [internal/sandbox/spec.go:84](../../internal/sandbox/spec.go#L84)：`func makeSpec`。
-- [internal/sandbox/output.go:32](../../internal/sandbox/output.go#L32)：`func (w outputWriter) Write`。
+- [internal/sandbox/spec.go:74](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/spec.go#L74)：`func makeTaskProcess`。
+- [internal/sandbox/spec.go:84](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/spec.go#L84)：`func makeSpec`。
+- [internal/sandbox/output.go:32](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/output.go#L32)：`func (w outputWriter) Write`。
 
 <a id="c08"></a>
 
@@ -434,41 +436,41 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 
 ### C09 · 负载生成和逐请求统计
 
-- [scripts/lib/observe.py:51](../../scripts/lib/observe.py#L51)：`def sandbox_workload`。
-- [scripts/lib/observe.py:64](../../scripts/lib/observe.py#L64)：`def core_metrics`。
-- [scripts/lib/observe.py:77](../../scripts/lib/observe.py#L77)：`def summarize_sandboxes`。
-- [scripts/lib/observe.py:91](../../scripts/lib/observe.py#L91)：`def run_phase`。
+- [scripts/lib/observe.py:51](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/observe.py#L51)：`def sandbox_workload`。
+- [scripts/lib/observe.py:64](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/observe.py#L64)：`def core_metrics`。
+- [scripts/lib/observe.py:77](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/observe.py#L77)：`def summarize_sandboxes`。
+- [scripts/lib/observe.py:91](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/observe.py#L91)：`def run_phase`。
 
 <a id="c10"></a>
 
 ### C10 · 静态实验环境、分组与质量检查
 
-- [tests/observation/static_container.py:38](../../tests/observation/static_container.py#L38)：`def main`。
-- [scripts/lib/static_experiment.py:6](../../scripts/lib/static_experiment.py#L6)：`def experiment_plan`。
-- [scripts/lib/static_experiment.py:13](../../scripts/lib/static_experiment.py#L13)：`def check_phase`。
+- [tests/observation/static_container.py:38](https://github.com/X1Kun/AgentBox/blob/c6c2e48/tests/observation/static_container.py#L38)：`def main`。
+- [scripts/lib/static_experiment.py:6](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/static_experiment.py#L6)：`def experiment_plan`。
+- [scripts/lib/static_experiment.py:13](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/static_experiment.py#L13)：`def check_phase`。
 
 <a id="c11"></a>
 
 ### C11 · 图表口径与拒绝错误实验
 
-- [scripts/lib/plot_static.py:24](../../scripts/lib/plot_static.py#L24)：`def window_latencies`。
-- [scripts/lib/plot_static.py:30](../../scripts/lib/plot_static.py#L30)：`def observation_series`。
-- [scripts/lib/plot_static.py:49](../../scripts/lib/plot_static.py#L49)：`def validate_readiness`。
-- [scripts/lib/plot_static.py:102](../../scripts/lib/plot_static.py#L102)：`def comparison`。
+- [scripts/lib/plot_static.py:24](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/plot_static.py#L24)：`def window_latencies`。
+- [scripts/lib/plot_static.py:30](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/plot_static.py#L30)：`def observation_series`。
+- [scripts/lib/plot_static.py:49](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/plot_static.py#L49)：`def validate_readiness`。
+- [scripts/lib/plot_static.py:102](https://github.com/X1Kun/AgentBox/blob/c6c2e48/scripts/lib/plot_static.py#L102)：`def comparison`。
 
 <a id="c12"></a>
 
 ### C12 · 历史冷暖基准的库存和持续场景
 
-- [tests/benchmarks/latency_test.go:177](../../tests/benchmarks/latency_test.go#L177)：`func TestColdWarmHTTPBenchmark`。
+- [tests/benchmarks/latency_test.go:177](https://github.com/X1Kun/AgentBox/blob/c6c2e48/tests/benchmarks/latency_test.go#L177)：`func TestColdWarmHTTPBenchmark`。
 
 <a id="c13"></a>
 
 ### C13 · 2026-10-20 当前动态库存与触发路径
 
-- [internal/sandbox/inventory.go](../../internal/sandbox/inventory.go)：当前 v2 的 `adjustInventoryLocked`、`reserveSurplusLocked`；[inventory_policy.go](../../internal/sandbox/inventory_policy.go) 提供纯策略与推荐最大值。
-- [internal/sandbox/scheduler.go](../../internal/sandbox/scheduler.go)：当前 `observeWaiterLocked` 只确认真实库存阻塞，已移除 v1 的普通领取/任意入队 Demand。
-- [动态库存说明](../runtime.md#inventory)：原 dynamic-inventory 专题的机制与理论边界；现行配置见[运维指南](../operations.md#inventory-config)，功能证据见[验收归档](local-validation.md#inventory-validation)。
+- [internal/sandbox/inventory.go](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/inventory.go)：当前 v2 的 `adjustInventoryLocked`、`reserveSurplusLocked`；[inventory_policy.go](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/inventory_policy.go) 提供纯策略与推荐最大值。
+- [internal/sandbox/scheduler.go](https://github.com/X1Kun/AgentBox/blob/c6c2e48/internal/sandbox/scheduler.go)：当前 `observeWaiterLocked` 只确认真实库存阻塞，已移除 v1 的普通领取/任意入队 Demand。
+- [动态库存说明](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/runtime.md#inventory)：原 dynamic-inventory 专题的机制与理论边界；现行配置见[运维指南](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/operations.md#inventory-config)，功能证据见[验收归档](local-validation.md#inventory-validation)。
 - 上述代码针对 `cc2d381` 加动态库存 diff，与此前 C01–C12 的历史版本区分；E04 保留的是修正前 v1 的源码哈希与反例，不对应当前 v2 源码。
 
 ## 实验及本次重算依据
@@ -501,7 +503,7 @@ PSI 衡量任务受资源压力影响的时间；结合回收、内存事件、�
 
 ### E04 · 2026-10-20 动态库存理论复核
 
-- [分析正文](../runtime.md#inventory-history)、[来源哈希、历史数据重算与反例检查源码](../data/performance-theory-evidence.json)的 inventory_v1_review 字段。
+- [分析正文](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/runtime.md#inventory-history)、[来源哈希、历史数据重算与反例检查源码](../data/performance-theory-evidence.json)的 inventory_v1_review 字段。
 - 在 `/tmp` 源码副本调用实际生产方法，构造“已有 READY、仅缺执行名额”和“每 10 秒请求、补池已完成、从未排队”两种状态。记录到目标仍增加；该检查是逻辑时间状态分析，不是真实负载或性能对照。
 - 历史冷暖数据从原 `requests.csv` 只读重算，没有更新运行时、启动压力负载或执行 Git 写操作。
 

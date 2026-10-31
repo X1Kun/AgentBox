@@ -1,0 +1,327 @@
+{
+  "agent_contract": {
+    "artifact_bytes": 1048576,
+    "creation_recovery": "At most two attempts with the same request_id and TTL within one 15s budget",
+    "default_cleanup_seconds": 20,
+    "default_data_calls": 8,
+    "default_model_turns": 6,
+    "default_ready_seconds": 60,
+    "default_session_ttl_seconds": 600,
+    "history_bytes": 524288,
+    "max_cleanup_seconds": 120,
+    "model_tools": [
+      "session_get_v2",
+      "session_execute_v2",
+      "session_write_file_v2",
+      "session_read_file_v2"
+    ],
+    "one_bound_session": true,
+    "parent_credentials": "Model key stays in Agent; MCP receives only API token plus PATH/LANG",
+    "unknown_execution_write_replay": false
+  },
+  "baseline_commit": "c6c2e48",
+  "final_acceptance": {
+    "agents": {
+      "flow": {
+        "exit_code": 0,
+        "model_calls": 5,
+        "result": {
+          "answer": "Observed total=10, count=3, next=11, fresh_globals=False.",
+          "artifacts": [
+            {
+              "content_base64": "eyJ0b3RhbCI6IDEwLCAiY291bnQiOiAzfQ==",
+              "identity_revision": "37976bbc067682ac59a274e7cd43c3fd",
+              "path": "report.json",
+              "session_id": "ses-e2320be80960dd95276057621ba6b16d92a38d6d.77198379-613c-4b8a-a6ec-9db6283b0523",
+              "size_bytes": 25
+            }
+          ],
+          "cleanup_complete": true,
+          "identity_revision": "37976bbc067682ac59a274e7cd43c3fd",
+          "outcome_unknown": false,
+          "request_id": "agent-264e15cd1333ff6b94bdfe74c946de4a",
+          "session_id": "ses-e2320be80960dd95276057621ba6b16d92a38d6d.77198379-613c-4b8a-a6ec-9db6283b0523",
+          "tool_calls": 5,
+          "ttl_seconds": 600,
+          "turns": 5
+        }
+      },
+      "lost-reply": {
+        "exit_code": 1,
+        "model_calls": 1,
+        "result": {
+          "answer": "",
+          "cleanup_complete": true,
+          "identity_revision": "56d8022a29bc8fdbd7d9217b013c249c",
+          "outcome_unknown": true,
+          "request_id": "agent-763a883edbcbaab16041aecd1d5a7a9d",
+          "session_id": "ses-e123e54137ee9702fc94b2d3ea0443f516b0daca.3bc18a0b-3f94-4cae-88b4-85bc08e1101e",
+          "tool_calls": 1,
+          "ttl_seconds": 600,
+          "turns": 1
+        }
+      },
+      "timeout": {
+        "exit_code": 1,
+        "model_calls": 1,
+        "result": {
+          "answer": "",
+          "cleanup_complete": true,
+          "identity_revision": "09325fbbccb19d53ff80350487bbd67e",
+          "outcome_unknown": true,
+          "request_id": "agent-7f889cbf06f633f853706b30e1faffd2",
+          "session_id": "ses-abf979cc27a828408f0c992cfec4260a31e51d1e.58b490f9-aa58-4fba-90a5-e46d65e2b9b7",
+          "tool_calls": 1,
+          "ttl_seconds": 600,
+          "turns": 1
+        }
+      }
+    },
+    "api_execution_counts": {
+      "flow": 3,
+      "lost-reply": 1,
+      "timeout": 1
+    },
+    "api_image": {
+      "fingerprint": "7591f12b78e246d8b351bd8e776c85d8e30994ffd3e59ee3ee4ccfb5d5056fc0",
+      "id": "sha256:b38966aa184d4ad561ae40eb93bf42d6ca696507e1c71abb7f0ab30a131a2f05",
+      "inputs": {
+        "base": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+        "base_id": "sha256:4f228bc1cbcfc794e4878312cfc241d368eff55a21c08d1e2bb263116c4ef524",
+        "binary": "92ab36137309123eb157944c749b973ad0a73f8a98f1be35b89b7f10d897f270",
+        "dockerfile": "8907b2c1d9e7239d7d7a00c7f4762b4cc1d126155bad2473ec6f2969c14e42a0"
+      },
+      "name": "agentbox/api:7591f12b78e246d8"
+    },
+    "binaries": {
+      "agentbox-agent": "a497ece77778c2295f1d2e10cf6ece43679701fe76197f4a533a59ba87f1c679",
+      "agentbox-mcp": "1da1fac8cde13f3899ca9fe23f0d243271a1432bd133e51f6369163685b0325e"
+    },
+    "checks": [
+      {
+        "name": "namespace_scoped_credentials_and_no_secret_or_pod_mutation",
+        "passed": true
+      },
+      {
+        "name": "agent_flow_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "agent_timeout_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "agent_lost_reply_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "native_api_execution_counts_confirm_no_replay",
+        "passed": true
+      }
+    ],
+    "cleanup_complete": true,
+    "command": "python3 scripts/platform_lab.py agent-test",
+    "development_cluster_retained": true,
+    "exit_code": 0,
+    "finished_at": "2026-10-31T10:59:42.000777+00:00",
+    "legacy_inventory": {
+      "processes": [],
+      "units": {
+        "agentbox-gateway.service": {
+          "ActiveState": "inactive",
+          "ExecMainPID": "0",
+          "FragmentPath": "",
+          "LoadState": "not-found"
+        },
+        "agentbox.service": {
+          "ActiveState": "inactive",
+          "ExecMainPID": "0",
+          "FragmentPath": "",
+          "LoadState": "not-found"
+        }
+      }
+    },
+    "report": "artifacts/platform-agent-test-1ca2a52ed867/report.json",
+    "report_sha256": "f9b1df6f6df9f4d9fbe2b6ccdf766fb01e0aa11931a857e1437248da8f93a2e7",
+    "runtime_cleanup": {
+      "remaining_cri_sandboxes": [],
+      "remaining_processes": []
+    },
+    "runtime_count": 3,
+    "started_at": "2026-10-31T10:57:09.584544+00:00"
+  },
+  "full_check": {
+    "command": "GOCACHE=/tmp/agentbox-review-go-cache make build check",
+    "exit_code": 0,
+    "stdio_integration": "Real subprocess request cancellation and detached closure passed"
+  },
+  "initial_failures": [
+    {
+      "reason": "Initial inventory omitted the engine-created runsc directory; both attempts blocked before deletion. Fixed to require both bundles/runsc empty and regression tested.",
+      "reports": [
+        "artifacts/legacy-system-retirement-20261031/inspect-20261031.json",
+        "artifacts/legacy-system-retirement-20261031/apply-20261031.json"
+      ],
+      "scope": "read-only retirement inspections"
+    },
+    {
+      "reason": "Unread HTTP request body prevented cancellation observation; test process was stopped, fixture now drains body and closes test connections; targeted and complete reruns passed.",
+      "scope": "local stdio integration fixture"
+    }
+  ],
+  "limits": [
+    "Deterministic model HTTP fixtures, not paid-model quality/performance evidence",
+    "Timeout and a real successful execution reply drop were exercised end to end; broader API/controller/network fault matrices remain independent work",
+    "API cleanup_complete concerns API objects; the host independently checked three CRI/gVisor environments",
+    "The last legacy source remains available in Git/history; raw evidence, images, user model settings and workspace caches were preserved",
+    "Kueue, batch task product APIs, health admission and production IAM/SLO remain future stages"
+  ],
+  "mcp_tools": [
+    "session_create_v2",
+    "session_get_v2",
+    "session_execute_v2",
+    "session_write_file_v2",
+    "session_read_file_v2",
+    "session_close_v2"
+  ],
+  "module_tidy": {
+    "command": "GOCACHE=/tmp/agentbox-review-go-cache go mod tidy",
+    "exit_code": 0,
+    "go_mod_or_sum_changed": false
+  },
+  "pre_retirement_acceptance": {
+    "ok": true,
+    "report": "artifacts/platform-agent-test-433ff8b559d7/report.json",
+    "report_sha256": "2709ffa602a621d5bea9c810f9a5b64f38c8f31167c40a1c8501ae0f6ae36af0",
+    "scope": "Proved new chain before deleting legacy source; installed old unit was inactive"
+  },
+  "recorded_at": "2026-10-31T11:04:07.142682+00:00",
+  "schema_version": 1,
+  "scope": "One combined MCP/Agent v2 migration and legacy runtime retirement; no production performance/SLO claim",
+  "source_retirement": {
+    "default_binaries": [
+      "agentbox-api",
+      "agentbox-cleanup",
+      "agentbox-mcp",
+      "agentbox-agent"
+    ],
+    "generated_legacy_binaries_removed": [
+      "bin/agentbox-gateway",
+      "bin/agentboxd"
+    ],
+    "historical_source_commit": "c6c2e48",
+    "manifest": "docs/data/legacy-source-retirement.json",
+    "manifest_sha256": "092db6d07fa4776d25da2e437844871bd6a4965b8668b0e647d711e7a7d2d34f",
+    "removed_tracked_files": 114
+  },
+  "source_sha256": {
+    "cmd/agentbox-agent/main.go": "2c38d350318a516a79deefe90f8c4533f61b3bbf6725206853b003854c5ea40c",
+    "cmd/agentbox-api/main.go": "1329dbfbd0f1f0ec6b97439aaa0b5b5aa8e61bb18ad9404f9fde910e4a84273c",
+    "cmd/agentbox-cleanup/main.go": "d06a2a2292338db0ecd3e6043c802b232803bc8330a8615e626b466e8285c627",
+    "cmd/agentbox-cleanup/main_test.go": "450d955f5370bab697f47a5dd34e43271b153a42e4b18c3160bd0cdad0475af7",
+    "cmd/agentbox-mcp/main.go": "67b3da67612f658c03ab7f65da5e939f7cba1e164432a8ab88f72e4ac3aa819d",
+    "cmd/agentbox-session-smoke/fault.go": "cfadfd4173711103e534480f94f521df8deecc920e9704c09e897565a715b789",
+    "cmd/agentbox-session-smoke/fault_test.go": "b999f8426d99d84a6e22500c60e9e41088e4ce17d2f17c39bbf373f8630f6527",
+    "cmd/agentbox-session-smoke/main.go": "be2bbb3415fb5984a01758ee8be677bcd1cecdb8073d8c443020e98b2e251798",
+    "cmd/agentbox-session-smoke/warm.go": "f76fed5bd97c15d3bf72310757afbac98a99c60bf516893c8f30caf98f8307f6",
+    "cmd/agentbox-session-smoke/warm_test.go": "b263569c077c88d32f151a44d721c19dc55dad5a2b5a5f1549b012b3e5249a12",
+    "deploy/platform/api-deployment.json": "4005ea5ebee177564696d7de5ab317473b7569b9ef52f65fdc9db26b11c17008",
+    "deploy/platform/api-quota.json": "ec2d6c3513c513d584ac059cadb35951f4fdfcdc42791098460a06cf00a5602a",
+    "deploy/platform/api-rbac.json": "cad0877d50a226c1f5ce84f5a7b4c21877607fd5115bb8ce8b21817658ba1450",
+    "deploy/platform/api.Dockerfile": "8907b2c1d9e7239d7d7a00c7f4762b4cc1d126155bad2473ec6f2969c14e42a0",
+    "deploy/platform/calico.lock.json": "423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6",
+    "deploy/platform/cleanup-rbac.json": "4010417e962b81319f3ec69dbaee5d4ea1fb254c57a8a8b3d9b76fab26dc49ce",
+    "deploy/platform/gvisor-job.json": "530e1feb3b586c9db0ac3aeaa551ebab1d33fe32e7ef986db7385d4618590042",
+    "deploy/platform/gvisor-runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+    "deploy/platform/gvisor-runtimeclass.json": "a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80",
+    "deploy/platform/gvisor.lock.json": "edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b",
+    "deploy/platform/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+    "deploy/platform/network-pod.json": "bcd20c38a84ed47f851f91e5904baaa299137951fa1816535a08870eb5c05861",
+    "deploy/platform/network-policies.json": "3266ff4e627d03d41106b23d54b2bfed9a2194f52ba5e5e853e3ba7cc2cf3a26",
+    "deploy/platform/sandbox-runtime.Dockerfile": "7a2a450282d5dbb0d06d9457ef0acdd1a3eb120d407d564c8ab03fc1110124bc",
+    "deploy/platform/session-client-job.json": "0f62ae911ed9def1988a6135a6a196f9963427311fa570d8d0c2e28b60fca402",
+    "deploy/platform/session-client.Dockerfile": "d6d3509065f1f41fb9b7f1afeba3c0fe673ee156b4b6a105e56d05ae93e4f3b5",
+    "deploy/platform/session-rbac.json": "7b5f605988ea1ec8e897d713b334458e164fa65d09efee8abc47d6537a2c59f7",
+    "deploy/platform/session-template.json": "f61ea336d4e316fb2686943d5903cb2d4456d35bca5551cd968a92dc08847fb6",
+    "deploy/platform/session.lock.json": "e05ac3cb8ec9668ceecc2da9eb686e9dc6dd27ed8e76a76498b9b11ca2b12e94",
+    "docs/data/legacy-source-retirement.json": "092db6d07fa4776d25da2e437844871bd6a4965b8668b0e647d711e7a7d2d34f",
+    "go.mod": "6788d70352f4e17577d3ed96ffcde76b96380db2f0f19b41a17d3ca9ccc4cad4",
+    "go.sum": "a7c5debcb697cf21973d6cfe8cbabcc047da7c4543ba01b0080b001fe15eedb1",
+    "internal/agent/runner.go": "cde509e8dfce509183aa7003dd19fd054d4c524dd92168b965f20db1cd29823d",
+    "internal/agent/runner_test.go": "495a881580c6c4c391954cf174ef9a672f7054baa79aaa5d37344fa63c86be53",
+    "internal/deepseek/client.go": "da80176ee916e7d71e2c6a34fcda2830f552d9874f7b68a7c309164add6bcbf5",
+    "internal/deepseek/client_test.go": "ddf8ebfe239d8c9553bfe393216c2f1f4f95650f3230919146cd1210ac610af4",
+    "internal/mcpclient/client.go": "cd50c6a78e51f97b744c5afb543abe52ae2e87504b67495dbb93894c6d98c97a",
+    "internal/mcpclient/client_test.go": "f2511c27f5f8bc953d595090be66fb4b7733431b6ffcf5799181d91dca3a72af",
+    "internal/mcpserver/server.go": "7c3608c43d7cc94004c2b5903b3f6940c5af9aa75366aa14a30630f5346851a2",
+    "internal/mcpserver/server_test.go": "0a4de0621fb55e4f9283e0b7ebd1f2e482350c48a229744befe7d4e16cac3856",
+    "internal/session/diagnostics.go": "ba9e78cd618cbf01e1696f6cb2e0a5906bb17ca4815eef62a44458d31251b41e",
+    "internal/session/operations.go": "2cae0a6db67586b5bfe14b989223b1acc04dc135e5da512690cf55e85d75ee34",
+    "internal/session/operations_test.go": "8acd05fbfe9c082ed9f651deaba88c2794e6b3c98fa5b389de3f2152892eeab0",
+    "internal/session/requests_test.go": "cbf7138c567391936f90c5da774796ac778a00d83fabc98bfec4e6ea5b430e04",
+    "internal/session/retention.go": "b9ccc5562909d72ed22a5056af9c28c554a05708f519f74085a68de84429bd7c",
+    "internal/session/retention_test.go": "37e55d25e1f725d66524d7e54eadd6a13ad3d20a08a12fa6b87598f5eb5e9360",
+    "internal/session/service.go": "8b491b8be7cf21d36a6bcefeca2f0126e5e7e0413530106fc16d7d5ccb484dcc",
+    "internal/session/service_test.go": "c1c8d27fb3701e873a81503cc9264ef56f995f6f27b3a3fe9364ea965ac03c1f",
+    "internal/sessionapi/operations_test.go": "248448d70b0a4a154482ca74b250a956e6edc4fd07c8c73d6a18653e5c2171ce",
+    "internal/sessionapi/readiness.go": "2f76ff2a4f843a50e5111c8a3b734f3104f85795283e83fbe7d3ee230bf296c8",
+    "internal/sessionapi/readiness_test.go": "1c994e03546690f622c3e29f75aa70a43145d8129b984500bce17ee729021903",
+    "internal/sessionapi/server.go": "2d17a8e09099703041f8629251a4242bb8a482345a4e23b80dcf931b371b1c4c",
+    "internal/sessionapi/server_test.go": "6c7aa1732beab3e2017fa853f85d4d1acf0bbdebfb50353eb7bf12dbf47e0361",
+    "internal/sessionclient/client.go": "8691855c0750454143dc72e51b99e36b6ca9a2c01d8e468dfd23b56d5811d97e",
+    "internal/sessionclient/client_test.go": "e03809fd13160e0d9d51df4cfc5497e5c08b03084a0be9178fa5f8b2615b7004",
+    "internal/sessionprobe/operations.go": "38a248d6c25d5b4997da6c182f286431ad7b2d2a8dabdc0236f3bb981097bd28",
+    "internal/sessionprobe/operations_test.go": "e13ab80d787eb1e2be5ebd6db3e08543a840f6dd546baeba9fd2c4727bd75d77",
+    "internal/sessionruntime/runtime.go": "79b2e470c02396eda1c8137825aefa47b9f0c26b23f5f0de1063ee0d9e07e3ca",
+    "internal/sessionruntime/runtime_test.go": "222815cea3c7067663c817391a7dec39e0d075cda26c3c1b85225398d3721f5c",
+    "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+    "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+    "scripts/lib/platform_agent.py": "d103caecfb716b782e626b889bee6bc5391b90d376b003b210ff6870beb61cbc",
+    "scripts/lib/platform_api.py": "8514e985f2be431ab110dfde1f8b8ef37c061856f753a198bf9bcb30021f7518",
+    "scripts/lib/platform_api_execution.py": "a489853b974de577f3008943c67b4d1113102f3d5cea4fcde3d97b51d64adb57",
+    "scripts/lib/platform_gvisor.py": "09181e6ea284fb1f79be9813697629d8e490ce7d2d0a4d8eb49014ea4325d18a",
+    "scripts/lib/platform_network.py": "2aebf5bfefd3e8a24e758ba2658ef6423d53d12953fb3add2bd0506eaee6aa49",
+    "scripts/lib/platform_retention.py": "0a805241be20c3d9e09f723ee84da499b6de3beecbfd205102fd6e287f69a50d",
+    "scripts/lib/platform_sessions.py": "892e95d8026a12b9b6af0641df09e9aab04ca90d5d72dfcb1a5966320bbc5e49",
+    "scripts/lib/session_faults.py": "38432be7dcdbc5e2f633b84272c6222bbb52ab45711e20e42c527be9025ebea3",
+    "scripts/platform_lab.py": "5d6c7c84230578f4e6d425b4e807b3b1b83f933fe7b6526ec95e8d7a9b8cf226",
+    "scripts/retire_legacy.py": "9dd13592dc1d23c2484e1606569e8fb274293c5d6d90fba53863dc56cdb6d8b0"
+  },
+  "system_retirement": {
+    "backup": "/var/backups/agentbox-retired-j5l3hhpd",
+    "old_paths_absent": true,
+    "outcome": "removed",
+    "performed_by": "User with sudo; agent lacked passwordless sudo",
+    "quiescent_inspection": {
+      "bundles_remaining": 0,
+      "can_retire": true,
+      "manifest": {
+        "binary_sha256": "bf4af9080ce1d3de02fc9421b50348a1a2c2ada2623e0607930215daad04f936",
+        "format": 1,
+        "platform": "kvm",
+        "rootfs_images": [
+          "python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258"
+        ],
+        "runsc_sha256": "210b437a9cfae51e8f8c9074ed19b8b5e59477178e2e391a18117d8d6b924f7a"
+      },
+      "paths": [
+        "/etc/systemd/system/agentbox.service",
+        "/etc/agentbox.env",
+        "/opt/agentbox",
+        "/var/lib/agentbox"
+      ],
+      "scope": "fixed legacy installation only; workspace platform caches, Kubernetes and user artifacts are excluded",
+      "unit_sha256": "6674945bcd8474ba53c97c71fc9e97b689bc664a9c54fa858520bfc173bfec51"
+    },
+    "report": "artifacts/legacy-system-retirement-20261031/apply-20261031-v2.json",
+    "report_sha256": "71567262d721445f5633f911b2a2bf666ab0422da5a14c52ab9a4a5e950365af"
+  },
+  "validation_source_sha256": {
+    "Makefile": "0f8351341ab21ec105920930f2c4bce122ec49519a274f8bcb4c84dc82ef7e24",
+    "tests/integration/agent_stdio_test.go": "74daefa313497a85e991d60a8f0c47b6039a0d042e13d358d542686dc0971dc2",
+    "tests/scripts/platform_test.go": "2555f476184a3cf3efaa29119aa30c17f87f9d013beabe8eaa3e6a35b4de2271",
+    "tests/scripts/retirement_test.py": "1d9bd3d76a71ee9804df67342578324b64b44bd14e966595ca1ca7db37e44bab"
+  }
+}

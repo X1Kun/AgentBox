@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/X1Kun/AgentBox/internal/gatewayclient"
 	"github.com/X1Kun/AgentBox/internal/mcpserver"
+	"github.com/X1Kun/AgentBox/internal/sessionclient"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -23,10 +23,11 @@ func main() {
 }
 
 func run() error {
-	var address string
-	flag.StringVar(&address, "gateway-url", "http://127.0.0.1:8080", "loopback Gateway URL; remote access uses an SSH tunnel")
+	var address, caFile string
+	flag.StringVar(&address, "api-url", "http://127.0.0.1:8090", "v2 session API URL; remote endpoints require HTTPS")
+	flag.StringVar(&caFile, "api-ca-file", "", "optional trusted API CA bundle")
 	flag.Parse()
-	client, err := gatewayclient.New(address, os.Getenv("AGENTBOX_GATEWAY_TOKEN"))
+	client, err := sessionclient.New(address, os.Getenv("AGENTBOX_API_TOKEN"), caFile)
 	if err != nil {
 		return err
 	}

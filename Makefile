@@ -1,52 +1,33 @@
-.PHONY: build test check integration doctor systemd-integration benchmark observe static-experiment qos-integration platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test platform-network-create platform-network-install platform-network-test
-.PHONY: platform-session-build platform-session-install platform-session-test platform-session-warm-test
-.PHONY: platform-session-fault-test
-.PHONY: platform-api-test platform-api-exec-test platform-api-retention-test
-
-PLATFORM ?= kvm
+.PHONY: build tools test check integration platform-agent-test platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test platform-network-create platform-network-install platform-network-test platform-session-build platform-session-install platform-session-test platform-session-warm-test platform-session-fault-test platform-api-test platform-api-exec-test platform-api-retention-test platform-up platform-ready
+.PHONY: build tools test check integration platform-agent-test
 
 build:
 	mkdir -p bin
-	go build -trimpath -o bin/agentboxd ./cmd/agentboxd
-	go build -trimpath -o bin/agentbox-gateway ./cmd/agentbox-gateway
-	go build -trimpath -o bin/agentbox-mcp ./cmd/agentbox-mcp
-	go build -trimpath -o bin/agentbox-agent ./cmd/agentbox-agent
-	go build -trimpath -o bin/mockcore ./cmd/mockcore
-	go build -trimpath -o bin/agentbox-session-smoke ./cmd/agentbox-session-smoke
 	go build -trimpath -o bin/agentbox-api ./cmd/agentbox-api
 	go build -trimpath -o bin/agentbox-cleanup ./cmd/agentbox-cleanup
+	go build -trimpath -o bin/agentbox-mcp ./cmd/agentbox-mcp
+	go build -trimpath -o bin/agentbox-agent ./cmd/agentbox-agent
+
+tools:
+	mkdir -p bin
+	go build -trimpath -o bin/agentbox-session-smoke ./cmd/agentbox-session-smoke
+	go build -trimpath -o bin/mockcore ./cmd/mockcore
 
 test:
 	go test -race -count=1 ./...
 
 check: test
-	go test -tags=integration -run '^TestBenchmarkSummary' -count=1 ./tests/benchmarks
+	go test -race -tags=integration -run '^TestStdio' -count=1 ./tests/integration
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal tests)"
 	git diff --check
-	bash -n scripts/setup.sh scripts/lib/container-entrypoint.sh scripts/lib/gvisor_node_processes.sh
+	bash -n scripts/lib/gvisor_node_processes.sh
 	python3 -c 'import ast,pathlib; [ast.parse(p.read_text(), filename=str(p)) for base in ("scripts", "tests") for p in pathlib.Path(base).rglob("*.py")]'
 
-doctor: build
-	./bin/agentboxd -doctor -runsc .local/gvisor/runsc
+integration: platform-agent-test
 
-integration:
-	go test -tags=integration -count=1 -v ./tests/integration
-
-systemd-integration: build
-	python3 scripts/container.py systemd --platform $(PLATFORM)
-
-benchmark:
-	python3 scripts/container.py benchmark --platform $(PLATFORM)
-
-observe: build
-	python3 scripts/container.py observe --platform $(PLATFORM)
-
-static-experiment: build
-	python3 scripts/container.py static --platform $(PLATFORM)
-
-qos-integration: build
-	python3 scripts/container.py qos --platform $(PLATFORM)
+platform-agent-test:
+	python3 scripts/platform_lab.py agent-test
 
 # Functional Kubernetes lab; independent of the legacy daemon build.
 platform-preflight:

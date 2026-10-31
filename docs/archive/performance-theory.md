@@ -1,10 +1,12 @@
 # AgentBox 的性能理论、瓶颈判断与优化验证
 
-路线说明（2026-10-25）：本页保留单机实现演进及历史理论分析，文中的“下一轮”“尚未实现”按各节日期理解，不作为当前开发顺序。新主线为成熟平台＋健康感知 AdmissionCheck，见[实施计划](../roadmap.md)；新平台测量采用[实验协议](../validation.md#platform)，不挪用本页历史数据作为平台收益。
+当前运行入口已清退；本页仅为历史记录，源码和命令按[归档版本](legacy-runtime.md)复现。
+
+路线说明（2026-10-25）：本页保留单机实现演进及历史理论分析，文中的“下一轮”“尚未实现”按各节日期理解，不作为当前开发顺序。新主线为成熟平台＋健康感知 AdmissionCheck，见[实施计划](../roadmap.md)；新平台测量采用[实验协议](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/validation.md#platform)，不挪用本页历史数据作为平台收益。
 
 日期：2026-10-19。分析对象：当时工作区，HEAD 为 `d4ccb8d`，包含尚未提交的静态 CPU 实验改动。2026-10-21 的容量扫描补充见[文末](#capacity)，不覆盖历史快照。
 
-2026-10-20 补充：[动态库存理论复核](../runtime.md#inventory-history)针对 `cc2d381` 加当前 diff，核对书籍原文并给出两个扩容误判的确定性反例。本文的“尚未实现”和观测来源数量等代码描述属于上述历史版本快照；当前 CPU enforce、压力调度、manager/祖先及 I/O/PID 观测、动态库存已有实现。下列实验建议用于需要时验证性能结论，不作为继续开发的统一前置条件。
+2026-10-20 补充：[动态库存理论复核](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/runtime.md#inventory-history)针对 `cc2d381` 加当前 diff，核对书籍原文并给出两个扩容误判的确定性反例。本文的“尚未实现”和观测来源数量等代码描述属于上述历史版本快照；当前 CPU enforce、压力调度、manager/祖先及 I/O/PID 观测、动态库存已有实现。下列实验建议用于需要时验证性能结论，不作为继续开发的统一前置条件。
 
 这份文档把 Brendan Gregg 的《Systems Performance: Enterprise and the Cloud》第 2 版中的方法，映射到 AgentBox 的执行链路、资源范围与已有实验。先读目录，再选读 79 页相关正文，没有通读全书；印刷页与 PDF 页的对应、27 条短引文和源码位置均在[引用索引](performance-references.md)。
 
