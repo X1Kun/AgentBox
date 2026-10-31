@@ -1,12 +1,12 @@
 # 路线图与阶段验收
 
-更新：2026-10-30｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
+更新：2026-10-31｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
 
-在现有 AgentBox 内演进，优先复用 Agent Sandbox 管理会话，Job/Kueue 管理批任务，共用 containerd/gVisor。agentboxd 进入退役，不扩展本地运行后端；两类 Kubernetes 工作负载不等于长期维护新旧双后端。
+在现有 AgentBox 内演进，优先复用 Agent Sandbox 管理会话，Job/Kueue 管理批任务，共用 containerd/gVisor。agentboxd/旧 Gateway 已退出活动源码，不再提供本地运行后端；两类 Kubernetes 工作负载不等于长期维护新旧双后端。
 
 ## 1. 当前状态与总体顺序
 
-已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；新增固定预热池行为入口；新增生命周期、执行与文件 API；MCP/Agent 新链路、Kueue、真实图片任务、AdmissionCheck 与实际退役仍未完成。
+已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；新增固定预热池行为入口；新增生命周期、执行与文件 API；MCP/Agent v2 新链路及源码/系统旧安装退役已完成；Kueue、真实图片任务和 AdmissionCheck 仍未完成。
 
 | 阶段 | 主要交付 | 进入下一阶段的条件 |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ kind 可承担功能验收；若当前宿主无法稳定支持目标 runtime/CNI
 
 第一笔新增最小 `agentbox-api` 生命周期服务：异步创建、查询、关闭、配置身份、命名 Claim 幂等与持久 UID 绑定。状态依赖上游 Retain Claim，不建第二套生命周期 CRD/状态库；首次 Ready 后的 Pod 替换会失效而不重绑。执行/文件已在第二步补齐，MCP 和实际退役随后完成。本阶段仅做行为验收；受限凭据下的六项真实 API 检查与运行时清理已通过，见[API 验收](validation.md#session-api)。
 
-第二步已增加执行/文件适配：按原身份连接上游 sandboxd、Claim CAS 数据操作互斥、有界结果、超时/未知结果关闭。七项真实 API 行为检查、四个运行时的独立回收及完整 `make check` 已通过，见[执行验收](validation.md#session-execution)；不增加性能实验。另新增 closed_at 持久观察和独立管理员记录清理入口，默认预览，按保留期及原 UID/resourceVersion 删除，元数据配额/回收验收独立于执行运行时。后续收敛为两笔：新 MCP＋Agent 调用链；切换默认路径并实际退役 agentboxd/旧 Gateway。开发期复用健康集群，测试后只清本次资源。
+第二步已增加执行/文件适配：按原身份连接上游 sandboxd、Claim CAS 数据操作互斥、有界结果、超时/未知结果关闭。七项真实 API 行为检查、四个运行时的独立回收及完整 `make check` 已通过，见[执行验收](validation.md#session-execution)；不增加性能实验。另新增 closed_at 持久观察和独立管理员记录清理入口，默认预览，按保留期及原 UID/resourceVersion 删除，元数据配额/回收验收独立于执行运行时。本轮合并为一个交付：MCP/Agent v2 链路、默认入口切换和旧源码/系统安装退役；行为与清理验证作为共同门槛。开发期复用健康集群，测试后只清本次资源。
 
 复用现有 Agent、模型客户端和 MCP 通用能力，使用上游 Go 客户端/执行协议承接会话创建、查询、命令执行、文件访问和关闭。产品只做身份/授权、稳定关联、受控模板、有限预算与结果适配；不新建池控制器、Node Agent、宿主执行器或通用会话 CRD。
 
@@ -73,12 +73,12 @@ kind 可承担功能验收；若当前宿主无法稳定支持目标 runtime/CNI
 
 至少覆盖：创建响应丢失后的同对象查询、命令未知结果不重放、同会话并发冲突、超时后的执行收敛、关闭后拒绝命令、路径越界和输出超限。无法查询未知命令结果时明确返回 unknown 并关闭会话，不新增任务日志数据库来伪造执行一次保证。
 
-没有运行 agentboxd/旧 Gateway 时，Agent → MCP → Go 产品层 → 真实会话 → 结果闭环通过。用确定性模型替身完成自动回归，付费模型仅作显式演示。旧 execute_python 不静默获得跨调用状态或新取消语义。
+已在没有运行 agentboxd/旧 Gateway 时，通过 Agent → stdio MCP v2 → Go 产品层 → 真实会话 → 结果闭环；包含确定性模型修正、文件下载、超时及成功执行响应丢失后不重放。用确定性模型替身完成自动回归，付费模型仅作显式演示。旧 execute_python 不静默获得跨调用状态或新取消语义。
 
 <a id="retirement"></a>
-### P2c：切换与退役
+### P2c：切换与退役（本轮完成）
 
-会话平台和新接口独立验收后即可退役，P3 批任务、P4 策略与 P5 Koordinator 不作为前置条件。按[运维流程](operations.md#retirement)：
+会话平台和新接口独立验收后即可退役，P3 批任务、P4 策略与 P5 Koordinator 不作为前置条件。下列门槛已经本轮代码清退、真实链路与管理员退役记录核对，复现见[运维流程](operations.md#retirement)：
 
 1. 固定旧源码/构建版本，盘点调用方、服务、配置、凭据、实例与状态归属。
 2. 切换调用方并关闭旧入口新提交；排空或明确取消旧任务，不自动迁入会话/Job。

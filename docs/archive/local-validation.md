@@ -1,12 +1,14 @@
 # 本地后端历史验收与复现
 
+当前运行入口已清退；本页仅为历史记录，源码和命令按[归档版本](legacy-runtime.md)复现。
+
 归档于 2026-10-25。下文保留原实验日期、数字、条件及失败记录；不是当前平台路线或新版本重测结果。常用入口与结论摘要见[验证指南](../validation.md)。
 
 本文与其附录中的命令均从仓库根目录执行；移动文档不改变原始 artifacts 路径或实验文件内容。
 
 最近实验更新：2026-10-22；文档范围说明更新：2026-10-25。本页统一保存本地执行、预热池、QoS、Gateway、MCP 的结果及适用范围；配置和复现入口分别见各功能说明。历史批次不自动代表当前版本重新完成性能测试。
 
-新方向为 Kubernetes＋Kueue 平台、健康感知 AdmissionCheck 及后续 Koordinator 对照，均尚无本项目实现/验收结果。规划见[实施计划](../roadmap.md)，未来证据遵循[平台实验协议](../validation.md#platform)并单独标记后端与版本。本次文档改版不改变下述历史数据，也不表示重新运行了这些实验。
+新方向为 Kubernetes＋Kueue 平台、健康感知 AdmissionCheck 及后续 Koordinator 对照，均尚无本项目实现/验收结果。规划见[实施计划](../roadmap.md)，未来证据遵循[平台实验协议](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/validation.md#platform)并单独标记后端与版本。本次文档改版不改变下述历史数据，也不表示重新运行了这些实验。
 
 ## 同日后续：预算余量、PSI 补池与 AIMD 组合
 
@@ -196,7 +198,7 @@ AIMD 发生 5 次配额变化，实测 2→1.6→1.28→1.024→1.524→2 CPU。
 - 每任务全新实例，待命 init 保持 Sentry 存活，使用附着 runsc exec 获取短任务退出码；清理失败保留 intent 并停止接单。
 - create/start 已开始时在独立预算内完成，避免取消导致半写元数据。空闲库存四路回收，清理确认前仍占容量。
 - systemd 252 容器的 KVM cold/warm、systrap warm 验收包括执行中停止、主进程 SIGKILL 后恢复、更新/回退/卸载重装和 purge。注入每实例删除延迟 2 秒，8 实例停止约 4.1～4.4 秒；不是生产停止时间上界。
-- 2026-10-15 宿主 systemd 249 的 KVM cold 服务另有安装与生命周期记录，见 [部署说明](../operations.md#deployment)。后续 Gateway/MCP 只在隔离容器验收，没有替换该宿主服务。
+- 2026-10-15 宿主 systemd 249 的 KVM cold 服务另有安装与生命周期记录，见 [部署说明](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/operations.md#deployment)。后续 Gateway/MCP 只在隔离容器验收，没有替换该宿主服务。
 
 平台固定使用项目记录的 runsc release-20261005.0 和 Python digest；功能容器通常为 6 CPU/5GiB/2304 host tasks、私有 PID/cgroup。功能通过不等于完整隔离安全证明或固定时延承诺。
 
@@ -268,7 +270,7 @@ AIMD 发生 5 次配额变化，实测 2→1.6→1.28→1.024→1.524→2 CPU。
 
 实际普通用户 MCP/Gateway stdio 链路通过成功、代码异常、超时、RPC 取消与直接关闭传输的回收；模拟 API 的 3 次模型请求、2 次真实执行完成除零错误后修正为 42。SDK 优雅 Close 会等在途调用，不能当作实际断线；进程生命周期另显式取消 HTTP 转发。
 
-配置私有凭据后，真实 deepseek-flash API 同样以 3 次模型请求、2 次真实 runsc 执行完成 failed/ZeroDivisionError → succeeded/42，两次 cleanup_complete 均确认。Agent/MCP/Gateway 使用实际编译二进制，API key 不进入 MCP 或任务环境，未出现在输出与待提交文件中。[脱敏证据](../data/deepseek-live-validation.json)记录实际计数、最终回答和日志哈希；详细用法见 [MCP](../usage.md#mcp)。
+配置私有凭据后，真实 deepseek-flash API 同样以 3 次模型请求、2 次真实 runsc 执行完成 failed/ZeroDivisionError → succeeded/42，两次 cleanup_complete 均确认。Agent/MCP/Gateway 使用实际编译二进制，API key 不进入 MCP 或任务环境，未出现在输出与待提交文件中。[脱敏证据](../data/deepseek-live-validation.json)记录实际计数、最终回答和日志哈希；详细用法见 [MCP](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/usage.md#mcp)。
 
 真实 API 用例必须显式选择，普通 make check 不调用付费模型。当前无跨宿主机或多 Worker 验收；历史后续设想现由[开源平台路线](../roadmap.md)取代，kind 仅用于新平台的功能验证。
 
@@ -442,7 +444,7 @@ Core 报告全部请求的按期成功率（示例期限 50ms）、成功 P50/P9
 
 保护方案使用同一入口加 `--refill-comparison protection`，两轮比较：Core-only 基线、idle＋2 CPU、idle＋1 CPU、PSI 仅补池＋2 CPU、PSI 仅补池＋1 CPU、AIMD 1～2 CPU＋完整压力调度。所有组均采集同一套 QoS 数据，静态组只 observe；PSI 组关闭 idle，只控制补池，组合组额外改变 CPU 与准入，作为整体策略单列。库存目标仍固定 3，不宣称所有参数都动态。
 
-保护判定预先固定为：Core 全窗口、沙箱到达窗口、其余恢复窗口，分别至少 99% 请求在 50ms 内成功返回，且成功 P99 ≤50ms；同时保留拒绝和沙箱代价。`CoreTargetPassed` 按三个窗口共同计算，不能只用全窗口均值/分位数掩盖波次失败。`ParentCPUStart/Final`、`QoSFinal`、新鲜 protected 采样数与暂停采样数记录动作是否真实发生；JSONL 保留压力状态、原因、Core CPU PSI、CPU 实际额度和变更次数。恢复阈值及 CPU 参数见[QoS](../runtime.md#qos)，结果见[验收](local-validation.md)。
+保护判定预先固定为：Core 全窗口、沙箱到达窗口、其余恢复窗口，分别至少 99% 请求在 50ms 内成功返回，且成功 P99 ≤50ms；同时保留拒绝和沙箱代价。`CoreTargetPassed` 按三个窗口共同计算，不能只用全窗口均值/分位数掩盖波次失败。`ParentCPUStart/Final`、`QoSFinal`、新鲜 protected 采样数与暂停采样数记录动作是否真实发生；JSONL 保留压力状态、原因、Core CPU PSI、CPU 实际额度和变更次数。恢复阈值及 CPU 参数见[QoS](https://github.com/X1Kun/AgentBox/blob/c6c2e48/docs/runtime.md#qos)，结果见[验收](local-validation.md)。
 
 结果写入新的 `artifacts/benchmark-<platform>-<随机后缀>/`：
 

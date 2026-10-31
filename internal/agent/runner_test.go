@@ -1,191 +1,314 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
+	"time"
 
-	"github.com/X1Kun/AgentBox/internal/api"
 	"github.com/X1Kun/AgentBox/internal/deepseek"
-	"github.com/X1Kun/AgentBox/internal/gatewayclient"
 	"github.com/X1Kun/AgentBox/internal/mcpserver"
+	"github.com/X1Kun/AgentBox/internal/session"
+	"github.com/X1Kun/AgentBox/internal/sessionapi"
+	"github.com/X1Kun/AgentBox/internal/sessionclient"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type modelFunc func(context.Context, []deepseek.Message, []deepseek.Tool) (deepseek.Message, error)
 
-func (f modelFunc) Complete(ctx context.Context, m []deepseek.Message, t []deepseek.Tool) (deepseek.Message, error) {
-	return f(ctx, m, t)
+func (f modelFunc) Complete(c context.Context, m []deepseek.Message, t []deepseek.Tool) (deepseek.Message, error) {
+	return f(c, m, t)
 }
 
-type fakeTools struct {
-	calls int
-	reply *mcp.CallToolResult
+const apiToken = "agent-session-api-token-with-at-least-32-characters"
+
+type backend struct {
+	denyWrite          bool
+	mu                 sync.Mutex
+	executions, closes int
+	requestIDs         []string
+	files              map[string][]byte
+	fail               bool
+	block              chan struct{}
 }
 
-func (f *fakeTools) ListTools(context.Context, *mcp.ListToolsParams) (*mcp.ListToolsResult, error) {
-	return &mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: mcpserver.ExecuteTool, InputSchema: map[string]any{"type": "object"}}, {Name: mcpserver.StatusTool, InputSchema: map[string]any{"type": "object"}}}}, nil
+func (b *backend) view() session.View {
+	return session.View{ID: "ses-test.uid", State: "ready", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), IdentityRevision: "revision"}
 }
-func (f *fakeTools) CallTool(context.Context, *mcp.CallToolParams) (*mcp.CallToolResult, error) {
-	f.calls++
-	return f.reply, nil
+func (b *backend) Create(_ context.Context, _ string, r session.CreateRequest) (session.View, bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.requestIDs = append(b.requestIDs, r.RequestID)
+	return b.view(), len(b.requestIDs) > 1, nil
 }
-func modelCall(id, name string) deepseek.ToolCall {
-	return deepseek.ToolCall{ID: id, Type: "function", Function: deepseek.FunctionCall{Name: name, Arguments: `{"code":"print(1)"}`}}
+func (b *backend) Get(context.Context, string, string) (session.View, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	v := b.view()
+	if b.closes > 0 {
+		v.State = "closed"
+		v.CleanupComplete = true
+	}
+	return v, nil
 }
-
-func TestDeepSeekHTTPAndMCPRepairLoop(t *testing.T) {
-	const gatewayToken = "agent-test-gateway-token-with-at-least-32-characters"
-	var executions, completions atomic.Int32
-	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+gatewayToken {
-			t.Error("wrong Gateway credential")
-		}
-		var request api.Request
-		_ = json.NewDecoder(r.Body).Decode(&request)
-		n := executions.Add(1)
-		result := api.Result{ExecutionID: "exec", RequestID: request.RequestID, CleanupComplete: true}
-		if n == 1 {
-			result.Status = "failed"
-			result.Stderr = "ZeroDivisionError"
-			if request.Code != "print(1/0)" {
-				t.Error("first code changed")
-			}
-		} else {
-			result.Status = "succeeded"
-			result.Stdout = "42\n"
-			if request.Code != "print(6*7)" {
-				t.Error("corrected code changed")
-			}
-		}
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer front.Close()
-	gw, err := gatewayclient.New(front.URL, gatewayToken)
+func (b *backend) Close(context.Context, string, string) (session.View, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.closes++
+	v := b.view()
+	v.State = "closed"
+	v.CleanupComplete = true
+	return v, nil
+}
+func (b *backend) Ready(context.Context) error { return nil }
+func (b *backend) Execute(ctx context.Context, _, id string, r session.ExecuteRequest) (session.ExecutionView, error) {
+	b.mu.Lock()
+	b.executions++
+	b.mu.Unlock()
+	if b.block != nil {
+		close(b.block)
+		<-ctx.Done()
+		return session.ExecutionView{}, &session.Error{Code: "operation_outcome_unknown"}
+	}
+	if b.fail {
+		return session.ExecutionView{}, &session.Error{Code: "operation_outcome_unknown"}
+	}
+	v := session.ExecutionView{SessionID: id, IdentityRevision: r.IdentityRevision, Execution: session.Execution{Stdout: "42\n"}}
+	if r.Code == "print(1/0)" {
+		v.ExitCode = 1
+		v.Stdout = ""
+		v.Stderr = "ZeroDivisionError"
+	}
+	return v, nil
+}
+func (b *backend) Write(_ context.Context, _, id string, r session.FileRequest) (session.FileView, error) {
+	if b.denyWrite {
+		return session.FileView{}, &session.Error{Code: "file_access_denied"}
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.files == nil {
+		b.files = map[string][]byte{}
+	}
+	b.files[r.Path] = r.Content
+	return session.FileView{SessionID: id, IdentityRevision: r.IdentityRevision, Path: r.Path, Size: len(r.Content)}, nil
+}
+func (b *backend) Read(_ context.Context, _, id string, r session.FileRequest) (session.FileView, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	v, ok := b.files[r.Path]
+	if !ok {
+		return session.FileView{}, &session.Error{Code: "file_not_found"}
+	}
+	return session.FileView{SessionID: id, IdentityRevision: r.IdentityRevision, Path: r.Path, Content: v, Size: len(v)}, nil
+}
+func connectedTools(t *testing.T, b *backend, dropCreate bool) *mcp.ClientSession {
+	t.Helper()
+	handler, err := sessionapi.New(b, []sessionapi.Principal{{ID: "alice", Token: apiToken}}, time.Second, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gw.Close()
-	server := mcpserver.New(context.Background(), gw, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	dropped := false
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if dropCreate && !dropped && r.Method == "POST" && r.URL.Path == "/v2/sessions" {
+			dropped = true
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, r)
+			conn, _, e := w.(http.Hijacker).Hijack()
+			if e != nil {
+				t.Error(e)
+				return
+			}
+			_ = conn.Close()
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(api.Close)
+	client, err := sessionclient.New(api.URL, apiToken, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Close)
+	server := mcpserver.New(context.Background(), client, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	st, ct := mcp.NewInMemoryTransports()
 	ss, err := server.Connect(context.Background(), st, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ss.Close()
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), ct, nil)
+	t.Cleanup(func() { _ = ss.Close() })
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "2"}, nil).Connect(context.Background(), ct, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cs.Close()
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		if r.Header.Get("Authorization") != "Bearer provider-key" || bytes.Contains(raw, []byte(gatewayToken)) {
-			t.Error("credential boundary violated")
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
+}
+func toolCall(id, name, sid, revision string, extra map[string]any) deepseek.ToolCall {
+	in := map[string]any{"session_id": sid}
+	if name != mcpserver.GetTool {
+		in["identity_revision"] = revision
+	}
+	for k, v := range extra {
+		in[k] = v
+	}
+	raw, _ := json.Marshal(in)
+	return deepseek.ToolCall{ID: id, Type: "function", Function: deepseek.FunctionCall{Name: name, Arguments: string(raw)}}
+}
+func TestModelMCPAPIRepairFilesAndDetachedClosure(t *testing.T) {
+	b := &backend{}
+	tools := connectedTools(t, b, false)
+	turn := 0
+	model := modelFunc(func(_ context.Context, messages []deepseek.Message, tools []deepseek.Tool) (deepseek.Message, error) {
+		if len(tools) != 4 {
+			t.Fatal("lifecycle tools exposed to model")
 		}
-		var request struct {
-			Messages []deepseek.Message `json:"messages"`
-			Tools    []deepseek.Tool    `json:"tools"`
+		sid, rev, e := BindingFromPrompt(messages)
+		if e != nil {
+			t.Fatal(e)
 		}
-		_ = json.Unmarshal(raw, &request)
-		if len(request.Tools) != 2 {
-			t.Error("MCP tools not mapped to provider")
-		}
-		n := completions.Add(1)
+		turn++
 		message := deepseek.Message{Role: "assistant"}
-		finish := "tool_calls"
-		switch n {
+		switch turn {
 		case 1:
-			call := modelCall("first", mcpserver.ExecuteTool)
-			call.Function.Arguments = `{"code":"print(1/0)"}`
-			message.ToolCalls = []deepseek.ToolCall{call}
+			message.ToolCalls = []deepseek.ToolCall{toolCall("write", mcpserver.WriteTool, sid, rev, map[string]any{"path": "a.bin", "content_base64": "AP8="}), toolCall("bad", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "print(1/0)"})}
 		case 2:
-			last := request.Messages[len(request.Messages)-1]
-			if last.Role != "tool" || last.ToolCallID != "first" || !strings.Contains(last.Content, "ZeroDivisionError") || !strings.Contains(last.Content, `"cleanup_complete":true`) {
-				t.Error("Python error/cleanup not returned to model")
+			if !strings.Contains(messages[len(messages)-1].Content, "ZeroDivisionError") {
+				t.Fatal("program error lost")
 			}
-			call := modelCall("corrected", mcpserver.ExecuteTool)
-			call.Function.Arguments = `{"code":"print(6*7)"}`
-			message.ToolCalls = []deepseek.ToolCall{call}
+			message.ToolCalls = []deepseek.ToolCall{toolCall("fix", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "print(6*7)"}), toolCall("read", mcpserver.ReadTool, sid, rev, map[string]any{"path": "a.bin"})}
 		case 3:
-			last := request.Messages[len(request.Messages)-1]
-			if last.ToolCallID != "corrected" || !strings.Contains(last.Content, `42\n`) {
-				t.Error("success result not correlated")
-			}
-			message.Content = "The observed result is 42."
-			finish = "stop"
+			message.Content = "Observed 42 and downloaded binary file."
 		default:
-			t.Error("unexpected extra model request")
+			t.Fatal("extra model request")
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": message, "finish_reason": finish}}})
-	}))
-	defer provider.Close()
-	model, err := deepseek.New(provider.URL, "provider-key", "configured-model")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer model.Close()
-	result, err := (Runner{Model: model, Tools: cs}).Run(context.Background(), "Calculate using Python and correct errors")
-	if err != nil || result.Answer != "The observed result is 42." || result.Turns != 3 || result.ToolCalls != 2 || executions.Load() != 2 {
-		t.Fatalf("repair loop: %+v %v", result, err)
+		return message, nil
+	})
+	result, err := (Runner{Model: model, Tools: tools}).Run(context.Background(), "compute and export")
+	if err != nil || !result.CleanupComplete || b.executions != 2 || b.closes != 1 || len(result.Artifacts) != 1 || len(result.Artifacts[0].Content) != 2 || result.ToolCalls != 4 {
+		t.Fatalf("result: %+v %v", result, err)
 	}
 }
-
-func TestUnknownOutcomesAndIncompleteCleanupStopFurtherCalls(t *testing.T) {
-	for _, tc := range []struct {
-		code int
-		body string
-	}{
-		{502, `{"outcome_unknown":true,"reason":"transport_error"}`},
-		{200, `{"status":"succeeded","cleanup_complete":false,"execution_id":"e"}`},
-		{500, `{"status":"infrastructure_error","cleanup_complete":true}`},
-		{200, `{"status":"succeeded"}`},
-	} {
-		tools := &fakeTools{reply: mcpserver.Result(gatewayclient.Reply{HTTPStatus: tc.code, Response: json.RawMessage(tc.body)}, true)}
-		model := modelFunc(func(context.Context, []deepseek.Message, []deepseek.Tool) (deepseek.Message, error) {
-			return deepseek.Message{Role: "assistant", ToolCalls: []deepseek.ToolCall{modelCall("first", mcpserver.ExecuteTool), modelCall("second", mcpserver.ExecuteTool)}}, nil
+func TestLostCreateResponseRecoversSameIdentity(t *testing.T) {
+	b := &backend{}
+	tools := connectedTools(t, b, true)
+	result, err := (Runner{Tools: tools, Model: modelFunc(func(context.Context, []deepseek.Message, []deepseek.Tool) (deepseek.Message, error) {
+		return deepseek.Message{Role: "assistant", Content: "done"}, nil
+	})}).Run(context.Background(), "test")
+	if err != nil || !result.CleanupComplete || len(b.requestIDs) != 2 || b.requestIDs[0] != b.requestIDs[1] {
+		t.Fatalf("creation replay changed identity: %+v %v", result, err)
+	}
+}
+func TestUnknownExecutionStopsBatchAndCloses(t *testing.T) {
+	b := &backend{fail: true}
+	tools := connectedTools(t, b, false)
+	model := modelFunc(func(_ context.Context, m []deepseek.Message, _ []deepseek.Tool) (deepseek.Message, error) {
+		sid, rev, _ := BindingFromPrompt(m)
+		return deepseek.Message{Role: "assistant", ToolCalls: []deepseek.ToolCall{toolCall("one", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "side_effect()"}), toolCall("two", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "must_not_run()"})}}, nil
+	})
+	result, err := (Runner{Tools: tools, Model: model}).Run(context.Background(), "execute")
+	if err == nil || !result.OutcomeUnknown || !result.CleanupComplete || b.executions != 1 || b.closes != 1 {
+		t.Fatalf("unknown replay: %+v %v", result, err)
+	}
+}
+func TestBatchBudgetAndForeignIdentityRejectBeforeDataDispatch(t *testing.T) {
+	for _, kind := range []string{"foreign", "duplicate", "budget", "legacy", "schema"} {
+		t.Run(kind, func(t *testing.T) {
+			b := &backend{}
+			tools := connectedTools(t, b, false)
+			model := modelFunc(func(_ context.Context, m []deepseek.Message, _ []deepseek.Tool) (deepseek.Message, error) {
+				sid, rev, _ := BindingFromPrompt(m)
+				one := toolCall("one", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "print(1)"})
+				two := toolCall("two", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "print(2)"})
+				if kind == "foreign" {
+					two = toolCall("two", mcpserver.ExecuteTool, "another-session", rev, map[string]any{"code": "print(2)"})
+				}
+				if kind == "duplicate" {
+					two.ID = "one"
+				}
+				if kind == "legacy" {
+					two.Function.Name = "execute_python"
+				}
+				if kind == "schema" {
+					two = toolCall("two", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "print(2)", "timeout_seconds": 0})
+				}
+				return deepseek.Message{Role: "assistant", ToolCalls: []deepseek.ToolCall{one, two}}, nil
+			})
+			limit := 8
+			if kind == "budget" {
+				limit = 1
+			}
+			result, err := (Runner{Tools: tools, Model: model, MaxToolCalls: limit}).Run(context.Background(), "test")
+			if err == nil || b.executions != 0 || !result.CleanupComplete {
+				t.Fatalf("unsafe batch: %+v %v", result, err)
+			}
 		})
-		_, err := (Runner{Model: model, Tools: tools}).Run(context.Background(), "execute")
-		if err == nil || tools.calls != 1 {
-			t.Fatalf("unsafe continuation: calls=%d err=%v", tools.calls, err)
+	}
+}
+func TestCancelledConversationStillClosesThroughMCP(t *testing.T) {
+	b := &backend{block: make(chan struct{})}
+	tools := connectedTools(t, b, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	model := modelFunc(func(_ context.Context, m []deepseek.Message, _ []deepseek.Tool) (deepseek.Message, error) {
+		sid, rev, _ := BindingFromPrompt(m)
+		return deepseek.Message{Role: "assistant", ToolCalls: []deepseek.ToolCall{toolCall("blocked", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "wait()"})}}, nil
+	})
+	done := make(chan Result, 1)
+	go func() {
+		r, e := (Runner{Tools: tools, Model: model, CleanupTimeout: 2 * time.Second}).Run(ctx, "test")
+		if e == nil {
+			t.Error("cancelled execution succeeded")
 		}
+		done <- r
+	}()
+	select {
+	case <-b.block:
+	case <-time.After(2 * time.Second):
+		t.Fatal("execution did not start")
+	}
+	cancel()
+	select {
+	case r := <-done:
+		if !r.CleanupComplete {
+			t.Fatalf("cleanup inherited cancellation: %+v", r)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cleanup stuck")
+	}
+}
+func TestModelFailureAndTruncatedOutputPreserveCleanup(t *testing.T) {
+	b := &backend{}
+	tools := connectedTools(t, b, false)
+	result, err := (Runner{Tools: tools, Model: modelFunc(func(context.Context, []deepseek.Message, []deepseek.Tool) (deepseek.Message, error) {
+		return deepseek.Message{}, errors.New("model unavailable")
+	})}).Run(context.Background(), "test")
+	if err == nil || !result.CleanupComplete {
+		t.Fatal("model failure leaked session")
+	}
+	raw, _ := json.Marshal(session.ExecutionView{SessionID: "sid", IdentityRevision: "rev", Execution: session.Execution{Stdout: strings.Repeat("中", 20000)}})
+	view, stop, err := modelView(sessionclient.Reply{HTTPStatus: 200, Response: raw}, mcpserver.ExecuteTool, "sid", "rev")
+	if err != nil || stop || len(view) > 32<<10 || !strings.Contains(view, `"model_output_truncated":true`) {
+		t.Fatalf("output bound: %v %v", stop, err)
 	}
 }
 
-func TestBudgetAndBatchValidationHappenBeforeExecution(t *testing.T) {
-	for _, tc := range []struct {
-		turns, calls int
-		batch        []deepseek.ToolCall
-	}{
-		{1, 8, []deepseek.ToolCall{modelCall("one", mcpserver.ExecuteTool)}},
-		{6, 1, []deepseek.ToolCall{modelCall("one", mcpserver.ExecuteTool), modelCall("two", mcpserver.ExecuteTool)}},
-		{6, 8, []deepseek.ToolCall{modelCall("one", mcpserver.ExecuteTool), modelCall("two", "arbitrary_remote_host")}},
-		{6, 8, []deepseek.ToolCall{modelCall("one", mcpserver.ExecuteTool), modelCall("one", mcpserver.ExecuteTool)}},
-	} {
-		tools := &fakeTools{}
-		model := modelFunc(func(context.Context, []deepseek.Message, []deepseek.Tool) (deepseek.Message, error) {
-			return deepseek.Message{Role: "assistant", ToolCalls: tc.batch}, nil
-		})
-		_, err := (Runner{Model: model, Tools: tools, MaxTurns: tc.turns, MaxToolCalls: tc.calls}).Run(context.Background(), "execute")
-		if err == nil || tools.calls != 0 {
-			t.Fatalf("budget/validation caused side effect: %d %v", tools.calls, err)
-		}
-	}
-}
-
-func TestModelOutputBudgetPreservesExecutionFacts(t *testing.T) {
-	for _, text := range []string{strings.Repeat("中", 20000), strings.Repeat("\x00", 20000)} {
-		response, _ := json.Marshal(map[string]any{"status": "failed", "cleanup_complete": true, "stdout": text, "stderr": "expected failure", "execution_id": "one", "outcome_unknown": false})
-		view, stop, err := modelView(mcpserver.Result(gatewayclient.Reply{HTTPStatus: 200, Response: response}, true), true)
-		if err != nil || stop || len(view) > 32<<10 || !json.Valid([]byte(view)) || !strings.Contains(view, `"model_output_truncated":true`) || !strings.Contains(view, `"cleanup_complete":true`) {
-			t.Fatalf("bounded view lost facts: stop=%v err=%v bytes=%d", stop, err, len(view))
-		}
+func TestDefiniteFileRefusalStopsWithoutClaimingUnknownExecution(t *testing.T) {
+	b := &backend{denyWrite: true}
+	tools := connectedTools(t, b, false)
+	model := modelFunc(func(_ context.Context, m []deepseek.Message, _ []deepseek.Tool) (deepseek.Message, error) {
+		sid, rev, _ := BindingFromPrompt(m)
+		return deepseek.Message{Role: "assistant", ToolCalls: []deepseek.ToolCall{toolCall("write", mcpserver.WriteTool, sid, rev, map[string]any{"path": "blocked", "content_base64": ""}), toolCall("later", mcpserver.ExecuteTool, sid, rev, map[string]any{"code": "must_not_run()"})}}, nil
+	})
+	result, err := (Runner{Tools: tools, Model: model}).Run(context.Background(), "test")
+	if err == nil || result.OutcomeUnknown || !result.CleanupComplete || b.executions != 0 {
+		t.Fatalf("definite refusal misclassified: %+v %v", result, err)
 	}
 }

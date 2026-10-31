@@ -37,3 +37,11 @@ func TestPlatformSessions(t *testing.T) {
 		t.Fatalf("session platform regression suite: %v\n%s", err, output)
 	}
 }
+
+func TestLegacyRetirementGuards(t *testing.T) {
+	cmd := exec.Command("python3", "retirement_test.py", "-v")
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("retirement guards: %v\n%s", err, output)
+	}
+}
