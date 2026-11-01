@@ -1,4 +1,5 @@
 """Calico bootstrap and NetworkPolicy probes for a fresh, owned kind lab."""
+from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, definition as manifest_definition, lock_identity, render_upstream
 import ipaddress
 import json
 from pathlib import Path
@@ -49,49 +50,41 @@ def image_sources(lock, prefix=None):
     return result
 
 
-def render_calico(objects, lock, session, prefix=None):
+def render_calico(objects, lock, session, prefix=None, config=None):
     if len(objects) != lock['object_count']:
         raise NetworkError('unexpected_calico_manifest', 'upstream object count changed')
     sources = image_sources(lock, prefix)
     seen = set()
     for obj in objects:
-        obj['metadata'].setdefault('labels', {}).update({OWNER: session, 'app.kubernetes.io/managed-by': 'agentbox-platform'})
-        if obj['kind'] == 'ConfigMap' and obj['metadata']['name'] == 'calico-config':
-            if obj['data']['calico_backend'] != 'vxlan':
-                raise NetworkError('unexpected_calico_backend', 'use the official VXLAN manifest')
-        if obj['kind'] not in ('DaemonSet', 'Deployment'):
-            continue
+        if obj['kind'] == 'ConfigMap' and obj['metadata']['name'] == 'calico-config' and obj['data']['calico_backend'] != 'vxlan':
+            raise NetworkError('unexpected_calico_backend', 'use the official VXLAN manifest')
+        if obj['kind'] not in ('DaemonSet','Deployment'): continue
         spec = obj['spec']['template']['spec']
         for container in spec.get('initContainers', []) + spec['containers']:
-            original = container['image']
-            if original not in sources:
-                raise NetworkError('unexpected_calico_image', original)
-            container['image'] = sources[original]
-            seen.add(original)
-            if container['name'] == 'calico-node':
-                env = {e['name']: e for e in container['env']}
-                for key, value in {'CALICO_IPV4POOL_CIDR': lock['pod_cidr'], 'CALICO_IPV4POOL_IPIP': 'Never',
-                                   'CALICO_IPV4POOL_VXLAN': 'Always', 'FELIX_IPV6SUPPORT': 'false',
-                                   'FELIX_BPFENABLED': 'false', 'CLUSTER_TYPE': 'k8s'}.items():
-                    env[key] = {'name': key, 'value': value}
-                container['env'] = list(env.values())
+            if container['image'] not in sources:
+                raise NetworkError('unexpected_calico_image', container['image'])
+            seen.add(container['image'])
     if seen != set(sources):
         raise NetworkError('unexpected_calico_images', 'not all locked image components were present')
-    return {'apiVersion': 'v1', 'kind': 'List', 'items': objects}
+    images = [{'name': original.rsplit(':',1)[0], 'newName': value.split('@')[0], 'digest': value.split('@')[1]} for original,value in sources.items()]
+    from lib.platform_manifests import objects as unpack
+    rendered = render_upstream(config or Path(__file__).resolve().parents[2]/'deploy',
+        'calico-lab', objects, {'OWNER':session, 'POD_CIDR':lock['pod_cidr']}, images)
+    return {'apiVersion':'v1','kind':'List','items':unpack(rendered)}
 
 
 class Network:
     def __init__(self, lab):
         self.lab = lab
         self.output = lab.runner.output
-        self.lock = json.loads((lab.config / 'calico.lock.json').read_text())
+        self.lock = load_lock(lab.config, 'calico')
         if (self.lock.get('schema_version') != 1 or self.lock.get('mode') != 'VXLAN' or
                 not re.fullmatch('[a-f0-9]{64}', self.lock.get('sha256', ''))):
             raise NetworkError('invalid_calico_lock', 'unsupported Calico definition')
         self.state = None
 
     def definition(self):
-        return {p: digest(self.lab.config / p) for p in ('calico.lock.json', 'kind-calico.yaml')}
+        return manifest_definition(self.lab.config, 'network')
 
     def attach(self, ready=False):
         self.state, actual = self.lab.owned(complete=ready)
@@ -100,7 +93,7 @@ class Network:
             raise NetworkError('wrong_network_profile', 'requires a fresh lab created with --network-profile calico')
         if self.state.get('network_definition') != self.definition():
             raise NetworkError('network_definition_changed', 'recreate the lab before changing the CNI definition')
-        if digest(self.lab.config / 'versions.lock.json') != self.state['lock_sha256']:
+        if lock_identity(self.lab.config, 'versions') != self.state['lock_sha256']:
             raise NetworkError('baseline_changed', 'platform version lock changed')
         self.lab.node_report(require_ready=ready)
 
@@ -176,7 +169,7 @@ class Network:
             upstream.write_bytes(data)
             # Delegate YAML parsing to the pinned kubectl, without requiring PyYAML.
             parsed = kubectl_objects(self.lab.kubectl('create', '--dry-run=client', '--validate=false', '-f', upstream, '-o', 'json', timeout=60))
-            rendered = render_calico(parsed, self.lock, self.state['session'], prefix)
+            rendered = render_calico(parsed, self.lock, self.state['session'], prefix, self.lab.config)
             self.save('calico-rendered.json', rendered)
             found_text = self.lab.kubectl('get', '-f', '-', '--ignore-not-found', '-o', 'json', input_text=json.dumps(rendered))
             for obj in kubectl_objects(found_text):
@@ -211,22 +204,15 @@ class Network:
                 self.lab.write_state(self.state)
 
     def namespace(self, name, role, run_id):
-        obj = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': name, 'labels': {
-            OWNER: self.state['session'], ROLE: role, 'agentbox.dev/net-run': run_id}}}
+        obj = render_manifest(self.lab.config, 'network-namespace', {'NAME': name, 'ROLE': role, 'RUN': run_id, 'OWNER': self.state['session']})
         created = json.loads(self.lab.kubectl('create', '-f', '-', '-o', 'json', input_text=json.dumps(obj)))
         return {'name': name, 'uid': created['metadata']['uid']}
 
     def pod(self, name, namespace, role, run_id, image, worker=False, runtime=None):
-        obj = json.loads((self.lab.config / 'network-pod.json').read_text()
-                         .replace('__NAME__', name).replace('__NAMESPACE__', namespace)
-                         .replace('__SESSION__', self.state['session']).replace('__RUN__', run_id)
-                         .replace('__ROLE__', role).replace('__IMAGE__', image))
+        obj = render_manifest(self.lab.config, 'network-worker' if worker else 'network-control',
+            {'NAME': name, 'NAMESPACE': namespace, 'ROLE': role, 'RUN': run_id, 'OWNER': self.state['session'], 'IMAGE': image})
         spec = obj['spec']
-        spec['activeDeadlineSeconds'] = 900
         node = 'agentbox-platform-lab-' + ('worker' if worker else 'control-plane')
-        spec['nodeSelector'] = {'kubernetes.io/hostname': node}
-        if not worker:
-            spec['tolerations'] = [{'key': 'node-role.kubernetes.io/control-plane', 'operator': 'Exists', 'effect': 'NoSchedule'}]
         if runtime:
             spec['runtimeClassName'] = runtime
         spec['containers'][0]['command'] = ['/usr/local/bin/python3', '-I', '-B', '-u', '-c',
@@ -256,9 +242,7 @@ class Network:
         return obj
 
     def policies(self, namespace, run_id):
-        text = (self.lab.config / 'network-policies.json').read_text()
-        return json.loads(text.replace('__SANDBOX_NS__', namespace).replace('__RUN__', run_id)
-                          .replace('__SESSION__', self.state['session']))['items']
+        return render_manifest(self.lab.config, 'network-policy', {'NAMESPACE': namespace, 'RUN': run_id, 'OWNER': self.state['session']})['items']
 
     def apply_policies(self, policies):
         value = {'apiVersion': 'v1', 'kind': 'List', 'items': policies}
@@ -387,13 +371,16 @@ class Network:
                 self.save('network-policies.json', policies)
                 print('[platform] network phase: baseline (all listeners reachable)', flush=True)
                 self.converge(pods, cases, 'baseline', run_id, record)
-                self.apply_policies(policies[:1])
+                deny = [p for p in policies if p['metadata']['name'] == 'default-deny']
+                allow = [p for p in policies if p['metadata']['name'] != 'default-deny']
+                if len(deny) != 1: raise NetworkError('invalid_network_policy_set', 'expected exactly one default deny policy')
+                self.apply_policies(deny)
                 print('[platform] network phase: default deny', flush=True)
                 self.converge(pods, cases, 'deny', run_id, record)
-                self.apply_policies(policies[1:])
+                self.apply_policies(allow)
                 print('[platform] network phase: selected control/data/DNS allowed', flush=True)
                 self.converge(pods, cases, 'allow', run_id, record)
-                self.delete_policies(namespaces['sandbox']['name'], [p['metadata']['name'] for p in policies[1:]], run_id)
+                self.delete_policies(namespaces['sandbox']['name'], [p['metadata']['name'] for p in allow], run_id)
                 print('[platform] network phase: revoke allow rules', flush=True)
                 self.converge(pods, cases, 'revoked', run_id, record)
                 self.delete_policies(namespaces['sandbox']['name'], ['default-deny'], run_id)

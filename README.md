@@ -11,9 +11,11 @@ make build
 make check
 ```
 
-构建产物为 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent。需要 Linux、Go 1.26+；项目固定 toolchain go1.27.1，依赖和工具链需提前准备。普通检查使用本地模型/API 替身，不调用付费模型或连接 Kubernetes。部署已有 API 后，由调用方配置独立 API 身份和模型凭据，按[使用指南](docs/usage.md#agent)运行 Agent。
+构建产物为 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent。需要 Linux、Go 1.26+；项目固定 toolchain go1.27.1，依赖和工具链需提前准备。普通检查使用本地模型/API 替身与离线 Kustomize 渲染，不调用付费模型或连接 Kubernetes；平台检查需可用 kubectl 和 scripts/requirements-platform.txt 中的 YAML 依赖。部署已有 API 后，由调用方配置独立 API 身份和模型凭据，按[使用指南](docs/usage.md#agent)运行 Agent。
 
 Agent 自动创建并绑定一个会话，仅向模型开放查询/执行/文件工具；结束或异常退出时在独立预算内请求关闭并确认。创建恢复使用相同 request_id；未知执行/写入不重放。MCP 子进程只获得 API token，模型和集群凭据不进入 MCP 或执行 Pod。
+
+静态部署资源使用 [YAML＋Kustomize](docs/operations.md#manifests)：配置按组件集中，agentbox/overlays/lab/ 只表达应用环境差异，验收夹具单独归档；四份版本锁使用 YAML。Python 保留实验编排和验证，JSON 用于运行报告、缓存元数据及历史证据。
 
 ## 开发平台与真实验收
 

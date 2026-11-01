@@ -20,6 +20,7 @@ import threading
 import time
 import uuid
 
+from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, lock_identity, python_image_source
 from lib.platform_gvisor import CASES, GVisor, GVisorError
 from lib.platform_network import Network, NetworkError
 from lib.platform_sessions import Sessions, SessionError, checked_source as session_source
@@ -81,7 +82,7 @@ def pinned_source(canonical, supplied):
     if "://" in value or not re.fullmatch(r"[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}", value):
         raise LabError("invalid_image", "image source must be a digest-pinned repository")
     if value.rsplit("@", 1)[1] != canonical.rsplit("@", 1)[1]:
-        raise LabError("image_digest_mismatch", "mirror digest differs from versions.lock.json")
+        raise LabError("image_digest_mismatch", "mirror digest differs from versions.lock.yaml")
     return value
 
 
@@ -138,13 +139,13 @@ class Lab:
         self._lock_owner = None
         self.root = Path(root).resolve()
         self.runner = runner
-        self.config = self.root / "deploy/platform"
+        self.config = self.root / "deploy"
         self.state_dir = self.root / ".local/platform"
         self.state_path = self.state_dir / "cluster.json"
         self.kubeconfig = self.state_dir / "kubeconfig"
-        self.lock = json.loads((self.config / "versions.lock.json").read_text())
+        self.lock = load_lock(self.config, 'versions')
         if self.lock.get("schema_version") != 1:
-            raise LabError("invalid_lock", "unsupported versions.lock.json schema")
+            raise LabError("invalid_lock", "unsupported versions.lock.yaml schema")
         for name in ("kind", "kubectl"):
             if not HEX64.fullmatch(self.lock[name].get("sha256", "")):
                 raise LabError("invalid_lock", "tool checksum is missing")
@@ -299,10 +300,10 @@ class Lab:
         if self.kubeconfig.exists() and file_hash(self.kubeconfig) != state.get("kubeconfig_sha256"):
             raise LabError("kubeconfig_changed", "dedicated kubeconfig differs from the recorded file")
         if complete and (not self.kubeconfig.is_file() or state["lock_sha256"] !=
-                         file_hash(self.config / "versions.lock.json")):
+                         lock_identity(self.config, "versions")):
             raise LabError("baseline_changed", "kubeconfig is missing or the version lock changed; recreate the lab")
         if complete and state.get("kind_config_sha256"):
-            config = self.config / ("kind-calico.yaml" if state.get("network_profile") == "calico" else "kind.yaml")
+            config = self.config / ("lab/kind-calico.yaml" if state.get("network_profile") == "calico" else "lab/kind.yaml")
             if file_hash(config) != state["kind_config_sha256"]:
                 raise LabError("baseline_changed", "kind configuration changed; recreate the lab")
         return state, actual
@@ -431,7 +432,7 @@ class Lab:
         image = pinned_source(self.lock["kubernetes"]["node_image"], source)
         if network_profile not in ("kindnet", "calico"):
             raise LabError("invalid_network_profile", "select kindnet or calico")
-        kind_config = self.config / ("kind-calico.yaml" if network_profile == "calico" else "kind.yaml")
+        kind_config = self.config / ("lab/kind-calico.yaml" if network_profile == "calico" else "lab/kind.yaml")
         with self.operation_lock():
             preflight = self.preflight()
             if not preflight["ok"]:
@@ -445,7 +446,7 @@ class Lab:
             state = {"schema_version": 1, "project": str(self.root), "cluster": CLUSTER,
                      "session": uuid.uuid4().hex, "phase": "preparing_image", "created_at": utc(),
                      "docker_id": preflight["docker"]["ID"], "node_ids": [], "node_image_source": image,
-                     "lock_sha256": file_hash(self.config / "versions.lock.json"),
+                     "lock_sha256": lock_identity(self.config, "versions"),
                      "network_profile": network_profile, "kind_config_sha256": file_hash(kind_config)}
             if network_profile == "calico":
                 state["network_definition"] = Network(self).definition()
@@ -486,24 +487,23 @@ class Lab:
             if obj["metadata"].get("labels", {}).get(OWNER_LABEL) != state["session"]:
                 raise LabError("unowned_namespace", "refusing to use another session's namespace")
         else:
-            obj = {"apiVersion": "v1", "kind": "Namespace", "metadata": {
-                "name": NAMESPACE, "labels": {OWNER_LABEL: state["session"],
-                                             "app.kubernetes.io/managed-by": "agentbox-platform"}}}
+            obj = render_manifest(self.config, 'platform-namespace', {'NAME': NAMESPACE, 'OWNER': state['session']})
             self.kubectl("create", "-f", "-", input_text=json.dumps(obj))
 
+    def python_image(self, source=None):
+        return pinned_source(self.lock["smoke"]["image"], source or python_image_source(self.config))
+
     def smoke(self, source=None, timeout=180):
-        image = pinned_source(self.lock["smoke"]["image"], source)
+        image = self.python_image(source)
         with self.operation_lock():
             state, _ = self.owned(complete=True)
             nodes = self.node_report()
             self.namespace(state)
             run_id = uuid.uuid4().hex[:12]
             name = "agentbox-smoke-" + run_id
-            manifest = (self.config / "smoke-job.yaml").read_text()
-            for key, value in {"__RUN_ID__": run_id, "__SESSION__": state["session"],
-                               "__SMOKE_IMAGE__": image}.items():
-                manifest = manifest.replace(key, value)
-            (self.runner.output / "smoke-job.yaml").write_text(manifest)
+            obj = render_manifest(self.config, 'smoke', {'OWNER': state['session'], 'RUN_ID': run_id, 'SMOKE_IMAGE': image})
+            manifest = json.dumps(obj)
+            (self.runner.output / "smoke-job.json").write_text(manifest)
             self.kubectl("-n", NAMESPACE, "create", "-f", "-", input_text=manifest)
             print(f"[platform] awaiting Job {NAMESPACE}/{name} (budget {timeout}s)", flush=True)
             deadline = time.monotonic() + timeout
@@ -649,15 +649,15 @@ def arguments(argv=None):
 def main(argv=None):
     args = arguments(argv)
     if args.dry_run:
-        lock = json.loads((ROOT / "deploy/platform/versions.lock.json").read_text())
-        runtime = json.loads((ROOT / "deploy/platform/gvisor.lock.json").read_text()) if args.action.startswith("gvisor-") else None
-        sessions = json.loads((ROOT / "deploy/platform/session.lock.json").read_text()) if args.action.startswith("session-") else None
+        lock = load_lock(ROOT / "deploy", "versions")
+        runtime = load_lock(ROOT / "deploy", "gvisor") if args.action.startswith("gvisor-") else None
+        sessions = load_lock(ROOT / "deploy", "session") if args.action.startswith("session-") else None
         session_sources = ({"controller": session_source(sessions["controller_image"], args.session_controller_source),
-                            "python": session_source(lock["smoke"]["image"], args.session_python_source)} if sessions else None)
+                            "python": session_source(lock["smoke"]["image"], args.session_python_source or python_image_source(ROOT / "deploy"))} if sessions else None)
         print(json.dumps({"action": args.action, "network_profile": "calico" if args.action == "up" else args.network_profile if args.action == "create" else "recorded lab profile", "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
                           "kubeconfig": str(ROOT / ".local/platform/kubeconfig"),
                           "node_image": pinned_source(lock["kubernetes"]["node_image"], args.node_image_source),
-                          "smoke_image": pinned_source(lock["smoke"]["image"], args.smoke_image_source),
+                          "smoke_image": pinned_source(lock["smoke"]["image"], args.smoke_image_source or python_image_source(ROOT / "deploy")),
                           "sessions": sessions, "session_sources": session_sources, "session_profile": args.session_profile,
                           "bootstrap_stages": ["control-plane", "calico", "nodes", "gvisor", "control-plane-after-runtime", "sessions"] if args.action == "up" else None,
                           "calico_image_prefix": args.calico_image_prefix,
@@ -672,40 +672,19 @@ def main(argv=None):
               "kernel": platform.release(),
               "scope": "trusted platform functional probes; not full isolation or performance acceptance",
               "source_sha256": {str(p.relative_to(source_root)): file_hash(p) for p in
-                                [Path(__file__).resolve(), source_root / "scripts/lib/platform_gvisor.py",
-                                 source_root / "scripts/lib/gvisor_guest_probe.py", source_root / "scripts/lib/gvisor_node_processes.sh",
-                                 source_root / "scripts/lib/platform_network.py", *sorted((source_root / "scripts/lib").glob("network_*.py")),
-                                 *sorted((source_root / "deploy/platform").glob("calico*")),
-                                 source_root / "deploy/platform/kind-calico.yaml", *sorted((source_root / "deploy/platform").glob("network*")),
-                                 *sorted((source_root / "deploy/platform").glob("gvisor*")),
-                                 source_root / "scripts/lib/platform_sessions.py",
-                                 source_root / "scripts/lib/session_faults.py",
-                                 source_root / "scripts/lib/platform_api.py",
-                                 source_root / "scripts/lib/platform_api_execution.py",
-                                 source_root / "scripts/lib/platform_retention.py",
-                                 source_root / "scripts/lib/platform_agent.py",
-                                 source_root / "scripts/retire_legacy.py",
-                                 source_root / "docs/data/legacy-source-retirement.json",
-                                 *sorted((source_root / "internal/sessionclient").glob("*.go")),
-                                 *sorted((source_root / "internal/mcpserver").glob("*.go")),
-                                 *sorted((source_root / "internal/mcpclient").glob("*.go")),
-                                 *sorted((source_root / "internal/agent").glob("*.go")),
-                                 *sorted((source_root / "internal/deepseek").glob("*.go")),
-                                 *sorted((source_root / "cmd/agentbox-agent").glob("*.go")),
-                                 *sorted((source_root / "cmd/agentbox-mcp").glob("*.go")),
-                                 source_root / "deploy/platform/cleanup-rbac.json",
-                                 *sorted((source_root / "cmd/agentbox-cleanup").glob("*.go")),
-                                 *sorted((source_root / "internal/sessionruntime").glob("*.go")),
-                                 source_root / "deploy/platform/api.Dockerfile",
-                                 source_root / "deploy/platform/api-deployment.json",
-                                 *sorted((source_root / "cmd/agentbox-api").glob("*.go")),
-                                 *sorted((source_root / "internal/session").glob("*.go")),
-                                 *sorted((source_root / "internal/sessionapi").glob("*.go")),
-                                 source_root / "deploy/platform/api-rbac.json",
-                                 source_root / "deploy/platform/api-quota.json",
-                                 *sorted((source_root / "deploy/platform").glob("session*")), source_root / "deploy/platform/sandbox-runtime.Dockerfile",
-                                 *sorted((source_root / "cmd/agentbox-session-smoke").glob("*.go")),
-                                 *sorted((source_root / "internal/sessionprobe").glob("*.go")), source_root / "go.mod", source_root / "go.sum"]}}
+                sorted(set([Path(__file__).resolve(), source_root/'scripts/render_manifests.py',
+                    source_root/'scripts/requirements-platform.txt', source_root/'scripts/retire_legacy.py',
+                    source_root/'docs/data/legacy-source-retirement.json',
+                    *list((source_root/'scripts/lib').glob('platform*.py')),
+                    *list((source_root/'scripts/lib').glob('network_*.py')),
+                    source_root/'scripts/lib/session_faults.py', source_root/'scripts/lib/gvisor_guest_probe.py',
+                    source_root/'scripts/lib/gvisor_node_processes.sh',
+                    *list((source_root/'deploy').rglob('*.yaml')),
+                    *[p for p in (source_root/'deploy').rglob('*') if p.is_file() and (p.name=='Dockerfile' or p.suffix in ('.Dockerfile','.toml'))],
+                    *[p for folder in ('sessionruntime','session','sessionapi','sessionprobe','sessionclient','mcpserver','mcpclient','agent','deepseek') for p in (source_root/'internal'/folder).glob('*.go')],
+                    *[p for folder in ('agentbox-api','agentbox-cleanup','agentbox-agent','agentbox-mcp','agentbox-session-smoke') for p in (source_root/'cmd'/folder).glob('*.go')],
+                    source_root/'go.mod', source_root/'go.sum'] ))}}
+
     lab = None
     try:
         lab = Lab(ROOT, runner)
@@ -735,7 +714,7 @@ def main(argv=None):
             report["result"] = runtime.install(archive)
             report["ok"] = True
         elif args.action == "gvisor-test":
-            image = pinned_source(lab.lock["smoke"]["image"], args.smoke_image_source)
+            image = lab.python_image(args.smoke_image_source)
             report["result"] = GVisor(lab).test(image, args.timeout, [args.gvisor_case] if args.gvisor_case else None)
             report["ok"] = True
         elif args.action == "network-install":
@@ -744,7 +723,7 @@ def main(argv=None):
             report["result"] = network.install(manifest, args.calico_image_prefix)
             report["ok"] = True
         elif args.action == "network-test":
-            image = pinned_source(lab.lock["smoke"]["image"], args.smoke_image_source)
+            image = lab.python_image(args.smoke_image_source)
             report["result"] = Network(lab).test(image)
             report["ok"] = True
         elif args.action == "session-build":

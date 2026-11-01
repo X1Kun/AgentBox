@@ -144,9 +144,9 @@ class APIAcceptance:
                 work=namespaces['work']['name'];client=namespaces['client']['name']
                 params={'OWNER':sessions.state['session'],'RUN':run_id,'WORK_NS':work,'CLIENT_NS':client,
                         'RUNTIME_IMAGE':bundle['images']['runtime']['name']}
-                sessions.create(sessions.render('session-template.json',params))
-                sessions.create(sessions.render('api-rbac.json',params))
-                sessions.create(sessions.render('api-quota.json',params))
+                sessions.create(sessions.render('session',params))
+                sessions.create(sessions.render('api-rbac',params))
+                sessions.create(sessions.render('api-quota',params))
                 until = time.monotonic() + 180
                 while time.monotonic() < until:
                     quota = json.loads(self.lab.kubectl('-n', work, 'get', 'resourcequota', 'agentbox-api-budget', '-o', 'json', announce=False))

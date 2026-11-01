@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    agentbox.dev/session: development
+    app.kubernetes.io/managed-by: agentbox-platform
+  name: agentbox-smoke-preview
+  namespace: agentbox-platform
+spec:
+  activeDeadlineSeconds: 120
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        agentbox.dev/session: development
+        app.kubernetes.io/managed-by: agentbox-platform
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - command:
+        - /usr/local/bin/python3
+        - -I
+        - -B
+        - -c
+        - 'import json; print(json.dumps({''result'': sum(i*i for i in range(1, 1001))},
+          sort_keys=True))'
+        image: agentbox/smoke:local
+        imagePullPolicy: IfNotPresent
+        name: compute
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+      nodeSelector:
+        agentbox.dev/lab: agentbox-platform-lab
+        agentbox.dev/role: worker
+      restartPolicy: Never
+      securityContext:
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 5

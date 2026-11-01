@@ -1,0 +1,6 @@
+- op: add
+  path: /scheduling
+  value:
+    nodeSelector:
+      agentbox.dev/lab: agentbox-platform-lab
+      agentbox.dev/role: worker

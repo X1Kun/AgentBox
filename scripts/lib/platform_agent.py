@@ -200,7 +200,7 @@ class AgentAcceptance(APIExecutionAcceptance):
                 work, client = namespaces['work']['name'], namespaces['client']['name']
                 params = {'OWNER': sessions.state['session'], 'RUN': run, 'WORK_NS': work, 'CLIENT_NS': client,
                           'RUNTIME_IMAGE': bundle['images']['runtime']['name'], 'API_IMAGE': image}
-                for name in ('session-template.json', 'api-rbac.json', 'api-quota.json'):
+                for name in ('session', 'api-rbac', 'api-quota'):
                     sessions.create(sessions.render(name, params))
                 sessions.create(sessions.client_policy(client, work, run))
                 until = time.monotonic()+120
@@ -214,7 +214,7 @@ class AgentAcceptance(APIExecutionAcceptance):
                     tmp = Path(tmp)
                     self.scoped_credentials(tmp, work, client)
                     self.secret(tmp, client, alice, bob)
-                    sessions.create(sessions.render('api-deployment.json', params))
+                    sessions.create(sessions.render('api', params))
                     self.connect(client)
                     for scenario in ('flow', 'timeout', 'lost-reply'):
                         model = FixtureModel(self, scenario, runtime, work, alice)

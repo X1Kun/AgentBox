@@ -1,6 +1,6 @@
 # AgentBox 系统设计
 
-版本：V3.1｜更新：2026-10-31｜平台、会话 API、记录保留及 MCP/Agent v2 已实现；旧宿主运行管理代码清退，批任务与资源策略仍为后续阶段。
+版本：V3.1｜更新：2026-11-01｜平台、会话 API、记录保留及 MCP/Agent v2 已实现；旧宿主运行管理代码清退，批任务与资源策略仍为后续阶段。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
@@ -17,6 +17,8 @@ AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 
 先完成真实平台、Go 接口与故障验收，再写一个资源策略。动态预热池、Koordinator、Firecracker 快照、GPU、多节点放置、多租户公平、Argo/Ray/KEDA 和额外消息队列均不同时进入首轮。性能改善允许被实验否定；不承诺旧 Warm 时延或任意运行环境兼容。
 
 旧本地 Cold/Warm、FIFO、PSI/AIMD、Gateway/MCP 已移出活动源码，完整历史实现固定于 c6c2e48。普通 Job 基线和新 gVisor 运行时子步骤分别留证；运行时探针不证明完整网络隔离、上游会话生命周期、新 API/MCP 或策略收益。
+
+静态平台清单使用 YAML＋Kustomize 按组件管理静态资源和实际环境覆盖，版本/摘要锁使用 YAML。Python 只承担非敏感动态参数、受校验上游资源适配、探针/故障编排及报告；不把实验资源定义和模板文本替换堆进常驻产品服务。历史 JSON 数据保留原口径。
 
 ## 2. 组件职责与所有权
 

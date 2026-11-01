@@ -1,5 +1,5 @@
 .PHONY: build tools test check integration platform-agent-test platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test platform-network-create platform-network-install platform-network-test platform-session-build platform-session-install platform-session-test platform-session-warm-test platform-session-fault-test platform-api-test platform-api-exec-test platform-api-retention-test platform-up platform-ready
-.PHONY: build tools test check integration platform-agent-test
+.PHONY: build tools test check integration platform-agent-test k8s-render
 
 build:
 	mkdir -p bin
@@ -17,12 +17,16 @@ test:
 	go test -race -count=1 ./...
 
 check: test
+	python3 scripts/render_manifests.py --all --check
 	go test -race -tags=integration -run '^TestStdio' -count=1 ./tests/integration
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal tests)"
 	git diff --check
 	bash -n scripts/lib/gvisor_node_processes.sh
 	python3 -c 'import ast,pathlib; [ast.parse(p.read_text(), filename=str(p)) for base in ("scripts", "tests") for p in pathlib.Path(base).rglob("*.py")]'
+
+k8s-render:
+	python3 scripts/render_manifests.py --all --check
 
 integration: platform-agent-test
 

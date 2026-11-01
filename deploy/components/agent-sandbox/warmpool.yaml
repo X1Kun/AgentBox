@@ -1,0 +1,12 @@
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: python-cold
+  namespace: agentbox-work
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/session-run: preview
+spec:
+  replicas: 0
+  sandboxTemplateRef:
+    name: python

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/session-role: sandbox
+    agentbox.dev/session-run: preview
+  name: agentbox-platform

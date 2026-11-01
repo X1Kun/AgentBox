@@ -1,0 +1,98 @@
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: python
+  namespace: agentbox-work
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/session-run: preview
+spec:
+  service: true
+  networkPolicyManagement: Managed
+  envVarsInjectionPolicy: Disallowed
+  networkPolicy:
+    ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: agentbox-client
+        podSelector:
+          matchLabels:
+            agentbox.dev/session-role: client
+            agentbox.dev/session-run: preview
+      ports:
+      - protocol: TCP
+        port: 8080
+      - protocol: TCP
+        port: 9090
+    egress:
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+      ports:
+      - protocol: UDP
+        port: 53
+      - protocol: TCP
+        port: 53
+  podTemplate:
+    metadata:
+      labels:
+        agentbox.dev/session: development
+        agentbox.dev/session-run: preview
+        agentbox.dev/session-role: runtime
+    spec:
+      runtimeClassName: agentbox-gvisor
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 3
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: sandboxd
+        image: agentbox/session-runtime:local
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        - containerPort: 9090
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        readinessProbe:
+          httpGet:
+            path: /v1/health
+            port: 8080
+          periodSeconds: 2
+          failureThreshold: 30
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: workspace
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Mi
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi

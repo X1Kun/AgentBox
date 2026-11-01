@@ -1,0 +1,57 @@
+schema_version: 1
+baseline_commit: 8958f50
+locks:
+  versions:
+    semantic_sha256: 92b44efa2bbf7f7c29c787fba217a024f3ec488acbcd6d26dd3623b5e17380ac
+    legacy_sha256: febfa9c0b30cb0dc5a4286a35b7041c242e66af08d02163b2e2ea0d2446dbd26
+  gvisor:
+    semantic_sha256: 235e2887413741e1206785a8112ca8a26658b26873b6e5990afc7160e7fbf391
+    legacy_sha256: edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b
+  calico:
+    semantic_sha256: 117bfd4ab7b23dea3bee062d5a01fb83f4679b4c077d5a49de1d08c2988e59f7
+    legacy_sha256: 423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6
+  session:
+    semantic_sha256: 9afaa0927226bafff7fde79116e152922b4a6fe6abb6d32659247d5b99d9811e
+    legacy_sha256: e05ac3cb8ec9668ceecc2da9eb686e9dc6dd27ed8e76a76498b9b11ca2b12e94
+definitions:
+  network:
+    legacy:
+      calico.lock.json: 423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6
+      kind-calico.yaml: 40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9
+    current:
+      schema_version: 2
+      locks:
+        calico: 423a6d5c33d43ee985cad07677b220dba2a1741e51c9558e807765149cc7c1f6
+      profiles: {}
+      files:
+        lab/kind-calico.yaml: 40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9
+        components/calico/lab-patch.yaml: 639b3d0adb76e7e2c8e2056e15199639b3782495becea0e18046edb6dd5af9a8
+  runtime:
+    legacy:
+      gvisor-runsc.toml: bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db
+      gvisor-runtimeclass.json: a5cbc5085d028b1d5eaf8c2b84935050d4848ab81dc63b02057b2f5d13acea80
+      gvisor.lock.json: edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b
+    current:
+      schema_version: 2
+      locks:
+        gvisor: edcd00c3265cb0276c57e4974e1a2b721d55656739c5df850f53f87c6c7a7f4b
+      profiles:
+        runtime: c3528986989a8b5f89fb49cc6cdbb752432cdc04734e11eed6436481ea6e1a87
+      files:
+        components/gvisor/runsc.toml: bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db
+  session:
+    legacy:
+      session-client-job.json: 0f62ae911ed9def1988a6135a6a196f9963427311fa570d8d0c2e28b60fca402
+      session-rbac.json: 7b5f605988ea1ec8e897d713b334458e164fa65d09efee8abc47d6537a2c59f7
+      session-template.json: f61ea336d4e316fb2686943d5903cb2d4456d35bca5551cd968a92dc08847fb6
+      session.lock.json: e05ac3cb8ec9668ceecc2da9eb686e9dc6dd27ed8e76a76498b9b11ca2b12e94
+    current:
+      schema_version: 2
+      locks:
+        session: e05ac3cb8ec9668ceecc2da9eb686e9dc6dd27ed8e76a76498b9b11ca2b12e94
+      profiles:
+        session: 916e5b5d037e7b5fe8f3b6321267be9705e70e5d022f3a24ffd90cd7d28e0323
+        sdk-rbac: 975673bc184ca251a084099b5ebefae62853df350a5f1023e1ca15fb055a69d3
+        sdk-client: bd0161bc5b8371336b3ad4ed3c093c5e2b37ea901ae67abdcd26f33b158ee124
+      files:
+        components/agent-sandbox/controller-lab-patch.yaml: d82126f9fae8b1a81aa983451817f9d0c0d91feb7f297ef1cbb3f6373b501d89

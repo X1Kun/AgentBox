@@ -1,4 +1,5 @@
 """gVisor installation and trusted lifecycle acceptance in one owned kind worker."""
+from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, definition as manifest_definition, lock_identity, render_upstream
 import bz2
 import hashlib
 import json
@@ -78,7 +79,7 @@ class GVisor:
     def __init__(self, lab):
         self.lab = lab
         self.output = lab.runner.output
-        self.lock = json.loads((lab.config / 'gvisor.lock.json').read_text())
+        self.lock = load_lock(lab.config, 'gvisor')
         if (self.lock.get('schema_version') != 1 or self.lock.get('platform') != 'systrap' or
                 not re.fullmatch(r'[a-f0-9]{128}', self.lock.get('sha512', '')) or
                 self.lock.get('swap_policy', {}).get('unit') != 'kubelet.slice' or
@@ -115,14 +116,10 @@ class GVisor:
         self.lab.runner.run([self.lab.tools['docker'], 'cp', str(source), self.worker + ':' + target], timeout=120)
 
     def definition(self):
-        return {name: digest(self.lab.config / name) for name in
-                ('gvisor.lock.json', 'gvisor-runsc.toml', 'gvisor-runtimeclass.json')}
+        return manifest_definition(self.lab.config, 'runtime')
 
     def runtime_class(self, name=RUNTIME, handler=RUNTIME):
-        obj = json.loads((self.lab.config / 'gvisor-runtimeclass.json').read_text()
-                         .replace('__SESSION__', self.state['session']))
-        obj['metadata']['name'], obj['handler'] = name, handler
-        return obj
+        return render_manifest(self.lab.config, 'runtime', {'OWNER': self.state['session'], 'RUNTIME_NAME': name, 'HANDLER': handler})
 
     def ensure_runtime_class(self, obj, create=True):
         name = obj['metadata']['name']
@@ -189,7 +186,7 @@ class GVisor:
                     tar_sha256 = digest(tar_path)
                     self.copy(tar_path, stage + '/gvisor.tar')
                 self.copy(self.lab.state_dir / 'gvisor-containerd.toml', stage + '/config.toml')
-                self.copy(self.lab.config / 'gvisor-runsc.toml', stage + '/runsc.toml')
+                self.copy(self.lab.config / 'components/gvisor/runsc.toml', stage + '/runsc.toml')
                 self.node('bash', '-s', '--', stage, tar_sha256, actual,
                           previous['installed_config_sha256'], timeout=180, input_text='''set -euo pipefail
 stage=$1
@@ -257,7 +254,7 @@ systemctl restart containerd
             raise GVisorError('gvisor_not_ready', 'install the pinned gVisor profile first')
         if self.node_hash(CONFIG) != installed['installed_config_sha256']:
             raise GVisorError('containerd_config_changed', 'installed config no longer matches')
-        if self.node_hash(RUNSC_CONFIG) != digest(self.lab.config / 'gvisor-runsc.toml'):
+        if self.node_hash(RUNSC_CONFIG) != digest(self.lab.config / 'components/gvisor/runsc.toml'):
             raise GVisorError('gvisor_config_changed', 'runsc configuration changed')
         for name, expected in installed['files_sha256'].items():
             if self.node_hash(INSTALL + '/' + name) != expected:
@@ -269,9 +266,7 @@ systemctl restart containerd
 
     def job(self, mode, image, runtime=RUNTIME):
         name = 'agentbox-gvisor-' + mode + '-' + uuid.uuid4().hex[:8]
-        obj = json.loads((self.lab.config / 'gvisor-job.json').read_text()
-                         .replace('__NAME__', name).replace('__SESSION__', self.state['session'])
-                         .replace('__IMAGE__', image))
+        obj = render_manifest(self.lab.config, 'gvisor-probe', {'NAME': name, 'OWNER': self.state['session'], 'IMAGE': image})
         pod = obj['spec']['template']['spec']
         pod['runtimeClassName'] = runtime
         source = (self.lab.root / 'scripts/lib/gvisor_guest_probe.py').read_text()

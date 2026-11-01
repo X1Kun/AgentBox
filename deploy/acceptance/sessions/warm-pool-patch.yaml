@@ -1,0 +1,6 @@
+- op: replace
+  path: /metadata/name
+  value: python-warm
+- op: replace
+  path: /spec/replicas
+  value: 2

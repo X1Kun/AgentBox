@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/session-run: preview
+  name: session-client
+  namespace: agentbox-client
+spec:
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+  - ports:
+    - port: 8080
+      protocol: TCP
+    - port: 9090
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: agentbox-work
+      podSelector:
+        matchLabels:
+          agentbox.dev/session-role: runtime
+          agentbox.dev/session-run: preview
+  ingress: []
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress

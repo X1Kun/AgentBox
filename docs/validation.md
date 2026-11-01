@@ -181,6 +181,19 @@ Go API 在普通 Pod 内提供 TLS，实际 Python 由锁定上游 sandboxd 在 
 
 最终 `make build check`、依赖整理和文档链接检查通过；详细源码/二进制/原始报告哈希、退役记录和边界见[统一验收记录](data/agent-mcp-retirement-validation.json)。本轮不推导生产 SLO、模型质量或性能收益，不将历史普通磁盘问题视为根治。
 
+<a id="manifests"></a>
+## YAML 与 Kustomize 配置迁移
+
+2026-11-01 将静态资源和四份版本锁迁移到 YAML，按组件集中配置，应用只保留 `agentbox/overlays/lab/` 一个环境覆盖，验收夹具独立放在 `acceptance/`。布局与离线入口见[部署说明](../deploy/README.md)。Python 保留运行时参数、资源选择、实验编排及验证；运行报告、缓存和历史 JSON 保持原格式。
+
+以 8958f50 为独立基线，12 组资源在默认及自定义参数下均保持原有语义，上游控制器 12 个对象及 Calico 38 个对象也通过等价比较。回归检查包含 RBAC subject namespace、DNS 的 kube-system 选择器、权限/放置变更拒绝复用及全部 21 种编排资源选择；`make check` 通过，平台 Python 用例共 112 项。格式身份桥接仅认可精确等价配置，实际版本或权限变更仍使原状态失效。
+
+目录迁移完成时，同一份源码完成现有集群的 `up` 复核、五项真实 Agent/MCP/API/gVisor 检查及 NetworkPolicy 五阶段验收。网络覆盖 runc/gVisor 共 22 条路径，每阶段最后连续两次全部匹配；本轮探针、会话、namespace 和运行时进程回收完成，开发集群保留，集群状态和镜像 bundle 字节未变。
+
+网络首次尝试在策略阶段前因默认官方镜像拉取失败而终止，保留失败报告；核对 namespace UID/归属并确认回收后，以相同固定 digest 的镜像源重跑，不改版本或超时预算。结果、原始报告与源码摘要见[迁移验收记录](data/yaml-kustomize-migration-validation.json)。本轮不升级组件、不重建集群，也不推导性能或生产 SLO。
+
+随后将已验证的 Python 下载源设为 `deploy/lab/image-sources.yaml` 的默认值，保留版本锁的官方内容基线及原 digest；smoke、gVisor/network 和 session-build 共用，显式覆盖仍需匹配 digest。该调整另行通过 114 项平台 Python 回归、完整 `make check` 及不带镜像源参数的真实 smoke（结果 333833500，Job/Pod 清理完成），未再重复网络五阶段或 Agent 全链路。后续记录单独保存源码/报告摘要，不改写前一阶段的验收版本；现有集群状态和镜像 bundle 字节仍未变。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>

@@ -1,0 +1,42 @@
+# Default and dynamic semantics translated independently from 8958f50.
+baseline_commit: 8958f50
+profiles:
+  runtime: c3528986989a8b5f89fb49cc6cdbb752432cdc04734e11eed6436481ea6e1a87
+  gvisor-probe: ceff8f4634ae06cf7826cf5226999c61b631b255631b24e4be624b5ca9753f90
+  network-pod: 59b72bcc68f9c45bc3d8294905b9bf42587d673a7421bceaeff009fd123b0f5f
+  network-policy: 87f0f28c8bc890255b33e1addbd9ddfcb2d189d9bade9f9110a5c0176a29ab4d
+  session: 916e5b5d037e7b5fe8f3b6321267be9705e70e5d022f3a24ffd90cd7d28e0323
+  sdk-client: bd0161bc5b8371336b3ad4ed3c093c5e2b37ea901ae67abdcd26f33b158ee124
+  sdk-rbac: 975673bc184ca251a084099b5ebefae62853df350a5f1023e1ca15fb055a69d3
+  api: 9cd68463671f11c101d3dbe082319962a23fff9198fc8f47b0a3029f3b4ed7a3
+  api-rbac: d5e97dbf8d9626edd39c1e1fc11ec16b2c3cba074844acc4b1de77b3e7f05f8e
+  api-quota: 62de5df63724fea2a0ccc9c83c7bf8af8009330532de0356e11caef1606fc11c
+  cleanup-rbac: ef88f94f660d5773c61f622f4741d6b72d890e00382c9737330533fd3e78986f
+  smoke: 557baa657e56d25ff056e892796e290bf4d740edc3cca6749577a62841a620e8
+dynamic_parameters:
+  OWNER: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  RUN: run-case
+  RUN_ID: run-id
+  WORK_NS: isolated-work
+  CLIENT_NS: isolated-client
+  NAMESPACE: isolated-net
+  NAME: probe-case
+  ROLE: caller
+  RUNTIME_IMAGE: registry.example/runtime@sha256:1111111111111111111111111111111111111111111111111111111111111111
+  CLIENT_IMAGE: registry.example/client:test
+  API_IMAGE: registry.example/api:test
+  IMAGE: registry.example/probe:test
+  SMOKE_IMAGE: registry.example/smoke@sha256:2222222222222222222222222222222222222222222222222222222222222222
+dynamic_profiles:
+  api: 479960d2c1da3b79507e637165c6111ed1d6af5c68dc34950bc117297dfa987b
+  api-quota: 3568f24b9f9412fc0c18982b7346035ee3c610b040c57ab0be067ca3dd813ffe
+  api-rbac: 31db5269ca4eb014322cfa9bf78028df2f691cadffcd9e8e41df095685768fa4
+  cleanup-rbac: b8471f6f5c696ed75a345c290a19a809100072293fa2dcee90ec42b463631265
+  gvisor-probe: e903512c54be794374fc42f13cd668e63b78fac5f82034a90948245050056a4f
+  network-pod: 61bdf2ecb90df2474978861b9038abbf2f787c6894ce0232e2ba5247e95e6259
+  network-policy: b93f6d67da7773024d046fa02963fe051287d1294386ffd2b608acb80bcfd691
+  runtime: 6a3d8f56579ce6a33bdec39e64cfe0af300f601e3c9f2599bc0fdf57fee7610e
+  sdk-client: 967ad58446cd0e8c38198e6bec99c75fb39ef66c4fc5dc93b9d6444b42f95045
+  sdk-rbac: 002da12f1b715a7fbe6ae5212bbfe08cc6115fb5069996851f22c6516032ea81
+  session: 6022e37222dfb218048e30ef43bd710973ac5c9f71e1160d6ebc15595d435bc3
+  smoke: 044a83b71f1a0f867d6d4072ca6538b138a970a7a1f5fb94e39abbfa979df897

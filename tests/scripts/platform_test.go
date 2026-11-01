@@ -45,3 +45,11 @@ func TestLegacyRetirementGuards(t *testing.T) {
 		t.Fatalf("retirement guards: %v\n%s", err, output)
 	}
 }
+
+func TestPlatformManifests(t *testing.T) {
+	cmd := exec.Command("python3", "platform_manifests_test.py", "-v")
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("manifest regression: %v\n%s", err, output)
+	}
+}

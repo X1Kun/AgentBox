@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/session-run: preview
+  name: session-budget
+  namespace: agentbox-work
+spec:
+  hard:
+    limits.cpu: 1500m
+    limits.memory: 1536Mi
+    pods: '3'
+    requests.cpu: 300m
+    requests.memory: 384Mi
