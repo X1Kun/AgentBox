@@ -1,0 +1,2 @@
+# YAML parsing uses SafeLoader with duplicate-key rejection; no executable tags.
+PyYAML>=5.4.1,<7

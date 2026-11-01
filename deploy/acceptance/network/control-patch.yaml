@@ -1,0 +1,13 @@
+- op: add
+  path: /spec/activeDeadlineSeconds
+  value: 900
+- op: add
+  path: /spec/nodeSelector
+  value:
+    kubernetes.io/hostname: agentbox-platform-lab-control-plane
+- op: add
+  path: /spec/tolerations
+  value:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule

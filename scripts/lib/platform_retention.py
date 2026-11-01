@@ -70,7 +70,7 @@ class APIRetentionAcceptance(APIAcceptance):
                     namespaces[role]=sessions.namespace('agentbox-retention-'+role+'-'+run,'retention-'+role,run)
                 work=namespaces['work']['name'];client=namespaces['client']['name'];instance='retention-'+run
                 params={'OWNER':sessions.state['session'],'RUN':run,'WORK_NS':work,'CLIENT_NS':client,'RUNTIME_IMAGE':bundle['images']['runtime']['name']}
-                for name in ('session-template.json','api-rbac.json','cleanup-rbac.json','api-quota.json'):
+                for name in ('session','api-rbac','cleanup-rbac','api-quota'):
                     sessions.create(sessions.render(name,params))
                 self.quota(work,0)
                 pool=json.loads(self.lab.kubectl('-n',work,'get','sandboxwarmpool','python-cold','-o','json'))

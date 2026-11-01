@@ -1,0 +1,99 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: agentbox-platform
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/net-run: preview
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-control
+  namespace: agentbox-platform
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/net-run: preview
+spec:
+  podSelector:
+    matchLabels:
+      agentbox.dev/net-role: sandbox
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          agentbox.dev/net-role: control
+          agentbox.dev/net-run: preview
+      podSelector:
+        matchLabels:
+          agentbox.dev/net-role: caller
+          agentbox.dev/net-run: preview
+    ports:
+    - protocol: TCP
+      port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-data
+  namespace: agentbox-platform
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/net-run: preview
+spec:
+  podSelector:
+    matchLabels:
+      agentbox.dev/net-role: sandbox
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          agentbox.dev/net-role: data
+          agentbox.dev/net-run: preview
+      podSelector:
+        matchLabels:
+          agentbox.dev/net-role: approved
+          agentbox.dev/net-run: preview
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: agentbox-platform
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/net-run: preview
+spec:
+  podSelector:
+    matchLabels:
+      agentbox.dev/net-role: sandbox
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53

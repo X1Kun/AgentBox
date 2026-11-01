@@ -1,4 +1,5 @@
 """Install the upstream controller and validate cold sessions with its Go SDK."""
+from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, definition as manifest_definition, lock_identity, render_upstream, python_image_source
 import hashlib
 import ipaddress
 import json
@@ -41,18 +42,6 @@ FAULT_CHECKS = {
 }
 
 
-def warm_fixture(template, namespace, owner, run_id):
-    """Fixed behavior fixture, separate from the cold profile and product policy."""
-    pool = next(o for o in template['items'] if o['kind'] == 'SandboxWarmPool')
-    pool['metadata']['name'] = 'python-warm'
-    pool['spec']['replicas'] = 2
-    quota = {'apiVersion': 'v1', 'kind': 'ResourceQuota',
-             'metadata': {'name': 'session-budget', 'namespace': namespace, 'labels': {OWNER: owner, RUN: run_id}},
-             'spec': {'hard': {'pods': '3', 'requests.cpu': '300m', 'requests.memory': '384Mi',
-                               'limits.cpu': '1500m', 'limits.memory': '1536Mi'}}}
-    return quota
-
-
 class SessionError(Exception):
     def __init__(self, reason, detail):
         super().__init__(detail)
@@ -67,36 +56,29 @@ def checked_source(canonical, supplied):
     return value
 
 
-def render_controller(objects, lock, owner, image):
+def render_controller(objects, lock, owner, image, config=None):
     if len(objects) != lock['object_count']:
         raise SessionError('unexpected_session_manifest', 'upstream bundle object count changed')
-    deployments = []
-    for obj in objects:
-        obj['metadata'].setdefault('labels', {}).update({OWNER: owner, 'app.kubernetes.io/managed-by': 'agentbox-platform'})
-        if obj['kind'] != 'Deployment':
-            continue
-        deployments.append(obj)
-        if obj['metadata']['name'] != 'agent-sandbox-controller' or obj['metadata'].get('namespace') != CONTROLLER_NS:
-            raise SessionError('unexpected_session_controller', obj['metadata']['name'])
-        spec = obj['spec']['template']['spec']
-        if len(spec['containers']) != 1 or spec['containers'][0]['image'] != 'registry.k8s.io/agent-sandbox/agent-sandbox-controller:' + lock['version']:
-            raise SessionError('unexpected_session_image', 'controller image does not match release')
-        spec['nodeSelector'] = {'kubernetes.io/hostname': 'agentbox-platform-lab-control-plane'}
-        spec['tolerations'] = [{'key': 'node-role.kubernetes.io/control-plane', 'operator': 'Exists', 'effect': 'NoSchedule'}]
-        container = spec['containers'][0]
-        container.update(image=image, imagePullPolicy='Never',
-                         resources={'requests': {'cpu': '100m', 'memory': '128Mi'}, 'limits': {'cpu': '1000m', 'memory': '512Mi'}},
-                         readinessProbe={'httpGet': {'path': '/readyz', 'port': 8081}, 'periodSeconds': 2, 'failureThreshold': 60})
+    deployments = [o for o in objects if o['kind'] == 'Deployment']
     if len(deployments) != 1:
         raise SessionError('unexpected_session_manifest', 'expected one combined core/extensions controller')
-    return {'apiVersion': 'v1', 'kind': 'List', 'items': objects}
+    obj = deployments[0]
+    if obj['metadata']['name'] != 'agent-sandbox-controller' or obj['metadata'].get('namespace') != CONTROLLER_NS:
+        raise SessionError('unexpected_session_controller', obj['metadata']['name'])
+    containers = obj['spec']['template']['spec']['containers']
+    if len(containers) != 1 or containers[0]['image'] != 'registry.k8s.io/agent-sandbox/agent-sandbox-controller:' + lock['version']:
+        raise SessionError('unexpected_session_image', 'controller image does not match release')
+    from lib.platform_manifests import objects as unpack
+    rendered = render_upstream(config or Path(__file__).resolve().parents[2]/'deploy',
+        'controller-lab', objects, {'OWNER': owner, 'CONTROLLER_IMAGE': image})
+    return {'apiVersion': 'v1', 'kind': 'List', 'items': unpack(rendered)}
 
 
 class Sessions:
     def __init__(self, lab):
         self.lab = lab
         self.output = lab.runner.output
-        self.lock = json.loads((lab.config / 'session.lock.json').read_text())
+        self.lock = load_lock(lab.config, 'session')
         if self.lock.get('schema_version') != 1 or self.lock.get('warm_replicas') != 0:
             raise SessionError('invalid_session_lock', 'this phase supports cold creation only')
         self.bundle_path = lab.state_dir / 'session-bundle.json'
@@ -106,16 +88,19 @@ class Sessions:
         (self.output / name).write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
 
     def definition(self):
-        names = ('session.lock.json', 'session-template.json', 'session-rbac.json', 'session-client-job.json')
-        return {name: digest(self.lab.config / name) for name in names}
+        return manifest_definition(self.lab.config, 'session')
 
     def build_inputs(self):
-        files = [self.lab.root / 'go.mod', self.lab.root / 'go.sum',
-                 self.lab.config / 'session.lock.json', self.lab.config / 'sandbox-runtime.Dockerfile',
-                 self.lab.config / 'session-client.Dockerfile']
-        for folder in ('cmd/agentbox-session-smoke', 'internal/sessionprobe'):
-            files += [p for p in (self.lab.root / folder).glob('*.go') if not p.name.endswith('_test.go')]
-        return {str(p.relative_to(self.lab.root)): digest(p) for p in sorted(files)}
+        files = [self.lab.root/'go.mod',self.lab.root/'go.sum']
+        for folder in ('cmd/agentbox-session-smoke','internal/sessionprobe'):
+            files += [p for p in (self.lab.root/folder).glob('*.go') if not p.name.endswith('_test.go')]
+        result = {str(p.relative_to(self.lab.root)):digest(p) for p in sorted(files)}
+        # Immutable input IDs of the v1 bundle protocol, not physical filenames.
+        # New component paths preserve cache identity only with equal lock/payload values.
+        result['deploy/platform/session.lock.json'] = lock_identity(self.lab.config,'session')
+        result['deploy/platform/sandbox-runtime.Dockerfile'] = digest(self.lab.config/'components/agent-sandbox/runtime.Dockerfile')
+        result['deploy/platform/session-client.Dockerfile'] = digest(self.lab.config/'acceptance/sessions/client.Dockerfile')
+        return result
 
     def docker_image(self, name):
         return json.loads(self.lab.runner.run([self.lab.tools['docker'], 'image', 'inspect', name]))[0]
@@ -143,7 +128,7 @@ class Sessions:
     def build(self, controller_source=None, python_source=None):
         controller_source = checked_source(self.lock['controller_image'], controller_source)
         python_image = self.lab.lock['smoke']['image']
-        python_source = checked_source(python_image, python_source)
+        python_source = checked_source(python_image, python_source or python_image_source(self.lab.config))
         with self.lab.operation_lock():
             docker = self.lab.docker_info()
             version = self.lab.runner.run(['go', 'version'])
@@ -183,8 +168,8 @@ class Sessions:
                                      '-ldflags=' + flags, '-o', str(path), package], timeout=900)
                 binary_hashes[name] = digest(path)
             # A minimal build context avoids sending repository credentials/cache to Docker.
-            for kind, dockerfile, binary in [('runtime', 'sandbox-runtime.Dockerfile', 'sandboxd'),
-                                             ('client', 'session-client.Dockerfile', 'agentbox-session-smoke')]:
+            for kind, dockerfile, binary in [('runtime', 'components/agent-sandbox/runtime.Dockerfile', 'sandboxd'),
+                                             ('client', 'acceptance/sessions/client.Dockerfile', 'agentbox-session-smoke')]:
                 with tempfile.TemporaryDirectory(prefix='session-image-', dir=self.lab.state_dir) as temporary:
                     context = Path(temporary)
                     shutil.copyfile(self.lab.config / dockerfile, context / 'Dockerfile')
@@ -335,7 +320,7 @@ class Sessions:
             path = self.output / 'session-upstream.yaml'
             path.write_bytes(data)
             objects = kubectl_objects(self.lab.kubectl('create', '--dry-run=client', '--validate=false', '-f', path, '-o', 'json', timeout=60))
-            rendered = render_controller(objects, self.lock, self.state['session'], bundle['images']['controller']['name'])
+            rendered = render_controller(objects, self.lock, self.state['session'], bundle['images']['controller']['name'], self.lab.config)
             self.save('session-controller-rendered.json', rendered)
             found = kubectl_objects(self.lab.kubectl('get', '-f', '-', '--ignore-not-found', '-o', 'json', input_text=json.dumps(rendered)))
             if any(o['metadata'].get('labels', {}).get(OWNER) != self.state['session'] for o in found):
@@ -364,20 +349,15 @@ class Sessions:
                 self.lab.write_state(self.state)
 
     def namespace(self, name, role, run_id):
-        obj = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': name, 'labels': {
-            OWNER: self.state['session'], RUN: run_id, ROLE: role}}}
+        obj = render_manifest(self.lab.config, 'session-namespace', {'NAME': name, 'ROLE': role, 'RUN': run_id, 'OWNER': self.state['session']})
         created = json.loads(self.lab.kubectl('create', '-f', '-', '-o', 'json', input_text=json.dumps(obj)))
         return {'name': name, 'uid': created['metadata']['uid']}
 
-    def render(self, name, params):
-        text = (self.lab.config / name).read_text()
-        for key, value in params.items():
-            text = text.replace('__' + key + '__', value)
-        obj = json.loads(text)
-        objects = obj['items'] if obj.get('kind') == 'List' else [obj]
-        for item in objects:
-            item['metadata'].setdefault('labels', {}).update({OWNER: self.state['session'], RUN: params['RUN']})
-        return obj
+    def render(self, profile, params):
+        values = dict(params)
+        values.pop('SESSION', None)
+        values['OWNER'] = self.state['session']
+        return render_manifest(self.lab.config, profile, values)
 
     def create(self, obj):
         return kubectl_objects(self.lab.kubectl('create', '-f', '-', '-o', 'json', input_text=json.dumps(obj)))
@@ -386,12 +366,8 @@ class Sessions:
         api = json.loads(self.lab.kubectl('-n', 'default', 'get', 'service', 'kubernetes', '-o', 'json'))
         slices = json.loads(self.lab.kubectl('-n', 'default', 'get', 'endpointslices', '-l',
                                            'kubernetes.io/service-name=kubernetes', '-o', 'json'))['items']
-        dns = {'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}},
-                       'podSelector': {'matchLabels': {'k8s-app': 'kube-dns'}}}],
-               'ports': [{'protocol': 'UDP', 'port': 53}, {'protocol': 'TCP', 'port': 53}]}
-        rules = [dns, {'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': work_ns}},
-                              'podSelector': {'matchLabels': {ROLE: 'runtime', RUN: run_id}}}],
-                       'ports': [{'protocol': 'TCP', 'port': 8080}, {'protocol': 'TCP', 'port': 9090}]}]
+        policy = self.render('client-policy', {'CLIENT_NS': client_ns, 'WORK_NS': work_ns, 'RUN': run_id})
+        rules = policy['spec']['egress']
         api_ip = api['spec']['clusterIP']
         ipaddress.IPv4Address(api_ip)
         rules.append({'to': [{'ipBlock': {'cidr': api_ip + '/32'}}], 'ports': [{'protocol': 'TCP', 'port': 443}]})
@@ -402,19 +378,14 @@ class Sessions:
                     ipaddress.IPv4Address(address)
                     rules.append({'to': [{'ipBlock': {'cidr': address + '/32'}}],
                                   'ports': [{'protocol': 'TCP', 'port': p['port']} for p in item['ports']]})
-        return {'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy',
-                'metadata': {'name': 'session-client', 'namespace': client_ns, 'labels': {OWNER: self.state['session'], RUN: run_id}},
-                'spec': {'podSelector': {}, 'policyTypes': ['Ingress', 'Egress'], 'ingress': [], 'egress': rules}}
+        return policy
 
     def observer(self, namespace, run_id, image):
-        params = {'NAME': 'observer', 'NAMESPACE': namespace, 'SESSION': self.state['session'],
+        params = {'NAME': 'observer', 'NAMESPACE': namespace, 'OWNER': self.state['session'],
                   'RUN': run_id, 'ROLE': 'observer', 'IMAGE': image}
-        obj = self.render('network-pod.json', params)
-        obj['metadata']['labels'][RUN] = run_id
+        obj = self.render('observer', params)
         spec = obj['spec']
-        spec.update(activeDeadlineSeconds=900, nodeSelector={'kubernetes.io/hostname': 'agentbox-platform-lab-control-plane'},
-                    tolerations=[{'key': 'node-role.kubernetes.io/control-plane', 'operator': 'Exists', 'effect': 'NoSchedule'}])
-        spec['containers'][0].update(imagePullPolicy='Never', command=['/usr/local/bin/python3', '-I', '-B', '-u', '-c',
+        spec['containers'][0].update(command=['/usr/local/bin/python3', '-I', '-B', '-u', '-c',
                                        (self.lab.root / 'scripts/lib/network_server.py').read_text()])
         value = self.create(obj)[0]
         self.lab.kubectl('-n', namespace, 'wait', '--for=condition=Ready', 'pod/observer', '--timeout=120s', timeout=140)
@@ -602,15 +573,15 @@ class Sessions:
                 params = {'OWNER': self.state['session'], 'RUN': run_id, 'WORK_NS': namespaces['work']['name'],
                           'CLIENT_NS': namespaces['client']['name'], 'RUNTIME_IMAGE': bundle['images']['runtime']['name'],
                           'CLIENT_IMAGE': bundle['images']['client']['name']}
-                template = self.render('session-template.json', params)
+                template = self.render('session-warm' if profile == 'warm' else 'session', params)
                 if profile == 'warm':
-                    quota = warm_fixture(template, params['WORK_NS'], self.state['session'], run_id)
+                    quota = self.render('warm-quota', params)
                     self.create(quota)
                     record['quota_initial'] = self.warm_quota_ready(params['WORK_NS'])
                 self.save('session-template.json', template)
                 created = self.create(template)
                 template_uid = next(o['metadata']['uid'] for o in created if o['kind'] == 'SandboxTemplate')
-                self.create(self.render('session-rbac.json', params))
+                self.create(self.render('sdk-rbac', params))
                 self.create(self.client_policy(params['CLIENT_NS'], params['WORK_NS'], run_id))
                 self.policies_ready(params['WORK_NS'], template_uid)
                 faults = None
@@ -618,7 +589,7 @@ class Sessions:
                     from lib.session_faults import FaultActions
                     faults = FaultActions(self, runtime, params['WORK_NS'], run_id, bundle['images']['controller']['name'])
                 observer = self.observer(namespaces['observer']['name'], run_id, bundle['images']['client']['name']) if profile == 'cold' else None
-                job_spec = self.render('session-client-job.json', params)
+                job_spec = self.render('sdk-client', params)
                 job_spec['spec']['template']['spec']['containers'][0]['env'].append({'name': 'SESSION_PROFILE', 'value': profile})
                 client_job = self.create(job_spec)[0]
                 job_uid = client_job['metadata']['uid']

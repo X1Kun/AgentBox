@@ -22,7 +22,7 @@ class GVisorTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.lab = Mock()
-        self.lab.config = ROOT / 'deploy/platform'
+        self.lab.config = ROOT / 'deploy'
         self.lab.root = ROOT
         self.lab.runner.output = self.root
         self.runtime = GVisor(self.lab)

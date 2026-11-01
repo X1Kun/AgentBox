@@ -1,0 +1,7 @@
+- op: add
+  path: /spec/activeDeadlineSeconds
+  value: 900
+- op: add
+  path: /spec/nodeSelector
+  value:
+    kubernetes.io/hostname: agentbox-platform-lab-worker

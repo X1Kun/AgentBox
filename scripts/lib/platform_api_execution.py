@@ -44,14 +44,14 @@ class APIExecutionAcceptance(APIAcceptance):
         base_image=sessions.docker_image(base)  # Require the verified cached source; no implicit pull.
         self.require(base in base_image.get('RepoDigests',[]),'cached API base digest not confirmed')
         inputs={'binary':hashlib.sha256(binary.read_bytes()).hexdigest(),
-                'dockerfile':hashlib.sha256((self.lab.config/'api.Dockerfile').read_bytes()).hexdigest(),
+                'dockerfile':hashlib.sha256((self.lab.config/'agentbox/api/Dockerfile').read_bytes()).hexdigest(),
                 'base':base,'base_id':base_image['Id']}
         fingerprint=hashlib.sha256(json.dumps(inputs,sort_keys=True).encode()).hexdigest()
         image='agentbox/api:'+fingerprint[:16]
         # Send only the binary and Dockerfile, never previous image archives.
         with tempfile.TemporaryDirectory(prefix='api-image-',dir=self.lab.state_dir) as tmp:
             context=Path(tmp)
-            shutil.copyfile(self.lab.config/'api.Dockerfile',context/'Dockerfile')
+            shutil.copyfile(self.lab.config/'agentbox/api/Dockerfile',context/'Dockerfile')
             shutil.copy2(binary,context/'agentbox-api')
             self.lab.runner.run([self.lab.tools['docker'],'build','--pull=false','--network=none','--build-arg',
                 'BASE_IMAGE='+base,'-t',image,context],timeout=300)
@@ -154,7 +154,7 @@ class APIExecutionAcceptance(APIAcceptance):
                 work=namespaces['work']['name'];client=namespaces['client']['name']
                 params={'OWNER':sessions.state['session'],'RUN':run,'WORK_NS':work,'CLIENT_NS':client,
                     'RUNTIME_IMAGE':bundle['images']['runtime']['name'],'API_IMAGE':image}
-                for name in ('session-template.json','api-rbac.json','api-quota.json'):
+                for name in ('session','api-rbac','api-quota'):
                     sessions.create(sessions.render(name,params))
                 sessions.create(sessions.client_policy(client,work,run))
                 until=time.monotonic()+120
@@ -168,7 +168,7 @@ class APIExecutionAcceptance(APIAcceptance):
                     # Keep an independent live check of the namespace-scoped RBAC.
                     self.scoped_credentials(Path(tmp),work,client)
                     self.secret(Path(tmp),client,alice,bob)
-                    sessions.create(sessions.render('api-deployment.json',params))
+                    sessions.create(sessions.render('api',params))
                     self.connect(client)
                     a=self.session('analysis',alice,runtime,work)
                     self.file(a,alice,'input.csv',b'value\n2\n3\n5\n')

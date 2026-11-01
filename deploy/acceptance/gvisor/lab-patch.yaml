@@ -1,0 +1,5 @@
+- op: add
+  path: /spec/template/spec/nodeSelector
+  value:
+    agentbox.dev/lab: agentbox-platform-lab
+    agentbox.dev/role: worker

@@ -1,0 +1,8 @@
+- op: add
+  path: /spec/podTemplate/spec/nodeSelector
+  value:
+    agentbox.dev/lab: agentbox-platform-lab
+    agentbox.dev/role: worker
+- op: replace
+  path: /spec/podTemplate/spec/containers/0/imagePullPolicy
+  value: Never

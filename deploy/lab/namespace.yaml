@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    agentbox.dev/session: development
+    app.kubernetes.io/managed-by: agentbox-platform
+  name: agentbox-platform

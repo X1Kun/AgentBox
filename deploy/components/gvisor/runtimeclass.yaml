@@ -1,0 +1,8 @@
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: agentbox-gvisor
+  labels:
+    app.kubernetes.io/managed-by: agentbox-platform
+    agentbox.dev/session: development
+handler: agentbox-gvisor

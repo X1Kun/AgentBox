@@ -25,7 +25,7 @@ class NetworkTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.lab = Mock()
-        self.lab.config = ROOT / 'deploy/platform'
+        self.lab.config = ROOT / 'deploy'
         self.lab.root = ROOT
         self.lab.runner.output = self.root
         self.lab.operation_lock.return_value = nullcontext()
@@ -62,8 +62,8 @@ class NetworkTests(unittest.TestCase):
         original = next(iter(self.net.lock['images']))
         lock = dict(self.net.lock, object_count=2, images={original:self.net.lock['images'][original]})
         objects = [
-            {'kind':'ConfigMap','metadata':{'name':'calico-config'},'data':{'calico_backend':'vxlan'}},
-            {'kind':'DaemonSet','metadata':{'name':'calico-node'},'spec':{'selector':{'matchLabels':{'k8s-app':'calico-node'}},
+            {'apiVersion':'v1','kind':'ConfigMap','metadata':{'name':'calico-config'},'data':{'calico_backend':'vxlan'}},
+            {'apiVersion':'apps/v1','kind':'DaemonSet','metadata':{'name':'calico-node'},'spec':{'selector':{'matchLabels':{'k8s-app':'calico-node'}},
                 'template':{'metadata':{'labels':{'k8s-app':'calico-node'}},'spec':{
                     'initContainers':[{'name':'install-cni','image':original}],
                     'containers':[{'name':'calico-node','image':original,'env':[]}]
@@ -170,10 +170,9 @@ class NetworkTests(unittest.TestCase):
         with self.assertRaises(ValueError): network_client.dns_addresses(response,124)
 
     def calico_create_fixture(self):
-        config=self.root/'deploy/platform'
+        config=self.root/'deploy'
         config.mkdir(parents=True)
-        for name in ('versions.lock.json','kind.yaml','kind-calico.yaml','calico.lock.json'):
-            shutil.copyfile(ROOT/'deploy/platform'/name,config/name)
+        shutil.copytree(ROOT/'deploy',config,dirs_exist_ok=True)
         runner=Mock(); runner.output=self.root/'evidence'; runner.output.mkdir()
         lab=platform_lab.Lab(self.root,runner)
         def run(args,**kwargs):
@@ -206,7 +205,7 @@ class NetworkTests(unittest.TestCase):
 
     def test_changed_kind_config_blocks_pending_network_install(self):
         lab,_,state=self.calico_create_fixture()
-        path=lab.config/'kind-calico.yaml'; path.write_text(path.read_text()+'# changed\n')
+        path=lab.config/'lab/kind-calico.yaml'; path.write_text(path.read_text()+'# changed\n')
         with patch.object(lab,'docker_info',return_value={'ID':'docker'}), patch.object(lab,'node_ids',return_value=state['node_ids']):
             with self.assertRaises(NetworkError) as caught:
                 Network(lab).attach()
@@ -214,7 +213,7 @@ class NetworkTests(unittest.TestCase):
 
     def test_owned_cluster_can_be_deleted_after_kind_config_changes(self):
         lab,_,state=self.calico_create_fixture()
-        path=lab.config/'kind-calico.yaml'; path.write_text(path.read_text()+'# desired config changed\n')
+        path=lab.config/'lab/kind-calico.yaml'; path.write_text(path.read_text()+'# desired config changed\n')
         with patch.object(lab,'docker_info',return_value={'ID':'docker'}), \
                 patch.object(lab,'node_ids',side_effect=[state['node_ids'],[]]):
             result=lab.delete()

@@ -36,10 +36,9 @@ class PlatformTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.config = self.root / "deploy/platform"
+        self.config = self.root / "deploy"
         self.config.mkdir(parents=True)
-        for name in ("versions.lock.json", "kind.yaml", "smoke-job.yaml"):
-            shutil.copyfile(ROOT / "deploy/platform" / name, self.config / name)
+        shutil.copytree(ROOT / "deploy", self.config, dirs_exist_ok=True)
         self.output = self.root / "evidence"
         self.output.mkdir()
         self.runner = FakeRunner(self.output)
@@ -51,7 +50,7 @@ class PlatformTests(unittest.TestCase):
         value = dict(schema_version=1, project=str(self.root), cluster=labmod.CLUSTER,
                      session="a"*32, phase="ready", docker_id="docker-a", node_ids=["1"*64, "2"*64],
                      kubeconfig_sha256=labmod.file_hash(self.lab.kubeconfig),
-                     lock_sha256=labmod.file_hash(self.config / "versions.lock.json"))
+                     lock_sha256=labmod.lock_identity(self.config, "versions"))
         value.update(changes)
         labmod.atomic_json(self.lab.state_path, value)
         return value
@@ -64,6 +63,27 @@ class PlatformTests(unittest.TestCase):
         for value in ("python:latest", "mirror/python@sha256:"+"0"*64, "https://mirror/image@"+digest):
             with self.subTest(value=value), self.assertRaises(labmod.LabError):
                 labmod.pinned_source(canonical, value)
+
+    def test_default_python_source_and_explicit_override_cover_all_entrypoints(self):
+        canonical = self.lab.lock['smoke']['image']
+        digest = canonical.split('@')[1]
+        mirror = 'docker.m.daocloud.io/library/python@' + digest
+        override = 'mirror.example/python@' + digest
+        self.assertEqual(self.lab.python_image(), mirror)
+        self.assertEqual(self.lab.python_image(override), override)
+        with self.assertRaises(labmod.LabError):
+            self.lab.python_image('mirror.example/python@sha256:' + '0' * 64)
+        for action in ('smoke', 'gvisor-test', 'network-test', 'session-build'):
+            option = '--session-python-source' if action == 'session-build' else '--smoke-image-source'
+            for args, expected in (([], mirror), ([option, override], override)):
+                with self.subTest(action=action, args=args), patch.object(labmod, 'ROOT', self.root), \
+                        patch.object(labmod.Runner, 'run', side_effect=AssertionError('executed')):
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        self.assertEqual(labmod.main([action, '--dry-run', *args]), 0)
+                    report = json.loads(output.getvalue())
+                    actual = report['session_sources']['python'] if action == 'session-build' else report['smoke_image']
+                    self.assertEqual(actual, expected)
 
     def test_every_kubectl_call_has_dedicated_config_and_context(self):
         with patch.dict("os.environ", {"KUBECONFIG": "/unrelated/production-config"}):
@@ -177,13 +197,13 @@ class PlatformTests(unittest.TestCase):
         pod = {"metadata": {"name": "smoke-pod", "uid": "pod-uid", "labels": {labmod.OWNER_LABEL: session},
                             "ownerReferences": [{"kind": "Job", "uid": "job-uid", "controller": True}]},
                "spec": {"nodeName": node or labmod.CLUSTER+"-worker",
-                        "containers": [{"name": "compute", "image": self.lab.lock["smoke"]["image"]}]},
+                        "containers": [{"name": "compute", "image": self.lab.python_image()}]},
                "status": {"phase": "Succeeded"}}
         remaining = [pod]
 
         def kubectl(*args, **kwargs):
             if "create" in args:
-                self.assertIn("image: "+self.lab.lock["smoke"]["image"], kwargs["input_text"])
+                self.assertEqual(json.loads(kwargs["input_text"])["spec"]["template"]["spec"]["containers"][0]["image"], self.lab.python_image())
                 return ""
             if "get" in args and "job" in args:
                 return json.dumps(job)

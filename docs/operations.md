@@ -4,6 +4,25 @@
 
 按任务跳转：[平台](#platform-lab) · [gVisor](#gvisor-runtime) · [网络](#network-policy) · [会话](#cold-sessions) · [API](#session-api) · [记录清理](#claim-retention) · [Agent 验收](#agent) · [旧安装退役](#retirement) · [排障](#diagnosis)。命令从仓库根目录执行。
 
+<a id="manifests"></a>
+## YAML 与 Kustomize 资源组织
+
+资源按组件职责归集，完整布局见[部署资源说明](../deploy/README.md)。`deploy/lab/` 保存 kind 与工具锁；`components/gvisor/`、`components/calico/`、`components/agent-sandbox/` 保存各自配置、镜像文件和版本锁；`agentbox/api/` 与 `agentbox/cleanup/` 保存应用及独立管理员权限。只有 `agentbox/overlays/lab/` 表达应用环境差异，smoke/gVisor/network/sessions 夹具集中在 acceptance 下。
+
+```bash
+python3 -m pip install -r scripts/requirements-platform.txt
+make k8s-render
+python3 scripts/render_manifests.py --component api --environment lab \
+  --set WORK_NS=agentbox-work --set CLIENT_NS=agentbox-client --set RUN=preview
+python3 scripts/render_manifests.py --fixture network
+```
+
+渲染只调用本地 Kustomize，不连接集群/Docker，不启用远端资源、Helm 或插件。Python 在实验中选择必要资源，并更新明确的动态 namespace/归属、镜像、参数、探针程序与发现的 API CIDR；静态 RBAC、资源预算及环境约束保存在 YAML 中。不引入每个调用一个 overlay、参数 ConfigMap 转发或整段模板替换。实际创建继续经过原 platform 入口的 UID/归属检查。
+
+四份锁均使用 YAML；`lab/format-compatibility.yaml` 仅在锁值、资源语义与受控补丁精确等价时，承接旧本地状态和镜像缓存身份，不强迫重建健康集群，也不授权版本升级。v1 bundle 的历史输入 ID 只是缓存协议标识，不读取旧文件路径；当前 YAML 字节哈希仍进入源文件证据。历史 JSON、运行报告和生成缓存元数据不回写。
+
+Python 镜像默认通过 [image-sources.yaml](../deploy/lab/image-sources.yaml) 中的 `docker.m.daocloud.io/library/python` 下载，digest 仍取自工具版本锁。该来源已通过本机网络验收；`docker.io/library/python` 本轮曾拉取失败。smoke、gVisor/network 和 session-build 统一读取默认配置，API 构建沿用 session bundle 的已校验来源；不再需要重复传 Python 镜像源参数。显式参数仍可覆盖，且必须保留锁定 digest。其他组件仓库不进行未经验证的整体替换。
+
 <a id="platform-lab"></a>
 ## 独立 Kubernetes 功能实验
 
@@ -11,7 +30,7 @@
 
 要求 Linux/amd64、Python 3.10+、Docker Engine 24+ 和 cgroup v2；Docker 可见至少 4 个逻辑 CPU、4GiB 内存只是启动最低条件，不是空闲资源保证。宿主 containerd、KVM、helm 和 k6 不是本入口的必需项。
 
-工具与镜像以 [versions.lock.json](../deploy/platform/versions.lock.json) 为准。kind/kubectl 固定版本及上游二进制 SHA-256，node/任务镜像固定 digest；containerd 随 node 镜像固定，实际版本从 Node status 记录。kind/node 组合来源见[官方发布](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0)。本配置采用 Kubernetes 1.36 的 kubeadm v1beta4；锁定的 kubectl 1.35 属于[官方允许的一小版本偏差](https://kubernetes.io/releases/version-skew-policy/#kubectl)。
+工具与镜像以 [versions.lock.yaml](../deploy/lab/versions.lock.yaml) 为准。kind/kubectl 固定版本及上游二进制 SHA-256，node/任务镜像固定 digest；containerd 随 node 镜像固定，实际版本从 Node status 记录。kind/node 组合来源见[官方发布](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0)。本配置采用 Kubernetes 1.36 的 kubeadm v1beta4；锁定的 kubectl 1.35 属于[官方允许的一小版本偏差](https://kubernetes.io/releases/version-skew-policy/#kubectl)。
 
 ### 工具准备与执行
 
@@ -64,7 +83,7 @@ Makefile 的 benchmark、observe、static-experiment、qos-integration、systemd
 
 这是 P1 的运行时子步骤，仍只执行可信测试代码。`gvisor-install` 在已确认归属的 kind Worker 内安装完整发布包、配置官方 shim/handler 并创建 RuntimeClass；`gvisor-test` 验证真实运行与回收。两者不调用 agentboxd，不修改宿主 Docker/containerd，也不部署 Agent Sandbox 或 Kueue。
 
-版本与官方 SHA-512 见 [gvisor.lock.json](../deploy/platform/gvisor.lock.json)。当前固定 release-20261005.0、linux/x86_64、systrap、节点 containerd 2.3.4。runsc、shim 和 gvisor-bin 辅助文件来自同一完整包；仅复制 runsc 不满足安装要求。依据：[官方安装](https://gvisor.dev/docs/user_guide/install/)、[shim 配置](https://gvisor.dev/docs/user_guide/containerd/configuration/)。
+版本与官方 SHA-512 见 [gvisor.lock.yaml](../deploy/components/gvisor/versions.lock.yaml)。当前固定 release-20261005.0、linux/x86_64、systrap、节点 containerd 2.3.4。runsc、shim 和 gvisor-bin 辅助文件来自同一完整包；仅复制 runsc 不满足安装要求。依据：[官方安装](https://gvisor.dev/docs/user_guide/install/)、[shim 配置](https://gvisor.dev/docs/user_guide/containerd/configuration/)。
 
 先准备普通平台工具，再下载固定资产到本地缓存。下载可替换传输源，安装器始终按锁定校验值验证内容；它本身不自动联网下载。
 
@@ -83,7 +102,7 @@ make platform-delete
 
 已有本项目完整 ready 集群时从 install 开始，不重复 create。安装失败保留 `cluster.json` 中的 gvisor 安装阶段及原/目标配置哈希，修正原因后可重试同一版本；已就绪安装只验证，不重启 containerd。外部配置改动、RuntimeClass 归属/身份变化或版本定义变化会拒绝继续，不能靠覆盖状态强行接管；更换运行时版本使用新建实验集群。
 
-`--gvisor-archive PATH` 可为 install 指定包位置。镜像网络受限时，可以在 test 使用与普通 smoke 相同的 digest 镜像源：
+`--gvisor-archive PATH` 可为 install 指定包位置。test 默认使用统一配置的 Python 源，也可显式指定相同 digest 的其他源：
 
 ```bash
 python3 scripts/platform_lab.py gvisor-install --dry-run
@@ -106,7 +125,7 @@ python3 scripts/platform_lab.py gvisor-test --smoke-image-source \
 
 默认 `platform-create` 仍使用原 kindnet 功能 profile。网络策略实验必须新建 Calico profile，不能向已有 kindnet 集群叠加 CNI；若本项目已有实验集群，先按归属保护流程清理，再创建。所有入口复用独立 context/kubeconfig、节点身份和本地操作锁，不接管其他集群。
 
-Calico v3.33.0 的官方 VXLAN manifest、SHA-256、三个镜像 digest 和来源见 [calico.lock.json](../deploy/platform/calico.lock.json)。所选版本官方测试覆盖 Kubernetes 1.36，[kind 安装说明](https://docs.tigera.io/calico/latest/getting-started/kubernetes/kind)要求禁用默认 CNI。本 profile 固定 IPv4 Pod CIDR 10.244.0.0/16、VXLAN Always、无 IPIP/BGP、非 eBPF 数据面；保留原生 kube-proxy。
+Calico v3.33.0 的官方 VXLAN manifest、SHA-256、三个镜像 digest 和来源见 [calico.lock.yaml](../deploy/components/calico/versions.lock.yaml)。所选版本官方测试覆盖 Kubernetes 1.36，[kind 安装说明](https://docs.tigera.io/calico/latest/getting-started/kubernetes/kind)要求禁用默认 CNI。本 profile 固定 IPv4 Pod CIDR 10.244.0.0/16、VXLAN Always、无 IPIP/BGP、非 eBPF 数据面；保留原生 kube-proxy。
 
 ```bash
 curl --fail --location --retry 2 --connect-timeout 15 --max-time 120 \
@@ -122,14 +141,13 @@ make platform-delete
 
 先按前文准备固定工具和 gVisor 完整发布包。创建完成的 `network_pending` 表示控制面已启动，尚不允许普通任务或 gVisor 验收；安装并验证 Calico、CoreDNS、节点 Ready 后才进入 ready。创建与安装可分开执行，CoreDNS 在无 CNI 时发生的历史 rollout 进度超时不等同于当前不可用，安装器检查其实际 Available 状态，不重启或放宽其期限。
 
-`network-install --calico-manifest PATH` 可指定本地原始 manifest，校验内容后由固定 kubectl 解析 YAML；Python 无新增第三方运行依赖。原始清单和渲染结果都留证，渲染仅增加归属标签、固定镜像 digest 及明确的 VXLAN/IPv4 参数。清单、live 对象归属或已记录 CNI 定义不匹配时拒绝覆盖。ready 状态重复安装只核对，不触发 rollout。
+`network-install --calico-manifest PATH` 可指定本地原始 manifest，校验内容后由固定 kubectl 解析 YAML，再使用本地 Kustomize 适配；YAML 依赖见 scripts/requirements-platform.txt。原始清单和渲染结果都留证，渲染仅增加归属标签、固定镜像 digest 及明确的 VXLAN/IPv4 参数。清单、live 对象归属或已记录 CNI 定义不匹配时拒绝覆盖。ready 状态重复安装只核对，不触发 rollout。
 
-初次安装可使用 `--calico-image-prefix REGISTRY/REPOSITORY` 替换镜像传输前缀，所有组件 digest 保持锁定；已记录的来源变化需重建实验 profile，不在线替换运行中的 CNI。测试镜像可继续使用固定 digest 的镜像源：
+初次安装可使用 `--calico-image-prefix REGISTRY/REPOSITORY` 替换镜像传输前缀，所有组件 digest 保持锁定；已记录的来源变化需重建实验 profile，不在线替换运行中的 CNI。测试镜像默认使用统一配置，以下无需额外镜像源参数：
 
 ```bash
 python3 scripts/platform_lab.py create --network-profile calico --dry-run
-python3 scripts/platform_lab.py network-test --smoke-image-source \
-  docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+python3 scripts/platform_lab.py network-test
 ```
 
 验收在四个按本次 run 标识创建的 namespace 中部署可信探针。普通和 gVisor 目标放在 Worker，调用方与数据端点放在控制面节点的普通 Pod 中，验证跨节点流量。每个响应携带 run、Pod UID 和监听端口，所有监听在 baseline 先确认可达。
@@ -143,7 +161,7 @@ python3 scripts/platform_lab.py network-test --smoke-image-source \
 <a id="cold-sessions"></a>
 ## 上游冷会话与 Go SDK 验收
 
-此入口依赖 **ready 的 Calico profile 和 gVisor 安装**。 安装和会话验收还核对原生 kube-controller-manager 与 kube-scheduler 的 Ready 状态；仅 Node/CNI Ready 不足以继续，失败记录为 `session_control_plane_not_ready`。普通 kindnet 集群需先按归属流程删除再新建。固定组件及校验值见 [session.lock.json](../deploy/platform/session.lock.json)：Agent Sandbox controller/CRD/Go SDK v1.0.8，WarmPool replicas=0，仅验证冷创建。项目 Go 最低版本随上游 SDK 提升为 1.26，固定工具链 go1.27.1；`go` 可按 go.mod 自动选择，无需替换系统 Go。
+此入口依赖 **ready 的 Calico profile 和 gVisor 安装**。 安装和会话验收还核对原生 kube-controller-manager 与 kube-scheduler 的 Ready 状态；仅 Node/CNI Ready 不足以继续，失败记录为 `session_control_plane_not_ready`。普通 kindnet 集群需先按归属流程删除再新建。固定组件及校验值见 [session.lock.yaml](../deploy/components/agent-sandbox/versions.lock.yaml)：Agent Sandbox controller/CRD/Go SDK v1.0.8，WarmPool replicas=0，仅验证冷创建。项目 Go 最低版本随上游 SDK 提升为 1.26，固定工具链 go1.27.1；`go` 可按 go.mod 自动选择，无需替换系统 Go。
 
 ```bash
 # 先准备前述 kind/kubectl、Calico 清单和 gVisor 完整包。
@@ -164,8 +182,7 @@ make platform-delete
 
 ```bash
 GOPROXY=https://goproxy.cn,direct python3 scripts/platform_lab.py session-build \
-  --session-controller-source k8s.m.daocloud.io/agent-sandbox/agent-sandbox-controller@sha256:e1d96312487eba7d8f001e848a9d4e644b7deea8c2a4564ccc318abb729be731 \
-  --session-python-source docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+  --session-controller-source k8s.m.daocloud.io/agent-sandbox/agent-sandbox-controller@sha256:e1d96312487eba7d8f001e848a9d4e644b7deea8c2a4564ccc318abb729be731
 ```
 
 build 核对上游模块版本/校验与工具链，用 `go build -mod=readonly` 构建上游 sandboxd 和本项目的 Go 验收客户端，再将二进制放入固定 Python 基镜像。上游 controller 使用官方发布 digest。Docker 构建只发送临时最小上下文，不发送仓库或凭据；本地镜像按输入哈希命名，bundle 记录来源、二进制 SHA-256、Docker daemon ID 和实际 image ID。变更 Go/镜像输入后必须重新 build，镜像别名被替换时拒绝继续。 仅客户端变化时，sandboxd 可复用前次同 Docker daemon、工具链、SDK 校验和、go.mod/go.sum、锁文件及 runtime Dockerfile 对应的缓存二进制；复用前核对其 SHA-256，来源不同则重编译，内容不符则拒绝。报告单列 reused_binaries。
@@ -248,13 +265,13 @@ bin/agentbox-api --listen 127.0.0.1:8090 \
 
 namespace、pool、instance 在安装时固定，重启保持一致；改变 Pool/实例标识需要明确迁移，不能把旧记录当成新配置资源。token 至少 32 个可见 ASCII 字符，启动日志不包含 token 或 kubeconfig 内容。HTTP 有独立头/体/写入期限、4KiB 创建 body 上限及有限在途请求数，满载直接拒绝，不建立等待队列。
 
-[api-rbac.json](../deploy/platform/api-rbac.json) 提供独立 ServiceAccount 和工作 namespace Role：Claim create/get/patch、Pool get，以及关联 Sandbox/Pod/Service 只读。没有 Secret 读取、Pod 创建/删除、模板更改或控制器管理权限。[api-quota.json](../deploy/platform/api-quota.json) 是实验预算示例，约束计算 Pod、声明资源和保留 Claim 数；实际部署须按资源域配置，API readiness 不是容量许可。
+[API RBAC](../deploy/agentbox/api/rbac.yaml) 提供独立 ServiceAccount 和工作 namespace Role：Claim create/get/patch、Pool get，以及关联 Sandbox/Pod/Service 只读。没有 Secret 读取、Pod 创建/删除、模板更改或控制器管理权限。[API quota](../deploy/agentbox/overlays/lab/quota.yaml) 是实验预算示例，约束计算 Pod、声明资源和保留 Claim 数；实际部署须按资源域配置，API readiness 不是容量许可。
 
 生命周期持久状态复用 Claim：request 摘要、归属、首次 UID 绑定、失效和关闭意图使用 API 专属注解，修改携带 UID/resourceVersion 条件；上游控制器仍管理 Sandbox/Pod/Service。关闭使用 Retain，记录不会随服务进程退出丢失。管理员清理元数据前必须确认终止和依赖回收；记录配额耗尽会拒绝新 Claim，不能把保留记录当作无成本。
 
 在完成现有 Calico/gVisor/session 安装后运行 `make platform-api-test`。该验收构建普通 Go API 进程，临时签发仅限工作 namespace 的凭据，并配置两个不同调用身份。验证异步幂等创建、参数冲突、跨身份拒绝、服务重启、Pod 替换后的持久失效、关闭收敛和创建记录保留；host 独立验证实际 gVisor 与运行时回收。凭据只放私有临时目录，不进入镜像、请求日志、报告或执行 Pod，失败保留的测试 namespace 由 platform-delete 限定清理。
 
-执行/文件需显式 `--enable-execution` 并让 API 运行在可达 Pod 网络的可信环境；普通宿主进程默认只提供生命周期。`api.Dockerfile` 与 `api-deployment.json` 提供实验集群的原生部署模板：普通 API Pod 访问受限的上游端口，实际代码仍在 Worker gVisor Pod 中执行。API Pod 独有 ServiceAccount 和 TLS/调用方 Secret，执行 Pod 不挂载这些凭据。模板固定实验控制面节点、imagePullPolicy=Never、单副本，生产部署须适配镜像分发、节点选择、证书和 Secret 管理。Secret 的 principal 文件只允许 owner 或同进程组读取，不允许其他用户访问或组写入。
+执行/文件需显式 `--enable-execution` 并让 API 运行在可达 Pod 网络的可信环境；普通宿主进程默认只提供生命周期。`agentbox/api/Dockerfile` 与 `agentbox/overlays/lab/` 提供实验集群的原生部署模板：普通 API Pod 访问受限的上游端口，实际代码仍在 Worker gVisor Pod 中执行。API Pod 独有 ServiceAccount 和 TLS/调用方 Secret，执行 Pod 不挂载这些凭据。模板固定实验控制面节点、imagePullPolicy=Never、单副本，生产部署须适配镜像分发、节点选择、证书和 Secret 管理。Secret 的 principal 文件只允许 owner 或同进程组读取，不允许其他用户访问或组写入。
 
 `make platform-api-exec-test` 构建 Go API 镜像并在原有健康实验集群验证一条 CSV/脚本/产物/后续执行闭环，以及隔离、非零退出、路径边界、并发冲突、运行中关闭、命令超时和输出上限。宿主仅向普通 API Pod 建立 TLS port-forward，不向 gVisor Pod port-forward；执行连接由 API 在集群内建立。临时 TLS/调用身份不进入镜像或报告。成功后清理本次 namespace/运行时，保留开发集群、上游组件和镜像缓存供下次复用，最终释放仍使用 platform-delete。
 
@@ -269,7 +286,7 @@ namespace、pool、instance 在安装时固定，重启保持一致；改变 Poo
 <a id="claim-retention"></a>
 ### Claim 记录保留与管理员清理
 
-`agentbox-cleanup` 是一次性管理工具，独立于产品 API；显式要求受限 kubeconfig，不加载默认用户或 in-cluster 凭据。产品 API 的 Role 继续没有 Claim list/delete 权限。[cleanup-rbac.json](../deploy/platform/cleanup-rbac.json) 提供单独 ServiceAccount、工作 namespace Role 和 RoleBinding 模板；按实际 namespace 替换占位符后由管理员安装。清理身份能读取关联资源、patch/delete Claim，但不能创建 Claim、读 Secret 或修改 Pod；它是可信管理员权限，代码归属检查不等于针对恶意管理员的 IAM 隔离。
+`agentbox-cleanup` 是一次性管理工具，独立于产品 API；显式要求受限 kubeconfig，不加载默认用户或 in-cluster 凭据。产品 API 的 Role 继续没有 Claim list/delete 权限。[清理 RBAC](../deploy/agentbox/cleanup/rbac.yaml) 提供单独 ServiceAccount、工作 namespace Role 和 RoleBinding 模板；由编排层注入实际 namespace，再由受归属检查的编排入口安装。清理身份能读取关联资源、patch/delete Claim，但不能创建 Claim、读 Secret 或修改 Pod；它是可信管理员权限，代码归属检查不等于针对恶意管理员的 IAM 隔离。
 
 ```bash
 go build -o bin/agentbox-cleanup ./cmd/agentbox-cleanup

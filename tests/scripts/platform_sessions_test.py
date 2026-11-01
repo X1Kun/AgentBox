@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.platform_sessions import Sessions, SessionError, checked_source, render_controller, warm_fixture, OWNER, RUN, ROLE
+from lib.platform_sessions import Sessions, SessionError, checked_source, render_controller, OWNER, RUN, ROLE
 
 
 class SessionTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class SessionTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.lab = Mock()
-        self.lab.config = ROOT / 'deploy/platform'
+        self.lab.config = ROOT / 'deploy'
         self.lab.root = ROOT
         self.lab.state_dir = self.root
         self.lab.tools = {'kind': 'kind', 'docker': 'docker'}
@@ -47,7 +47,7 @@ class SessionTests(unittest.TestCase):
         self.lab.write_state.assert_not_called()
 
     def controller(self):
-        return {'kind': 'Deployment', 'metadata': {'name': 'agent-sandbox-controller', 'namespace': 'agent-sandbox-system'},
+        return {'apiVersion':'apps/v1', 'kind': 'Deployment', 'metadata': {'name': 'agent-sandbox-controller', 'namespace': 'agent-sandbox-system'},
                 'spec': {'selector': {'matchLabels': {'app': 'upstream'}}, 'template': {'spec': {'containers': [{
                     'name': 'controller', 'image': 'registry.k8s.io/agent-sandbox/agent-sandbox-controller:v1.0.8',
                     'args': ['--leader-elect=true', '--extensions']}]}}}}
@@ -61,7 +61,7 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(container['args'], ['--leader-elect=true', '--extensions'])
         self.assertEqual(container['imagePullPolicy'], 'Never')
         self.assertEqual(container['image'], 'local@sha256:fixed')
-        self.assertEqual(obj['metadata']['labels'][OWNER], 'owner')
+        self.assertEqual(result['items'][0]['metadata']['labels'][OWNER], 'owner')
 
     def test_unlocked_controller_or_unexpected_bundle_rejected(self):
         for mutate in ('count', 'image', 'name', 'sidecar'):
@@ -142,7 +142,7 @@ class SessionTests(unittest.TestCase):
             self.assertEqual(caught.exception.reason, reason)
 
     def test_template_uses_managed_custom_policy_and_cold_pool(self):
-        obj = self.sessions.render('session-template.json', {'OWNER': 'owner', 'RUN': 'run', 'WORK_NS': 'work',
+        obj = self.sessions.render('session', {'OWNER': 'owner', 'RUN': 'run', 'WORK_NS': 'work',
             'CLIENT_NS': 'client', 'RUNTIME_IMAGE': 'image'})
         template, pool = obj['items']
         spec = template['spec']
@@ -169,15 +169,17 @@ class SessionTests(unittest.TestCase):
         self.assertEqual({p['port'] for r in api_rules for p in r['ports']}, {443, 6443})
 
     def test_warm_profile_keeps_inventory_and_total_budget_distinct(self):
-        template = self.sessions.render('session-template.json', {'OWNER': 'owner', 'RUN': 'run', 'WORK_NS': 'work',
+        template = self.sessions.render('session', {'OWNER': 'owner', 'RUN': 'run', 'WORK_NS': 'work',
             'CLIENT_NS': 'client', 'RUNTIME_IMAGE': 'image'})
-        quota = warm_fixture(template, 'work', 'owner', 'run')
+        template = self.sessions.render('session-warm', {'OWNER':'owner','RUN':'run','WORK_NS':'work','CLIENT_NS':'client','RUNTIME_IMAGE':'image'})
+        quota = self.sessions.render('warm-quota', {'RUN':'run','WORK_NS':'work'})
         self.assertEqual(template['items'][1]['metadata']['name'], 'python-warm')
         self.assertEqual(template['items'][1]['spec']['replicas'], 2)
         self.assertEqual(quota['spec']['hard']['pods'], '3')
         self.assertEqual(quota['spec']['hard']['limits.cpu'], '1500m')
         self.assertEqual(quota['spec']['hard']['limits.memory'], '1536Mi')
-        original = json.loads((ROOT / 'deploy/platform/session-template.json').read_text())
+        from lib.platform_manifests import render
+        original = render(ROOT/'deploy','session')
         self.assertEqual(original['items'][1]['spec']['replicas'], 0)
 
     def test_invalid_profile_rejected_before_external_operations(self):

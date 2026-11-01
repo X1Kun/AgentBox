@@ -1,0 +1,73 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/session-run: preview
+  name: session-client
+  namespace: agentbox-client
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        agentbox.dev/session: development
+        agentbox.dev/session-role: client
+        agentbox.dev/session-run: preview
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - env:
+        - name: SESSION_NAMESPACE
+          value: agentbox-work
+        - name: SESSION_OWNER
+          value: development
+        - name: SESSION_RUN
+          value: preview
+        image: agentbox/session-client:local
+        imagePullPolicy: Never
+        name: client
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /work
+          name: work
+        - mountPath: /tmp
+          name: tmp
+      nodeSelector:
+        kubernetes.io/hostname: agentbox-platform-lab-control-plane
+      restartPolicy: Never
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: session-client
+      terminationGracePeriodSeconds: 5
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi
+        name: work
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi
+        name: tmp
