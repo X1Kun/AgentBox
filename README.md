@@ -2,7 +2,7 @@
 
 面向 AI Agent 的隔离会话项目。当前产品链路为 **Agent → stdio MCP v2 → Go Session API → 上游 Agent Sandbox/sandboxd → containerd/gVisor**。会话支持多次 Python 命令和文件读写；每次是新解释器，工作目录跨调用保存。
 
-旧 agentboxd、专用 Gateway、直接宿主 runsc 后端及旧调度/QoS 控制已清退。默认构建、文档和测试统一走新路径。后续批任务计划采用 Job/Kueue，再以静态基线评价健康感知 AdmissionCheck；这些仍不是当前已交付能力。
+旧 agentboxd、专用 Gateway、直接宿主 runsc 后端及旧调度/QoS 控制已清退。默认构建、文档和测试统一走新路径。新增 Job/Kueue 固定配额批任务的安装与 gVisor 功能验收入口；批任务 Go API、图片产物、R/B 静态基线和健康感知 AdmissionCheck 仍为后续阶段。
 
 ## 构建与使用
 
@@ -15,7 +15,7 @@ make check
 
 Agent 自动创建并绑定一个会话，仅向模型开放查询/执行/文件工具；结束或异常退出时在独立预算内请求关闭并确认。创建恢复使用相同 request_id；未知执行/写入不重放。MCP 子进程只获得 API token，模型和集群凭据不进入 MCP 或执行 Pod。
 
-静态部署资源使用 [YAML＋Kustomize](docs/operations.md#manifests)：配置按组件集中，agentbox/overlays/lab/ 只表达应用环境差异，验收夹具单独归档；四份版本锁使用 YAML。Python 保留实验编排和验证，JSON 用于运行报告、缓存元数据及历史证据。
+静态部署资源使用 [YAML＋Kustomize](docs/operations.md#manifests)：配置按组件集中，agentbox/overlays/lab/ 只表达应用环境差异，验收夹具单独归档；五份版本锁使用 YAML。Python 保留实验编排和验证，JSON 用于运行报告、缓存元数据及历史证据。
 
 ## 开发平台与真实验收
 
@@ -30,6 +30,8 @@ make platform-agent-test
 platform-up 依赖已准备的锁定归档和镜像 bundle；不隐式下载/更换不匹配版本。platform-agent-test 启动真实 Agent/MCP 子进程与确定性模型替身，验证计算、程序错误修正、文件导出、超时、成功响应丢失不重放，以及三个运行环境的独立回收；只清理本轮临时资源并保留集群。普通 Job、运行时、网络、冷/预热会话、故障、API 和 Claim 保留验收仍有独立入口，见[验证指南](docs/validation.md)。
 
 `agentbox-cleanup` 为独立管理员工具，默认预览，按 closed_at 与保留期核对原 UID/resourceVersion 后清理 Claim，保存持久审计报告。产品 API 不获得元数据删除权限，操作见[记录清理](docs/operations.md#claim-retention)。
+
+准备固定 Kueue 清单后，可运行 `make platform-batch-install`、`make platform-batch-test`。批任务使用独立 namespace/静态队列，在 Worker 的 gVisor Job 内直接计算；入口验证排队、准入、取消、失败、deadline 与实际运行时回收，不提供批任务产品 API。范围与失败夹具清理见[批任务运维](docs/operations.md#batch)。
 
 ## 文档导航
 

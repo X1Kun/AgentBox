@@ -1,0 +1,483 @@
+{
+  "baseline_commit": "d0c4cf0",
+  "date": "2026-11-02",
+  "identity_preservation": {
+    "batch_repeat_agent_same_final_source_hashes": true,
+    "only_added_state_field": "kueue",
+    "original_cluster_state_fields_unchanged": true,
+    "original_nodes_unchanged": true,
+    "repeat_install_no_apply_or_rollout": true,
+    "repeat_install_state_bytes_unchanged": true,
+    "session_image_bundle_bytes_unchanged": true
+  },
+  "kueue": {
+    "api_version": "kueue.x-k8s.io/v1beta2",
+    "frameworks": [
+      "batch/job"
+    ],
+    "image": "k8s.m.daocloud.io/kueue/kueue@sha256:f42d6f868f2dd53710c842d2a3c4801c047e556a85840703aa273f0b0c10862b",
+    "installed_objects": 92,
+    "lock": "deploy/components/kueue/versions.lock.yaml",
+    "lock_sha256": "049b1e726b102f37d34479e50a903597e5ad26edf1b709e262ec6dda3966abf1",
+    "namespace_selector": {
+      "agentbox.dev/batch-managed": "true"
+    },
+    "upstream_assets": {
+      "digest_from_official_release_api": "sha256:646840e4c4bcefd92ddcfcb233a55fe73416a0038ce9eb8d42322b2ef5fd1d54",
+      "manifest": "https://github.com/kubernetes-sigs/kueue/releases/download/v0.20.3/manifests.yaml",
+      "sha256": "646840e4c4bcefd92ddcfcb233a55fe73416a0038ce9eb8d42322b2ef5fd1d54",
+      "version": "v0.20.3"
+    },
+    "version": "v0.20.3"
+  },
+  "limits": [
+    "Trusted fixed CPU workload only; no arbitrary PodSpec, image, or user program submission",
+    "Queue/namespace fixtures are per-run and removed; installed controller and healthy cluster retained",
+    "No persistent artifact publication, picture dataset, batch Go API/MCP, or retry protocol yet",
+    "No Prometheus/Grafana, R/B comparison, health AdmissionCheck, or performance/SLO conclusion",
+    "Allocatable check is not physical resource reservation; kind nodes share a host",
+    "Kueue upgrade/uninstall and controller restart/network fault acceptance are separate work",
+    "Earlier installation and failure reports retain their original source hashes; raw artifacts stay local and ignored"
+  ],
+  "native_batch": {
+    "checks": [
+      {
+        "name": "quota_wait_and_queued_cancel_without_pod",
+        "passed": true
+      },
+      {
+        "name": "running_parent_child_cancel_and_runtime_reclamation",
+        "passed": true
+      },
+      {
+        "name": "released_quota_admission_real_gvisor_result_and_cleanup",
+        "passed": true
+      },
+      {
+        "name": "oversized_request_not_admitted",
+        "passed": true
+      },
+      {
+        "name": "explicit_execution_failure_without_retry",
+        "passed": true
+      },
+      {
+        "name": "job_deadline_and_runtime_reclamation",
+        "passed": true
+      }
+    ],
+    "cleanup_complete": true,
+    "correct_result": 333833500,
+    "development_cluster_retained": true,
+    "gvisor_environments": 4,
+    "jobs": [
+      {
+        "activation_transport_error": null,
+        "cleanup_complete": true,
+        "exit_code": null,
+        "job_uid": "efcb03ab-0f32-422a-9190-f57babbe11cb",
+        "mode": "deadline",
+        "name": "deadline",
+        "pending_samples": 0,
+        "pod": {
+          "name": "deadline-lrbrd",
+          "uid": "c7892b77-94f7-49e5-8678-1d4ab8c08b24"
+        },
+        "profile": "batch-deadline",
+        "runtime_confirmed": true,
+        "sandbox_id": "19ce96fb0f426765896619ab5656f1a6417a9bd54d6184aafadce217bc611a42",
+        "terminal_evidence": "DeadlineExceeded; no invented container exit code",
+        "workload": {
+          "name": "job-deadline-c6f0d",
+          "uid": "59dfd668-2742-45b6-a542-2a7172687d94"
+        }
+      },
+      {
+        "activation_transport_error": null,
+        "cleanup_complete": true,
+        "exit_code": 23,
+        "job_uid": "82733f37-72cb-44d6-be20-afe2f5dfeffa",
+        "mode": "failure",
+        "name": "explicit-failure",
+        "pending_samples": 0,
+        "pod": {
+          "name": "explicit-failure-dn6pk",
+          "uid": "8af4cc30-c809-4f6a-ab89-ce78553392df"
+        },
+        "profile": "batch-job",
+        "runtime_confirmed": true,
+        "sandbox_id": "34905d31b23563ca117eec47f0835f4d824263476376d50a8707b1047b812e07",
+        "terminal_evidence": null,
+        "workload": {
+          "name": "job-explicit-failure-0c94a",
+          "uid": "37ef2cd7-f846-42b1-90aa-96e17568b75c"
+        }
+      },
+      {
+        "activation_transport_error": null,
+        "cleanup_complete": true,
+        "exit_code": null,
+        "job_uid": "c7a15b8a-1d3d-4603-ad4d-d22dfab470d7",
+        "mode": "cancel",
+        "name": "holder",
+        "pending_samples": 0,
+        "pod": {
+          "name": "holder-d7kdx",
+          "uid": "d443339c-5c8c-44f2-8c4d-a6b9eded9902"
+        },
+        "profile": "batch-job",
+        "runtime_confirmed": true,
+        "sandbox_id": "c538eb45221416005217de6c866a36dedfe62e656aa3fec802feda6bdb9f88c7",
+        "terminal_evidence": null,
+        "workload": {
+          "name": "job-holder-f7842",
+          "uid": "6fd53fe9-a1e7-4be1-85be-b4567fcbafb6"
+        }
+      },
+      {
+        "activation_transport_error": null,
+        "cleanup_complete": true,
+        "exit_code": null,
+        "job_uid": "488fa3e5-da51-459b-ba53-66909b2e9716",
+        "mode": "success",
+        "name": "oversized",
+        "pending_samples": 2,
+        "pod": null,
+        "profile": "batch-oversized",
+        "runtime_confirmed": false,
+        "sandbox_id": null,
+        "terminal_evidence": null,
+        "workload": {
+          "name": "job-oversized-deeda",
+          "uid": "f8e1a0fc-9e66-4598-ac4c-6768c4a48619"
+        }
+      },
+      {
+        "activation_transport_error": null,
+        "cleanup_complete": true,
+        "exit_code": null,
+        "job_uid": "3cd12520-8b7b-4851-b068-0f1cd13ae1cb",
+        "mode": "success",
+        "name": "queued-cancel",
+        "pending_samples": 2,
+        "pod": null,
+        "profile": "batch-job",
+        "runtime_confirmed": false,
+        "sandbox_id": null,
+        "terminal_evidence": null,
+        "workload": {
+          "name": "job-queued-cancel-bc261",
+          "uid": "ce9c2831-aa11-4f1d-b69a-2595a8686e9a"
+        }
+      },
+      {
+        "activation_transport_error": null,
+        "cleanup_complete": true,
+        "exit_code": 0,
+        "job_uid": "af3140f4-3d13-4ded-8e18-3399723ebbac",
+        "mode": "success",
+        "name": "resume-after-release",
+        "pending_samples": 2,
+        "pod": {
+          "name": "resume-after-release-bn4z7",
+          "uid": "97adde74-9676-434d-849b-9e20deb0ba64"
+        },
+        "profile": "batch-job",
+        "runtime_confirmed": true,
+        "sandbox_id": "d21741138c80e38c5118960294bf14ac62f74543b148ba4a4f3311204c17d246",
+        "terminal_evidence": null,
+        "workload": {
+          "name": "job-resume-after-release-81905",
+          "uid": "80a2e49b-2727-42ae-8ed4-193d567ca575"
+        }
+      }
+    ]
+  },
+  "offline_validation": {
+    "make_check": "passed outside the restricted sandbox",
+    "make_check_log": "artifacts/p3a-batch-20261102/final-check.log",
+    "make_check_log_sha256": "dfac20fd2fdf4e7dbd76b0bc21d29340a1ce88620031db89bc34cecd09b431b5",
+    "new_batch_tests": 27,
+    "platform_python_tests": 141,
+    "render_selections": 25
+  },
+  "preserved_failures": [
+    {
+      "note": "Original harness report has ok=false with no classified reason; traceback retained in the development output",
+      "reason": "Owned state was not assigned to the native control-plane checker; failed before resource creation",
+      "report": "artifacts/platform-batch-install-301753392ea9/report.json"
+    },
+    {
+      "cleanup_stage": "security_probe_failure_cleanup",
+      "reason": "Guest initially accepted EROFS only; non-root EACCES was misclassified. Read-only mount flag plus denied write now checked independently",
+      "report": "artifacts/platform-batch-test-d455ee020674/report.json"
+    },
+    {
+      "cleanup_stage": "activation_race_failure_cleanup",
+      "reason": "After marker write, PID 1 exited and the auxiliary exec returned 137. Marker is never replayed; original Job/Pod terminal result and reclamation remain mandatory",
+      "report": "artifacts/platform-batch-test-e4f179b849f2/report.json"
+    },
+    {
+      "log": "/tmp/agentbox-p3a-check.log",
+      "reason": "Managed sandbox denied Go loopback listeners. Same checks rerun outside sandbox; no test weakening"
+    }
+  ],
+  "queue_policy": {
+    "backoff_limit": 0,
+    "borrowing": false,
+    "cohort": null,
+    "cpu": "500m",
+    "health_admission_check": false,
+    "job_requests_equal_limits": true,
+    "max_active_pods": 1,
+    "memory": "256Mi",
+    "preemption": false,
+    "ttl_after_finished_seconds": 600
+  },
+  "schema_version": 1,
+  "scope": "P3a functional Kueue/Job foundation in one owned kind worker; no batch product API or performance claim",
+  "session_regression": {
+    "api_execution_counts": {
+      "flow": 3,
+      "lost-reply": 1,
+      "timeout": 1
+    },
+    "checks": [
+      {
+        "name": "namespace_scoped_credentials_and_no_secret_or_pod_mutation",
+        "passed": true
+      },
+      {
+        "name": "agent_flow_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "agent_timeout_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "agent_lost_reply_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "native_api_execution_counts_confirm_no_replay",
+        "passed": true
+      }
+    ],
+    "cleanup_complete": true
+  },
+  "source_sha256": {
+    "cmd/agentbox-agent/main.go": "2c38d350318a516a79deefe90f8c4533f61b3bbf6725206853b003854c5ea40c",
+    "cmd/agentbox-api/main.go": "1329dbfbd0f1f0ec6b97439aaa0b5b5aa8e61bb18ad9404f9fde910e4a84273c",
+    "cmd/agentbox-cleanup/main.go": "d06a2a2292338db0ecd3e6043c802b232803bc8330a8615e626b466e8285c627",
+    "cmd/agentbox-cleanup/main_test.go": "450d955f5370bab697f47a5dd34e43271b153a42e4b18c3160bd0cdad0475af7",
+    "cmd/agentbox-mcp/main.go": "67b3da67612f658c03ab7f65da5e939f7cba1e164432a8ab88f72e4ac3aa819d",
+    "cmd/agentbox-session-smoke/fault.go": "cfadfd4173711103e534480f94f521df8deecc920e9704c09e897565a715b789",
+    "cmd/agentbox-session-smoke/fault_test.go": "b999f8426d99d84a6e22500c60e9e41088e4ce17d2f17c39bbf373f8630f6527",
+    "cmd/agentbox-session-smoke/main.go": "be2bbb3415fb5984a01758ee8be677bcd1cecdb8073d8c443020e98b2e251798",
+    "cmd/agentbox-session-smoke/warm.go": "f76fed5bd97c15d3bf72310757afbac98a99c60bf516893c8f30caf98f8307f6",
+    "cmd/agentbox-session-smoke/warm_test.go": "b263569c077c88d32f151a44d721c19dc55dad5a2b5a5f1549b012b3e5249a12",
+    "deploy/acceptance/batch/deadline-patch.yaml": "426d56aaf07e6054c329ee6635b1895bfbe4b283839ebcf00fcd4b10e58b3db0",
+    "deploy/acceptance/batch/job.yaml": "98428e7f80b9cfc7a322b14c8a9f2ea75708b809bef6966b54f20d1e7103d781",
+    "deploy/acceptance/batch/kustomization.yaml": "c732f144eac5aea7e5af099ee710af3739944cae1f998f0ffd0fda1eb6f16633",
+    "deploy/acceptance/batch/oversized-patch.yaml": "9d47c82003bd28c77f1988d78ec13f282bcc48dbb1046c0417a610a0c0815b45",
+    "deploy/acceptance/gvisor/job.yaml": "de253c372380d2f40668e7c1a0175e49249c6aeb47151bc6fba30073d67c191e",
+    "deploy/acceptance/gvisor/kustomization.yaml": "6c71f92b6b84439b1ce158a04b0f67b19717b2b0713913eb2dbe874bebd5d407",
+    "deploy/acceptance/gvisor/lab-patch.yaml": "cedfa8db97c910d9e694ebd17a2354b821bab440bd5a0988f615b3fd39264a2c",
+    "deploy/acceptance/network/control-patch.yaml": "94929e847c500de29fe54e6ce25b026fb349e9506dc1c23d872bd120ca7b6e18",
+    "deploy/acceptance/network/kustomization.yaml": "0baa7ad75183bee8d190d3c0d2afab482ad05b0b9c7f1209f8088c87a3a84f69",
+    "deploy/acceptance/network/namespace.yaml": "a70e58363944c88ce7b16e2abd0b9285272eafaa6fe56f8aea9036513d6618f2",
+    "deploy/acceptance/network/observer-patch.yaml": "9bb2aeea83487a482e7f003905841b7854e02a87229f6d87780538f579c34869",
+    "deploy/acceptance/network/pod.yaml": "1da5765a63417d047d5d3905742e3f219fb0cd20f205e24e0c1cade32b79e575",
+    "deploy/acceptance/network/policies.yaml": "e87390222bb2b4942ec6a60caaa144022632c38233ed5f9c4fb983807bb43b40",
+    "deploy/acceptance/network/worker-patch.yaml": "7eb7944b82fa781a4d0955e1ea89e579ee3979809487ddf1e24c49a9bdad5431",
+    "deploy/acceptance/sessions/client-job.yaml": "7385e6e7b226fd75acedc6c8a1e9044f0bc28195de68c79bef1afcb40a56b485",
+    "deploy/acceptance/sessions/client-network-policy.yaml": "7fd181e6a8664d74d80ef09efcabaf1689aa0fa84080d85160b4f1192426c507",
+    "deploy/acceptance/sessions/client.Dockerfile": "d6d3509065f1f41fb9b7f1afeba3c0fe673ee156b4b6a105e56d05ae93e4f3b5",
+    "deploy/acceptance/sessions/kustomization.yaml": "f8fcbc2e09567469b33fd9de2ffd132f60feb927ecec999c245ba4ee9fa6f667",
+    "deploy/acceptance/sessions/namespace.yaml": "7a5d9fbbef916354eecd09a6d7df4fc290c281abde94a3751b215b783f0b6f84",
+    "deploy/acceptance/sessions/quota.yaml": "c40424b51960222b14d2b8f182fcecf0f154e9b815528545792dcb7007d04ba4",
+    "deploy/acceptance/sessions/rbac.yaml": "5710eeb5b04136616f22622a98b05b8043862ec4756a3e2dfa5a9f501ded7935",
+    "deploy/acceptance/sessions/warm-pool-patch.yaml": "9ba1d4a78fa9e321f1817138a0b8dbee66fd4f003ecdcf31ff758af1cf0c3c6b",
+    "deploy/acceptance/smoke/job.yaml": "10d52aa985b4e6aaf31c7706c11274a0a90d9c846778beafe307758b4732e598",
+    "deploy/acceptance/smoke/kustomization.yaml": "c732f144eac5aea7e5af099ee710af3739944cae1f998f0ffd0fda1eb6f16633",
+    "deploy/agentbox/api/Dockerfile": "8907b2c1d9e7239d7d7a00c7f4762b4cc1d126155bad2473ec6f2969c14e42a0",
+    "deploy/agentbox/api/deployment.yaml": "346a3ff3c06b9fe56343e47ddb96e7c59d4191a7a8fa0e8fb61bacd56541271d",
+    "deploy/agentbox/api/kustomization.yaml": "ce2c8755ccdc8426b0d5424351c864a8543d703fce439d26be1cd0e470f0b197",
+    "deploy/agentbox/api/rbac.yaml": "00f9fd7e9f170a14a77f6e07b340f35ed70fc7893fcdd7eb071c352c95076d2e",
+    "deploy/agentbox/batch/clusterqueue.yaml": "ad94eb71c998bd7d99a31b4565e8469034e7bd8da0438a25441ef67d850fc705",
+    "deploy/agentbox/batch/kustomization.yaml": "414043b3a4b5aacba0a54c57f9f7440a49cf1b94ab0682938908f8fd4bb5b8c5",
+    "deploy/agentbox/batch/localqueue.yaml": "eda8b9132818d28ed017e1a2ad9b7964392e2c34490a52aacaa0b5e4c33a47f5",
+    "deploy/agentbox/batch/namespace.yaml": "c8a7206c962e339a42531dad5eb478f12c536355c3fc3a58d2cb6acc309ae6eb",
+    "deploy/agentbox/batch/networkpolicy.yaml": "d99318313c4226c7652b5ea90fa7a9b3fd21a6d9daa7f6358ef2a629f674bf26",
+    "deploy/agentbox/batch/resourceflavor.yaml": "2ef4a12e039f7fa908aa38b685f2ad5022c6a63639719b160cc53a25901a50bb",
+    "deploy/agentbox/cleanup/kustomization.yaml": "1d43322ce5d3b9fc022c047c046a334d69711d1f6a60760998992c7d6767f3e3",
+    "deploy/agentbox/cleanup/rbac.yaml": "41f49c8afbe9256e4d5d1f9e8b4a82286821cf7ee19bc9c7c6ecacbc83997e2e",
+    "deploy/agentbox/overlays/lab/api-patch.yaml": "97965f89b76094f4053df99fad6b37e2dcae09ddef8a6a001471781a21199654",
+    "deploy/agentbox/overlays/lab/batch-quota.yaml": "c5602f3881e2cceb8dcf77aebb5bce337d637673e68d3323760050369ba5f881",
+    "deploy/agentbox/overlays/lab/kustomization.yaml": "fe3ecea269aa744eda4667005cca4ea1fc330c90ea962e3d414caab923a52200",
+    "deploy/agentbox/overlays/lab/quota.yaml": "0689f45c293459acde251768b353b3775efd7ff64ef31e452175218046710fdd",
+    "deploy/agentbox/overlays/lab/sandbox-patch.yaml": "d642c1475acfe00f94518e770d4813d43b25e1ccd440efea2d102204bcef697f",
+    "deploy/components/agent-sandbox/controller-lab-patch.yaml": "26fe7b18487f58956e2fd4eab3f723e211764dd75e9ba03fe0717c96cefebe23",
+    "deploy/components/agent-sandbox/kustomization.yaml": "4aa75335955c35390f687a1f1a56e24a53d599afe14421985f2adf8c94b2f986",
+    "deploy/components/agent-sandbox/runtime.Dockerfile": "7a2a450282d5dbb0d06d9457ef0acdd1a3eb120d407d564c8ab03fc1110124bc",
+    "deploy/components/agent-sandbox/template.yaml": "ebe338bf354cb0ccbb339be67b7779430f0fa3741a7f2ea972f520836250cb91",
+    "deploy/components/agent-sandbox/versions.lock.yaml": "7430ef24e369e4266246afbd63ffe99ed945ed20182d70b89c1e971b3771fc57",
+    "deploy/components/agent-sandbox/warmpool.yaml": "9a96191cf7099b6b36bd8a8c91b7cf8b925bffe758d000d02e71848ce2e8a5aa",
+    "deploy/components/calico/lab-patch.yaml": "6304dd6c5d7ec0ee7737ec63d270e61eb8580b2a494f5876adab0b0a0e783a33",
+    "deploy/components/calico/versions.lock.yaml": "a467394c777484348a7d78f3cf25b83e0ea53fd0315be0cb2322842e78415507",
+    "deploy/components/gvisor/kustomization.yaml": "822e156058107a54ce1f2d3f5f998dd61ebaff33e38dcf541b24197d08a624ee",
+    "deploy/components/gvisor/runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+    "deploy/components/gvisor/runtimeclass.yaml": "551349dca104de0f2913f0bebc452a62ed4b1e9dde33b217f4c3d099c828b0f5",
+    "deploy/components/gvisor/versions.lock.yaml": "5c992d8962a7eff72ceef4cde80a74f25669f0fad879ff6af0d8e50ddaa0a43a",
+    "deploy/components/kueue/controller-config.yaml": "fb1a9a4f58433fde8b8f449ec80af775ed8cf7d35f27e61cc505107d177cb1cc",
+    "deploy/components/kueue/controller-lab-patch.yaml": "fa31456bcce39c4828ce8327eefb7b4896253655b4b23d4a65896cdc77d2f3f9",
+    "deploy/components/kueue/mutating-lab-patch.yaml": "cfa628ce0658683719c2378dfbc1d4b96c268ce7fd271e94be73cbc9d30c13d7",
+    "deploy/components/kueue/validating-lab-patch.yaml": "a955ff81bce38a06c6fa355f3c19e51ecba7e032853eb054d52b569e70a3cb16",
+    "deploy/components/kueue/versions.lock.yaml": "049b1e726b102f37d34479e50a903597e5ad26edf1b709e262ec6dda3966abf1",
+    "deploy/lab/format-compatibility.yaml": "b0a5a9a93970c65ef7134bb042d90895c2f0c9e9c3f4033d4da46caed3ec3693",
+    "deploy/lab/gvisor-patch.yaml": "2749df28836a1d46f2535b9d51574ef72379ce92bd126078d81fc2507364ece4",
+    "deploy/lab/image-sources.yaml": "ecd502f8d2c52746ed9786a81fcae50c11c0250a6a2271033799d9294c431eaa",
+    "deploy/lab/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+    "deploy/lab/kind.yaml": "d05a77df48d7cb236594932c65c7d4a31283a5d3c11ab9d68e6adfe4bb5181ab",
+    "deploy/lab/namespace.yaml": "f5aa4dcf9d58a2ddd3c678be3baf62a7f35062a4d8dc7b5978a2b923febfcfe4",
+    "deploy/lab/versions.lock.yaml": "1dc37d6c851ba0d6793beb19954cea56b36fe31130568ddf9d6a9b2739ede617",
+    "docs/data/legacy-source-retirement.json": "092db6d07fa4776d25da2e437844871bd6a4965b8668b0e647d711e7a7d2d34f",
+    "go.mod": "6788d70352f4e17577d3ed96ffcde76b96380db2f0f19b41a17d3ca9ccc4cad4",
+    "go.sum": "a7c5debcb697cf21973d6cfe8cbabcc047da7c4543ba01b0080b001fe15eedb1",
+    "internal/agent/runner.go": "cde509e8dfce509183aa7003dd19fd054d4c524dd92168b965f20db1cd29823d",
+    "internal/agent/runner_test.go": "495a881580c6c4c391954cf174ef9a672f7054baa79aaa5d37344fa63c86be53",
+    "internal/deepseek/client.go": "da80176ee916e7d71e2c6a34fcda2830f552d9874f7b68a7c309164add6bcbf5",
+    "internal/deepseek/client_test.go": "ddf8ebfe239d8c9553bfe393216c2f1f4f95650f3230919146cd1210ac610af4",
+    "internal/mcpclient/client.go": "cd50c6a78e51f97b744c5afb543abe52ae2e87504b67495dbb93894c6d98c97a",
+    "internal/mcpclient/client_test.go": "f2511c27f5f8bc953d595090be66fb4b7733431b6ffcf5799181d91dca3a72af",
+    "internal/mcpserver/server.go": "7c3608c43d7cc94004c2b5903b3f6940c5af9aa75366aa14a30630f5346851a2",
+    "internal/mcpserver/server_test.go": "0a4de0621fb55e4f9283e0b7ebd1f2e482350c48a229744befe7d4e16cac3856",
+    "internal/session/diagnostics.go": "ba9e78cd618cbf01e1696f6cb2e0a5906bb17ca4815eef62a44458d31251b41e",
+    "internal/session/operations.go": "2cae0a6db67586b5bfe14b989223b1acc04dc135e5da512690cf55e85d75ee34",
+    "internal/session/operations_test.go": "8acd05fbfe9c082ed9f651deaba88c2794e6b3c98fa5b389de3f2152892eeab0",
+    "internal/session/requests_test.go": "cbf7138c567391936f90c5da774796ac778a00d83fabc98bfec4e6ea5b430e04",
+    "internal/session/retention.go": "b9ccc5562909d72ed22a5056af9c28c554a05708f519f74085a68de84429bd7c",
+    "internal/session/retention_test.go": "37e55d25e1f725d66524d7e54eadd6a13ad3d20a08a12fa6b87598f5eb5e9360",
+    "internal/session/service.go": "8b491b8be7cf21d36a6bcefeca2f0126e5e7e0413530106fc16d7d5ccb484dcc",
+    "internal/session/service_test.go": "c1c8d27fb3701e873a81503cc9264ef56f995f6f27b3a3fe9364ea965ac03c1f",
+    "internal/sessionapi/operations_test.go": "248448d70b0a4a154482ca74b250a956e6edc4fd07c8c73d6a18653e5c2171ce",
+    "internal/sessionapi/readiness.go": "2f76ff2a4f843a50e5111c8a3b734f3104f85795283e83fbe7d3ee230bf296c8",
+    "internal/sessionapi/readiness_test.go": "1c994e03546690f622c3e29f75aa70a43145d8129b984500bce17ee729021903",
+    "internal/sessionapi/server.go": "2d17a8e09099703041f8629251a4242bb8a482345a4e23b80dcf931b371b1c4c",
+    "internal/sessionapi/server_test.go": "6c7aa1732beab3e2017fa853f85d4d1acf0bbdebfb50353eb7bf12dbf47e0361",
+    "internal/sessionclient/client.go": "8691855c0750454143dc72e51b99e36b6ca9a2c01d8e468dfd23b56d5811d97e",
+    "internal/sessionclient/client_test.go": "e03809fd13160e0d9d51df4cfc5497e5c08b03084a0be9178fa5f8b2615b7004",
+    "internal/sessionprobe/operations.go": "38a248d6c25d5b4997da6c182f286431ad7b2d2a8dabdc0236f3bb981097bd28",
+    "internal/sessionprobe/operations_test.go": "e13ab80d787eb1e2be5ebd6db3e08543a840f6dd546baeba9fd2c4727bd75d77",
+    "internal/sessionruntime/runtime.go": "79b2e470c02396eda1c8137825aefa47b9f0c26b23f5f0de1063ee0d9e07e3ca",
+    "internal/sessionruntime/runtime_test.go": "222815cea3c7067663c817391a7dec39e0d075cda26c3c1b85225398d3721f5c",
+    "scripts/lib/batch_guest_probe.py": "5d691f20ad49f988508f77ce771ad2c74fb1fb7a858a0908875bb6bfae77714b",
+    "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+    "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+    "scripts/lib/platform_agent.py": "a7922c2c8102ec75a1dfb084f2f14412330bf595e6f9932163e085f946207c1c",
+    "scripts/lib/platform_api.py": "9349023ab0f1851fe80952a943c1d271c20f0672e5bf38070c0c719a4cc47b31",
+    "scripts/lib/platform_api_execution.py": "ef55ef4051bc7ce1155244eb3b94153a50e0cf498ae6d8627195e88cd2013810",
+    "scripts/lib/platform_batch.py": "da784577c2884ba445937bb26650f9e28e4da4fa5a25bdd41bfbdf4dd82c9f6b",
+    "scripts/lib/platform_gvisor.py": "68a4c6cca70a16a4e59d5a0522b605e5431f32d8b6261507a22590cbc96ea9ae",
+    "scripts/lib/platform_manifests.py": "94bb721ac53565a6e317187cfa160ad06659e4677e1f3201d125d0922fbb2999",
+    "scripts/lib/platform_network.py": "62756a2e7731393eb8d45e45ab2fa1445c03df5c30e16d0396b5d1d1bbae0fa7",
+    "scripts/lib/platform_retention.py": "e35e3da2456a50951691458389230ce7fa9c342e5b30c166b98f6aae22c3054a",
+    "scripts/lib/platform_sessions.py": "c02e09f29e42ed6bcb67b57153a8cbce17dd8d4fb509f21cf8f43b577518e8c5",
+    "scripts/lib/session_faults.py": "38432be7dcdbc5e2f633b84272c6222bbb52ab45711e20e42c527be9025ebea3",
+    "scripts/platform_lab.py": "672693804acdcb8a00058ad740b47ef5ce11a3340ba0d279aea65faa24b3c5a3",
+    "scripts/render_manifests.py": "eb6e9e14dedceb79e603e1dc14677393c0d38610ab85f8fa4bd9384a2bc7912b",
+    "scripts/requirements-platform.txt": "7c0048fec9527112d3e428f40499eb91c344357968fbc88c8a2cab301eed14e7",
+    "scripts/retire_legacy.py": "9dd13592dc1d23c2484e1606569e8fb274293c5d6d90fba53863dc56cdb6d8b0"
+  },
+  "stages": {
+    "activation_race_failure_cleanup": {
+      "finished_at": "2026-11-02T02:55:58.673924+00:00",
+      "ok": true,
+      "report": "artifacts/platform-batch-cleanup-145035580f37/report.json",
+      "report_sha256": "c5e7a9ae3aeddf71929d82169f482bd086259eeab89f2cd7c31c8e5be4cef4de",
+      "source_differences_from_final": {},
+      "started_at": "2026-11-02T02:55:10.758920+00:00"
+    },
+    "final_batch_acceptance": {
+      "finished_at": "2026-11-02T03:03:04.049242+00:00",
+      "ok": true,
+      "report": "artifacts/platform-batch-test-9b750bb04744/report.json",
+      "report_sha256": "58e9770dca684ef74c386bb5053e1e143f13ea7ba1570c5ce4b7554ef67469cb",
+      "source_differences_from_final": {},
+      "started_at": "2026-11-02T02:58:14.328224+00:00"
+    },
+    "first_install": {
+      "finished_at": "2026-11-02T02:42:44.830377+00:00",
+      "ok": true,
+      "report": "artifacts/platform-batch-install-438b7b86a189/report.json",
+      "report_sha256": "66e5e94d8db1d09da520b1fe62b01ebfce012a9d33ff2885f7560d6e62f84047",
+      "source_differences_from_final": {
+        "scripts/lib/batch_guest_probe.py": "95e1edcfdd55783d0477dabb709f37e50a4ba53a41fd72f30b8695f6d945146d",
+        "scripts/lib/platform_batch.py": "249ea11f9a9d71f886a6bc9a7b0e53d6fd9b6de6f1211275775adfcd81509449"
+      },
+      "started_at": "2026-11-02T02:40:41.567716+00:00"
+    },
+    "repeat_install": {
+      "finished_at": "2026-11-02T03:05:30.335587+00:00",
+      "ok": true,
+      "report": "artifacts/platform-batch-install-073425f7e583/report.json",
+      "report_sha256": "b37be0afc33c959ac77070a905b6857c31db4862f7392846fb89bc560c1e1cc4",
+      "source_differences_from_final": {},
+      "started_at": "2026-11-02T03:05:19.889164+00:00"
+    },
+    "security_probe_failure_cleanup": {
+      "finished_at": "2026-11-02T02:49:50.531782+00:00",
+      "ok": true,
+      "report": "artifacts/platform-batch-cleanup-58f3889f2ca9/report.json",
+      "report_sha256": "5c009edaf3f67a72c27e85679af8e4be2a535cb584da3d210d19255450383730",
+      "source_differences_from_final": {
+        "scripts/lib/batch_guest_probe.py": "2da6793435c35ff25d6c763cb63125113fbd62fbdffd8fc385c20e94a3cd8a6c",
+        "scripts/lib/platform_batch.py": "fddb4d8188799d1265e9a379cf8af3a909f195c7358a7f11278e9c86777e1246"
+      },
+      "started_at": "2026-11-02T02:48:52.449528+00:00"
+    },
+    "session_agent_regression": {
+      "finished_at": "2026-11-02T03:12:08.130984+00:00",
+      "ok": true,
+      "report": "artifacts/platform-agent-test-f84419c8b594/report.json",
+      "report_sha256": "2d140570d7debb2df5f4dee9b46033e2507350d5e5d4eefd4af8c3e9e0977324",
+      "source_differences_from_final": {},
+      "started_at": "2026-11-02T03:10:15.298483+00:00"
+    }
+  },
+  "static_budget": {
+    "batch_quota": {
+      "count/jobs.batch": "8",
+      "count/workloads.kueue.x-k8s.io": "8",
+      "limits.cpu": "500m",
+      "limits.memory": "256Mi",
+      "pods": "1",
+      "requests.cpu": "500m",
+      "requests.memory": "256Mi"
+    },
+    "existing_pod_requests": {
+      "cpu": "0.250",
+      "memory": "0"
+    },
+    "scope": "Conservative node scheduling check, not a physical reservation or an SLO guarantee; kind nodes share the host",
+    "session_budget_reference": {
+      "count/sandboxclaims.extensions.agents.x-k8s.io": "32",
+      "limits.cpu": "1500m",
+      "limits.memory": "1536Mi",
+      "pods": "3",
+      "requests.cpu": "300m",
+      "requests.memory": "384Mi"
+    },
+    "worker_allocatable": {
+      "cpu": "12",
+      "ephemeral-storage": "603633768Ki",
+      "hugepages-1Gi": "0",
+      "hugepages-2Mi": "0",
+      "memory": "32776756Ki",
+      "pods": "110"
+    }
+  }
+}

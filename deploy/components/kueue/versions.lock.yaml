@@ -1,0 +1,14 @@
+schema_version: 1
+version: v0.20.3
+api_version: kueue.x-k8s.io/v1beta2
+kubernetes_minimum: '1.34'
+manifest: kueue-v0.20.3.yaml
+manifest_url: https://github.com/kubernetes-sigs/kueue/releases/download/v0.20.3/manifests.yaml
+manifest_sha256: 646840e4c4bcefd92ddcfcb233a55fe73416a0038ce9eb8d42322b2ef5fd1d54
+object_count: 92
+controller_image: registry.k8s.io/kueue/kueue@sha256:f42d6f868f2dd53710c842d2a3c4801c047e556a85840703aa273f0b0c10862b
+promotion_source: https://raw.githubusercontent.com/kubernetes/k8s.io/main/registry.k8s.io/images/k8s-staging-kueue/images.yaml
+promotion_sha256: 13dba68bc2facd4f187eb4c1e211c0142c2be10c64c90de969d3fcb796c0f89e
+release_source: https://github.com/kubernetes-sigs/kueue/releases/tag/v0.20.3
+compatibility_source: https://github.com/kubernetes-sigs/kueue/blob/v0.20.3/README.md
+scope: Owned lab only; batch/job integration in explicitly selected namespaces. No borrowing, preemption, or health AdmissionCheck.

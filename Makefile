@@ -1,5 +1,6 @@
 .PHONY: build tools test check integration platform-agent-test platform-preflight platform-create platform-smoke platform-delete platform-gvisor-install platform-gvisor-test platform-network-create platform-network-install platform-network-test platform-session-build platform-session-install platform-session-test platform-session-warm-test platform-session-fault-test platform-api-test platform-api-exec-test platform-api-retention-test platform-up platform-ready
 .PHONY: build tools test check integration platform-agent-test k8s-render
+.PHONY: platform-batch-install platform-batch-test
 
 build:
 	mkdir -p bin
@@ -32,6 +33,12 @@ integration: platform-agent-test
 
 platform-agent-test:
 	python3 scripts/platform_lab.py agent-test
+
+platform-batch-install:
+	python3 scripts/platform_lab.py batch-install
+
+platform-batch-test:
+	python3 scripts/platform_lab.py batch-test
 
 # Functional Kubernetes lab; independent of the legacy daemon build.
 platform-preflight:

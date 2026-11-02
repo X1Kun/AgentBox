@@ -1,0 +1,10 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: agentbox-batch-worker
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview
+spec:
+  nodeLabels:
+    kubernetes.io/hostname: agentbox-platform-lab-worker

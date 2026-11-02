@@ -1,0 +1,21 @@
+apiVersion: config.kueue.x-k8s.io/v1beta2
+kind: Configuration
+health:
+  healthProbeBindAddress: :8081
+metrics:
+  bindAddress: :8443
+webhook:
+  port: 9443
+leaderElection:
+  leaderElect: true
+  resourceName: c1f6bfd2.kueue.x-k8s.io
+clientConnection:
+  qps: 20
+  burst: 30
+manageJobsWithoutQueueName: false
+managedJobsNamespaceSelector:
+  matchLabels:
+    agentbox.dev/batch-managed: 'true'
+integrations:
+  frameworks:
+  - batch/job

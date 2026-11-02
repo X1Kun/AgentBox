@@ -1,0 +1,111 @@
+# Pinned upstream hooks for batch/job and Kueue APIs only.
+- op: replace
+  path: /webhooks
+  value:
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /validate-kueue-x-k8s-io-v1beta2-clusterqueue
+    failurePolicy: Fail
+    name: vclusterqueue.kb.io
+    rules:
+    - apiGroups:
+      - kueue.x-k8s.io
+      apiVersions:
+      - v1beta2
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - clusterqueues
+    sideEffects: None
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /validate-kueue-x-k8s-io-v1beta2-cohort
+    failurePolicy: Fail
+    name: vcohort.kb.io
+    rules:
+    - apiGroups:
+      - kueue.x-k8s.io
+      apiVersions:
+      - v1beta2
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - cohorts
+    sideEffects: None
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /validate-batch-v1-job
+    failurePolicy: Fail
+    name: vjob.kb.io
+    namespaceSelector:
+      matchLabels:
+        agentbox.dev/batch-managed: 'true'
+    rules:
+    - apiGroups:
+      - batch
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - jobs
+    sideEffects: None
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /validate-kueue-x-k8s-io-v1beta2-resourceflavor
+    failurePolicy: Fail
+    name: vresourceflavor.kb.io
+    rules:
+    - apiGroups:
+      - kueue.x-k8s.io
+      apiVersions:
+      - v1beta2
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - resourceflavors
+    sideEffects: None
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /validate-kueue-x-k8s-io-v1beta2-workload
+    failurePolicy: Fail
+    name: vworkload.kb.io
+    rules:
+    - apiGroups:
+      - kueue.x-k8s.io
+      apiVersions:
+      - v1beta2
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - workloads
+      - workloads/status
+    sideEffects: None
+    namespaceSelector:
+      matchLabels:
+        agentbox.dev/batch-managed: 'true'

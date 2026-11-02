@@ -10,8 +10,8 @@ from lib.platform_manifests import ROOT,ManifestError,canonical,normalized,objec
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     choice=parser.add_mutually_exclusive_group(required=True)
-    choice.add_argument('--component',choices=['api','cleanup','agent-sandbox','gvisor'])
-    choice.add_argument('--fixture',choices=['smoke','gvisor','network','sessions'])
+    choice.add_argument('--component',choices=['api','cleanup','agent-sandbox','gvisor','batch'])
+    choice.add_argument('--fixture',choices=['smoke','gvisor','network','sessions','batch'])
     choice.add_argument('--all',action='store_true',help='check every orchestration selection')
     parser.add_argument('--environment',choices=['base','lab'],default='lab')
     parser.add_argument('--set',action='append',default=[],metavar='KEY=VALUE',help='non-secret runtime preview value')

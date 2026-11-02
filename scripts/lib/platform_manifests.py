@@ -17,7 +17,8 @@ except ImportError as error:
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCK_PATHS = {'versions':'lab/versions.lock.yaml','gvisor':'components/gvisor/versions.lock.yaml',
-              'calico':'components/calico/versions.lock.yaml','session':'components/agent-sandbox/versions.lock.yaml'}
+              'calico':'components/calico/versions.lock.yaml','session':'components/agent-sandbox/versions.lock.yaml',
+              'kueue':'components/kueue/versions.lock.yaml'}
 
 
 class ManifestError(ValueError):
@@ -56,18 +57,21 @@ def read_yaml(path, mapping=True):
 def load_lock(config,name):return read_yaml(Path(config)/LOCK_PATHS[name])
 
 
-def python_image_source(config):
+def repository_image_source(config, name, image):
     sources = read_yaml(Path(config) / 'lab/image-sources.yaml')
-    repository = sources.get('python_repository')
+    repository = sources.get(name + '_repository')
     if (sources.get('schema_version') != 1 or not isinstance(repository, str) or
             not re.fullmatch(r'[a-z0-9][a-z0-9.:-]*/[a-z0-9._/-]+', repository) or
             '..' in repository or '//' in repository):
-        raise ManifestError('invalid Python image repository in lab/image-sources.yaml')
-    image = load_lock(config, 'versions')['smoke']['image']
+        raise ManifestError('invalid image repository in lab/image-sources.yaml: ' + name)
     digest = image.rpartition('@')[2]
     if not re.fullmatch(r'sha256:[a-f0-9]{64}', digest):
-        raise ManifestError('Python image requires a locked sha256 digest')
+        raise ManifestError('image requires a locked sha256 digest: ' + name)
     return repository + '@' + digest
+
+
+def python_image_source(config):
+    return repository_image_source(config, 'python', load_lock(config, 'versions')['smoke']['image'])
 
 
 def canonical(value):return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
@@ -107,6 +111,11 @@ RECIPES={
  'platform-namespace':('lab/namespace.yaml',[],{('Namespace','agentbox-platform')}),
  'session-namespace':('acceptance/sessions/namespace.yaml',[],{('Namespace','agentbox-platform')}),
  'network-namespace':('acceptance/network/namespace.yaml',[],{('Namespace','agentbox-platform')}),
+ 'batch-resources':(APP_LAB,[],{('Namespace','agentbox-batch'),('ResourceFlavor','agentbox-batch-worker'),
+     ('ClusterQueue','agentbox-batch'),('LocalQueue','batch'),('ResourceQuota','batch-budget'),('NetworkPolicy','batch-default-deny')}),
+ 'batch-job':('acceptance/batch',[],{('Job','batch-probe')}),
+ 'batch-oversized':('acceptance/batch',[('Job','acceptance/batch/oversized-patch.yaml')],{('Job','batch-probe')}),
+ 'batch-deadline':('acceptance/batch',[('Job','acceptance/batch/deadline-patch.yaml')],{('Job','batch-probe')}),
 }
 REQUIRED={
  'runtime':{'OWNER'},'gvisor-probe':{'OWNER','NAME','IMAGE'},'smoke':{'OWNER','RUN_ID','SMOKE_IMAGE'},
@@ -119,8 +128,11 @@ REQUIRED={
  'api-quota':{'OWNER','RUN','WORK_NS'},'cleanup-rbac':{'OWNER','RUN','WORK_NS','CLIENT_NS'},
  'client-policy':{'OWNER','RUN','WORK_NS','CLIENT_NS'},'platform-namespace':{'OWNER','NAME'},
  'session-namespace':{'OWNER','RUN','NAME','ROLE'},'network-namespace':{'OWNER','RUN','NAME','ROLE'},
+ 'batch-resources':{'OWNER','RUN','NAME','NAMESPACE','QUEUE_NAME','FLAVOR_NAME'},
+ 'batch-job':{'OWNER','RUN','NAME','NAMESPACE','IMAGE'},'batch-oversized':{'OWNER','RUN','NAME','NAMESPACE','IMAGE'},
+ 'batch-deadline':{'OWNER','RUN','NAME','NAMESPACE','IMAGE'},
 }
-PARAMETERS={'OWNER','RUN','RUN_ID','WORK_NS','CLIENT_NS','NAMESPACE','NAME','ROLE','RUNTIME_IMAGE','CLIENT_IMAGE','API_IMAGE','IMAGE','SMOKE_IMAGE','RUNTIME_NAME','HANDLER','API_INSTANCE'}
+PARAMETERS={'OWNER','RUN','RUN_ID','WORK_NS','CLIENT_NS','NAMESPACE','NAME','ROLE','RUNTIME_IMAGE','CLIENT_IMAGE','API_IMAGE','IMAGE','SMOKE_IMAGE','RUNTIME_NAME','HANDLER','API_INSTANCE','QUEUE_NAME','FLAVOR_NAME'}
 
 
 def profiles(config):return sorted(RECIPES)
@@ -145,10 +157,13 @@ def _stage(config):
         yield root
 
 
-def _build(root,entry,patches=(),images=None):
+def _build(root,entry,patches=(),images=None,configmaps=None):
     k={'apiVersion':'kustomize.config.k8s.io/v1beta1','kind':'Kustomization','resources':['source/'+entry]}
     if patches:k['patches']=[{'target':{'kind':kind},'path':'source/'+path} for kind,path in patches]
     if images:k['images']=images
+    if configmaps:
+        k['configMapGenerator']=configmaps
+        k['generatorOptions']={'disableNameSuffixHash':True}
     (root/'kustomization.yaml').write_text(yaml.safe_dump(k,sort_keys=False))
     try:result=subprocess.run([executable(),'kustomize',str(root)],capture_output=True,text=True,timeout=30,env=dict(os.environ,KUBECONFIG=os.devnull))
     except (OSError,subprocess.TimeoutExpired) as error:raise ManifestError('local Kustomize could not start or timed out') from error
@@ -165,13 +180,13 @@ def _parameters(profile,params,strict):
     for key,value in p.items():
         if not isinstance(value,str) or not value or len(value)>1024 or any(ord(c)<32 for c in value):raise ManifestError('invalid scalar parameter: '+key)
         if key in {'OWNER','RUN','RUN_ID','ROLE'} and not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?',value):raise ManifestError('invalid label parameter: '+key)
-        if key in {'WORK_NS','CLIENT_NS','NAMESPACE','NAME','RUNTIME_NAME','HANDLER','API_INSTANCE'} and not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?',value):raise ManifestError('invalid DNS parameter: '+key)
+        if key in {'WORK_NS','CLIENT_NS','NAMESPACE','NAME','RUNTIME_NAME','HANDLER','API_INSTANCE','QUEUE_NAME','FLAVOR_NAME'} and not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?',value):raise ManifestError('invalid DNS parameter: '+key)
     if 'RUN' in p:p.setdefault('API_INSTANCE','api-'+p['RUN'])
     return p
 
 
 def _labels(value,p,role=False):
-    for key in ('agentbox.dev/session-run','agentbox.dev/net-run'):
+    for key in ('agentbox.dev/session-run','agentbox.dev/net-run','agentbox.dev/batch-run'):
         if key in value and 'RUN' in p:value[key]=p['RUN']
     if 'agentbox.dev/session' in value and 'OWNER' in p:value['agentbox.dev/session']=p['OWNER']
     if role:
@@ -182,7 +197,7 @@ def _labels(value,p,role=False):
 def _namespace(value,p):
     if value=='agentbox-work':return p.get('WORK_NS',value)
     if value=='agentbox-client':return p.get('CLIENT_NS',value)
-    return p.get('NAMESPACE',value) if value=='agentbox-platform' else value
+    return p.get('NAMESPACE',value) if value in ('agentbox-platform','agentbox-batch') else value
 
 
 def _pod(pod,metadata,p,profile):
@@ -191,7 +206,7 @@ def _pod(pod,metadata,p,profile):
         key={'sandboxd':'RUNTIME_IMAGE','api':'API_IMAGE','client':'CLIENT_IMAGE'}.get(c['name'],'SMOKE_IMAGE' if profile=='smoke' else 'IMAGE')
         if key in p:c['image']=p[key]
         for e in c.get('env',[]):
-            source={'NET_RUN':'RUN','SESSION_NAMESPACE':'WORK_NS','SESSION_OWNER':'OWNER','SESSION_RUN':'RUN'}.get(e['name'])
+            source={'NET_RUN':'RUN','BATCH_RUN':'RUN','SESSION_NAMESPACE':'WORK_NS','SESSION_OWNER':'OWNER','SESSION_RUN':'RUN'}.get(e['name'])
             if source in p:e['value']=p[source]
         for i,arg in enumerate(c.get('args',[])):
             key=arg.partition('=')[0]
@@ -223,6 +238,11 @@ def _inject(values,p,profile):
         if kind=='SandboxTemplate':
             template=obj['spec']['podTemplate'];_pod(template['spec'],template.get('metadata',{}),p,profile);_selectors(obj['spec']['networkPolicy'],p)
         if kind=='NetworkPolicy':_selectors(obj['spec'],p)
+        if kind=='ClusterQueue':
+            meta['name']=p.get('QUEUE_NAME',meta['name']);_selectors(obj['spec'],p)
+            if 'FLAVOR_NAME' in p:obj['spec']['resourceGroups'][0]['flavors'][0]['name']=p['FLAVOR_NAME']
+        if kind=='ResourceFlavor':meta['name']=p.get('FLAVOR_NAME',meta['name'])
+        if kind=='LocalQueue' and 'QUEUE_NAME' in p:obj['spec']['clusterQueue']=p['QUEUE_NAME']
         if kind=='RoleBinding':
             for subject in obj['subjects']:
                 if 'namespace' in subject:subject['namespace']=_namespace(subject['namespace'],p)
@@ -242,11 +262,12 @@ def render(config,profile,params=None,strict=True):
 
 
 def render_component(config,name,params=None,environment='lab'):
-    entries={'api':'agentbox/api','cleanup':'agentbox/cleanup','agent-sandbox':'components/agent-sandbox','gvisor':'components/gvisor'}
+    entries={'api':'agentbox/api','cleanup':'agentbox/cleanup','agent-sandbox':'components/agent-sandbox','gvisor':'components/gvisor','batch':'agentbox/batch'}
     if name not in entries:raise ManifestError('unknown component')
-    if environment=='lab' and name in ('api','cleanup','agent-sandbox'):
+    if environment=='lab' and name in ('api','cleanup','agent-sandbox','batch'):
         entry=APP_LAB
-        names={'api':{'agentbox-api','agentbox-api-budget'},'cleanup':{'agentbox-cleanup'},'agent-sandbox':{'python','python-cold'}}[name]
+        names={'api':{'agentbox-api','agentbox-api-budget'},'cleanup':{'agentbox-cleanup'},'agent-sandbox':{'python','python-cold'},
+               'batch':{'agentbox-batch','agentbox-batch-worker','batch','batch-budget','batch-default-deny'}}[name]
     else:entry=entries[name];names=None
     patches=[('RuntimeClass','lab/gvisor-patch.yaml')] if name=='gvisor' and environment=='lab' else []
     with _stage(config) as root:values=_build(root,entry,patches)
@@ -255,7 +276,7 @@ def render_component(config,name,params=None,environment='lab'):
 
 
 def render_fixture(config,name,params=None):
-    if name not in ('smoke','gvisor','network','sessions'):raise ManifestError('unknown acceptance fixture')
+    if name not in ('smoke','gvisor','network','sessions','batch'):raise ManifestError('unknown acceptance fixture')
     with _stage(config) as root:values=_build(root,'acceptance/'+name)
     return bundle(_inject(values,_parameters('runtime',params,False),name))
 
@@ -280,11 +301,19 @@ def definition(config,name):
 
 
 def render_upstream(config,component,resources,params,images=None):
-    path={'controller-lab':'components/agent-sandbox/controller-lab-patch.yaml','calico-lab':'components/calico/lab-patch.yaml'}[component]
-    target='Deployment' if component=='controller-lab' else 'DaemonSet'
+    if component=='kueue-lab':
+        patches=[('Deployment','components/kueue/controller-lab-patch.yaml'),
+                 ('MutatingWebhookConfiguration','components/kueue/mutating-lab-patch.yaml'),
+                 ('ValidatingWebhookConfiguration','components/kueue/validating-lab-patch.yaml')]
+        configmaps=[{'name':'kueue-manager-config','namespace':'kueue-system','behavior':'replace',
+                     'files':['controller_manager_config.yaml=source/components/kueue/controller-config.yaml']}]
+    else:
+        path={'controller-lab':'components/agent-sandbox/controller-lab-patch.yaml','calico-lab':'components/calico/lab-patch.yaml'}[component]
+        patches=[('Deployment' if component=='controller-lab' else 'DaemonSet',path)]
+        configmaps=None
     with _stage(config) as root:
         (root/'source/upstream.yaml').write_text(yaml.safe_dump_all(copy.deepcopy(resources),sort_keys=False))
-        values=_build(root,'upstream.yaml',[(target,path)],images)
+        values=_build(root,'upstream.yaml',patches,images,configmaps)
     for obj in values:
         obj['metadata'].setdefault('labels',{}).update({'agentbox.dev/session':params['OWNER'],'app.kubernetes.io/managed-by':'agentbox-platform'})
         if component=='controller-lab' and obj['kind']=='Deployment':obj['spec']['template']['spec']['containers'][0]['image']=params['CONTROLLER_IMAGE']

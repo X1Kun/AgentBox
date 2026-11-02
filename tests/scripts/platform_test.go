@@ -53,3 +53,11 @@ func TestPlatformManifests(t *testing.T) {
 		t.Fatalf("manifest regression: %v\n%s", err, output)
 	}
 }
+
+func TestPlatformBatch(t *testing.T) {
+	cmd := exec.Command("python3", "platform_batch_test.py", "-v")
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("batch platform regression: %v\n%s", err, output)
+	}
+}

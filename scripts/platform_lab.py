@@ -28,6 +28,7 @@ from lib.platform_api import APIAcceptance
 from lib.platform_agent import AgentAcceptance
 from lib.platform_retention import APIRetentionAcceptance
 from lib.platform_api_execution import APIExecutionAcceptance
+from lib.platform_batch import Kueue, BatchAcceptance, BatchError, controller_source as kueue_image_source
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -607,11 +608,11 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup"))
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
     parser.add_argument("--node-image-source", help="mirror repository with the SAME locked node digest (create)")
-    parser.add_argument("--smoke-image-source", help="mirror repository with the SAME locked task digest (smoke/gvisor-test)")
+    parser.add_argument("--smoke-image-source", help="mirror with the SAME task digest (smoke/gvisor-test/network-test/batch-test)")
     parser.add_argument("--network-profile", choices=("kindnet", "calico"), default="kindnet", help="CNI profile at cluster creation only")
     parser.add_argument("--calico-manifest", type=Path, help="pinned upstream VXLAN YAML (network-install)")
     parser.add_argument("--calico-image-prefix", help="digest-preserving registry/repository mirror (network-install)")
@@ -619,14 +620,21 @@ def arguments(argv=None):
     parser.add_argument("--session-python-source", help="digest-preserving Python base source (session-build)")
     parser.add_argument("--session-manifest", type=Path, help="fixed upstream release YAML (session-install)")
     parser.add_argument("--session-profile", choices=("cold", "warm", "fault"), default="cold", help="session-test fixture: cold, fixed warm pool, or scoped lifecycle faults")
+    parser.add_argument("--kueue-manifest", type=Path, help="fixed upstream release YAML (batch-install)")
+    parser.add_argument("--kueue-image-source", help="digest-preserving Kueue controller mirror (batch-install)")
+    parser.add_argument("--batch-report", type=Path, help="original batch-test.json identity record (batch-cleanup)")
     parser.add_argument("--gvisor-case", choices=CASES, help="run only one gvisor-test case; default runs all")
     parser.add_argument("--gvisor-archive", type=Path, help="verified complete gVisor tar.bz2 (gvisor-install only)")
     parser.add_argument("--timeout", type=int, default=180, help="Job/probe observation budget per startup or terminal phase, 30..600 seconds")
     args = parser.parse_args(argv)
     if args.node_image_source and args.action not in ("create", "up"):
         parser.error("--node-image-source applies only to create or up")
-    if args.smoke_image_source and args.action not in ("smoke", "gvisor-test", "network-test"):
-        parser.error("--smoke-image-source applies only to smoke, gvisor-test or network-test")
+    if args.smoke_image_source and args.action not in ("smoke", "gvisor-test", "network-test", "batch-test"):
+        parser.error("--smoke-image-source applies only to smoke, gvisor-test, network-test or batch-test")
+    if (args.kueue_manifest or args.kueue_image_source) and args.action != "batch-install":
+        parser.error("Kueue source options apply only to batch-install")
+    if (args.batch_report is not None) != (args.action == "batch-cleanup"):
+        parser.error("--batch-report is required for batch-cleanup and applies only to that action")
     if args.network_profile != "kindnet" and args.action != "create":
         parser.error("--network-profile applies only to create")
     if (args.calico_manifest or args.calico_image_prefix) and args.action not in ("network-install", "up"):
@@ -652,6 +660,7 @@ def main(argv=None):
         lock = load_lock(ROOT / "deploy", "versions")
         runtime = load_lock(ROOT / "deploy", "gvisor") if args.action.startswith("gvisor-") else None
         sessions = load_lock(ROOT / "deploy", "session") if args.action.startswith("session-") else None
+        batch_lock = load_lock(ROOT / "deploy", "kueue") if args.action.startswith("batch-") else None
         session_sources = ({"controller": session_source(sessions["controller_image"], args.session_controller_source),
                             "python": session_source(lock["smoke"]["image"], args.session_python_source or python_image_source(ROOT / "deploy"))} if sessions else None)
         print(json.dumps({"action": args.action, "network_profile": "calico" if args.action == "up" else args.network_profile if args.action == "create" else "recorded lab profile", "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
@@ -661,6 +670,8 @@ def main(argv=None):
                           "sessions": sessions, "session_sources": session_sources, "session_profile": args.session_profile,
                           "bootstrap_stages": ["control-plane", "calico", "nodes", "gvisor", "control-plane-after-runtime", "sessions"] if args.action == "up" else None,
                           "calico_image_prefix": args.calico_image_prefix,
+                          "kueue": batch_lock, "kueue_image": kueue_image_source(ROOT / "deploy", args.kueue_image_source) if batch_lock else None,
+                          "batch_report": str(args.batch_report) if args.batch_report else None,
                           "mutates_cluster": args.action not in ("preflight", "session-build", "ready"), "dry_run": True}, indent=2))
         return 0
     output = args.output or ROOT / "artifacts" / ("platform-" + args.action + "-" + uuid.uuid4().hex[:12])
@@ -678,6 +689,7 @@ def main(argv=None):
                     *list((source_root/'scripts/lib').glob('platform*.py')),
                     *list((source_root/'scripts/lib').glob('network_*.py')),
                     source_root/'scripts/lib/session_faults.py', source_root/'scripts/lib/gvisor_guest_probe.py',
+                    source_root/'scripts/lib/batch_guest_probe.py',
                     source_root/'scripts/lib/gvisor_node_processes.sh',
                     *list((source_root/'deploy').rglob('*.yaml')),
                     *[p for p in (source_root/'deploy').rglob('*') if p.is_file() and (p.name=='Dockerfile' or p.suffix in ('.Dockerfile','.toml'))],
@@ -740,6 +752,17 @@ def main(argv=None):
         elif args.action == "agent-test":
             report["result"] = AgentAcceptance(lab).test()
             report["ok"] = True
+        elif args.action == "batch-install":
+            batch = Kueue(lab)
+            source = args.kueue_manifest or ROOT / ".local/platform-tools" / batch.lock["manifest"]
+            report["result"] = batch.install(source, args.kueue_image_source)
+            report["ok"] = True
+        elif args.action == "batch-test":
+            report["result"] = BatchAcceptance(lab).test(lab.python_image(args.smoke_image_source))
+            report["ok"] = True
+        elif args.action == "batch-cleanup":
+            report["result"] = BatchAcceptance(lab).cleanup(args.batch_report)
+            report["ok"] = True
         elif args.action == "api-retention-test":
             report["result"] = APIRetentionAcceptance(lab).test()
             report["ok"] = True
@@ -752,14 +775,15 @@ def main(argv=None):
         else:
             report["result"] = lab.delete()
             report["ok"] = True
-    except (LabError, GVisorError, NetworkError, SessionError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
+    except (LabError, GVisorError, NetworkError, SessionError, BatchError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
         reason = "interrupted" if isinstance(error, KeyboardInterrupt) else getattr(error, "reason", "invalid_state")
         report.update(reason=reason, detail=str(error))
-        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready") and reason not in {
+        if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup") and reason not in {
                 "operation_in_progress", "existing_state", "unowned_cluster", "preflight_failed",
                 "image_digest_mismatch", "invalid_image", "tool_unavailable", "calico_checksum_mismatch",
                 "invalid_image_prefix", "wrong_network_profile", "network_definition_changed",
-                "missing_bootstrap_asset", "cluster_not_ready", "baseline_changed"}:
+                "missing_bootstrap_asset", "cluster_not_ready", "baseline_changed", "kueue_checksum_mismatch",
+                "unowned_kueue_resource", "kueue_definition_changed", "unowned_batch_report", "invalid_batch_cleanup"}:
             lab.diagnostics()
     finally:
         report.update(finished_at=utc(), commands=runner.commands)
@@ -774,6 +798,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (LabError, GVisorError, NetworkError, SessionError, OSError, ValueError) as error:
+    except (LabError, GVisorError, NetworkError, SessionError, BatchError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

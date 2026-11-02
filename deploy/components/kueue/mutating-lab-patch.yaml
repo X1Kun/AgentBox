@@ -1,0 +1,86 @@
+# Pinned upstream hooks for batch/job and Kueue APIs only.
+- op: replace
+  path: /webhooks
+  value:
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /mutate-kueue-x-k8s-io-v1beta2-clusterqueue
+    failurePolicy: Fail
+    name: mclusterqueue.kb.io
+    rules:
+    - apiGroups:
+      - kueue.x-k8s.io
+      apiVersions:
+      - v1beta2
+      operations:
+      - CREATE
+      resources:
+      - clusterqueues
+    sideEffects: None
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /mutate-batch-v1-job
+    failurePolicy: Fail
+    name: mjob.kb.io
+    namespaceSelector:
+      matchLabels:
+        agentbox.dev/batch-managed: 'true'
+    rules:
+    - apiGroups:
+      - batch
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      resources:
+      - jobs
+    sideEffects: None
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /mutate-kueue-x-k8s-io-v1beta2-resourceflavor
+    failurePolicy: Fail
+    name: mresourceflavor.kb.io
+    rules:
+    - apiGroups:
+      - kueue.x-k8s.io
+      apiVersions:
+      - v1beta2
+      operations:
+      - CREATE
+      resources:
+      - resourceflavors
+    sideEffects: None
+  - admissionReviewVersions:
+    - v1
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /mutate-kueue-x-k8s-io-v1beta2-workload
+    failurePolicy: Fail
+    name: mworkload.kb.io
+    rules:
+    - apiGroups:
+      - kueue.x-k8s.io
+      apiVersions:
+      - v1beta2
+      operations:
+      - CREATE
+      resources:
+      - workloads
+    sideEffects: None
+    namespaceSelector:
+      matchLabels:
+        agentbox.dev/batch-managed: 'true'

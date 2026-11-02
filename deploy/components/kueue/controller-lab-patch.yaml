@@ -1,0 +1,22 @@
+- op: add
+  path: /spec/template/spec/nodeSelector
+  value:
+    kubernetes.io/hostname: agentbox-platform-lab-control-plane
+- op: add
+  path: /spec/template/spec/tolerations
+  value:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+- op: replace
+  path: /spec/template/spec/containers/0/imagePullPolicy
+  value: IfNotPresent
+- op: replace
+  path: /spec/template/spec/containers/0/resources
+  value:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
