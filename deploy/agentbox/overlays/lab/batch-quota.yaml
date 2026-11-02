@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: batch-budget
+  namespace: agentbox-batch
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview
+spec:
+  hard:
+    pods: '1'
+    requests.cpu: 500m
+    requests.memory: 256Mi
+    limits.cpu: 500m
+    limits.memory: 256Mi
+    count/jobs.batch: '8'
+    count/workloads.kueue.x-k8s.io: '8'

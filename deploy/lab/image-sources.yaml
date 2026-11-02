@@ -1,3 +1,4 @@
 # Download location only; the image digest remains in versions.lock.yaml.
 schema_version: 1
 python_repository: docker.m.daocloud.io/library/python
+kueue_repository: k8s.m.daocloud.io/kueue/kueue

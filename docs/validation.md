@@ -194,6 +194,21 @@ Go API 在普通 Pod 内提供 TLS，实际 Python 由锁定上游 sandboxd 在 
 
 随后将已验证的 Python 下载源设为 `deploy/lab/image-sources.yaml` 的默认值，保留版本锁的官方内容基线及原 digest；smoke、gVisor/network 和 session-build 共用，显式覆盖仍需匹配 digest。该调整另行通过 114 项平台 Python 回归、完整 `make check` 及不带镜像源参数的真实 smoke（结果 333833500，Job/Pod 清理完成），未再重复网络五阶段或 Agent 全链路。后续记录单独保存源码/报告摘要，不改写前一阶段的验收版本；现有集群状态和镜像 bundle 字节仍未变。
 
+<a id="batch"></a>
+## P3a：Kueue 固定配额与 gVisor 批任务
+
+2026-11-02 新增 Kueue v0.20.3 / v1beta2 的固定版本安装，以及单 Worker 的静态批任务功能验收。官方发布清单的 92 个对象通过发布资产 SHA-256 校验，控制器 digest 来自官方镜像提升记录；配置使用本地 Kustomize，仅启用显式 batch namespace 下的 batch/job。原 Calico/gVisor/Agent Sandbox 版本与镜像 bundle 沿用，批任务入口与会话产品 API 分离。操作见[运维指南](operations.md#batch)。
+
+队列无 cohort、借用、抢占和健康 AdmissionCheck。ClusterQueue、namespace ResourceQuota 与 Job requests/limits 均为 500m CPU/256Mi，最多一个计算 Pod；会话完整预算另行声明，安装和验收不增加池规模。节点容量检查保守计入已有 Pod 请求、会话上限与批预算；这不构成物理预留或 SLO 证明，kind 节点仍共享宿主机。
+
+真实验收覆盖占满配额后的排队与无 Pod、排队取消、忽略 TERM 的父子计算取消、释放配额后下一任务准入及结果 333833500、单任务超过名义配额、显式退出 23 和 Job deadline。计算直接在 gVisor Job Pod 内执行，联合核对非 root/只读根/无 SA token、原 Pod/Job/Workload 身份、CRI handler/sandbox、runsc 进程和 cgroup 限制；结果正确与 Job/Workload/Pod/CRI/进程清理分别判定。`backoffLimit=0`，不通过重试掩盖单次失败。
+
+开发失败记录保留：首次安装的 owned state 未传入原生控制面检查，在创建对象前失败；首次 Job 探针仅接受 EROFS，误判非 root 的 EACCES，修正为只读挂载标志与写入拒绝联合校验；后续显式失败任务在写入激活标记后立即退出，辅助 exec 被终止并返回 137。后一竞态不重放标记，仍必须核对同 Job/Pod 的真实退出 23 或正确成功结果，并独立检查回收；其他 exec 错误继续失败。失败轮次按原 UID/归属清理，原报告不回写。
+
+最终源码通过 141 项平台 Python 回归（新增 27 项批任务回归）和完整 `make check`，批任务六项真实检查及四组 gVisor 运行时/进程回收通过；重复安装未执行 apply/rollout，状态文件字节未变。既有 Agent/MCP/API/gVisor 五项回归与三个环境清理通过，原节点、原集群状态字段和 session 镜像 bundle 不变，仅新增 kueue 安装记录。最终批任务、重复安装和 Agent 报告匹配同一份 124 项源码文件摘要；首次安装和开发失败保留原阶段源码摘要。
+
+安装、重复安装、批任务与既有 Agent 链路的结果及逐阶段源码/报告摘要见[P3a 验收记录](data/platform-batch-validation.json)。固定测试不代表性能基线、真实图片处理、重试产物发布或批任务产品 API 已实现；Prometheus/Grafana、R/B 扫描和健康策略仍待后续阶段。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>

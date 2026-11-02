@@ -2,12 +2,12 @@
 
 当前默认构建和产品调用统一走 Kubernetes 会话 API/MCP/Agent。旧宿主 Daemon/Gateway 及其构建、安装和实验入口已清退；历史版本见[归档](archive/legacy-runtime.md)。Kueue/批任务和健康准入仍待后续交付。
 
-按任务跳转：[平台](#platform-lab) · [gVisor](#gvisor-runtime) · [网络](#network-policy) · [会话](#cold-sessions) · [API](#session-api) · [记录清理](#claim-retention) · [Agent 验收](#agent) · [旧安装退役](#retirement) · [排障](#diagnosis)。命令从仓库根目录执行。
+按任务跳转：[平台](#platform-lab) · [gVisor](#gvisor-runtime) · [网络](#network-policy) · [会话](#cold-sessions) · [批任务](#batch) · [API](#session-api) · [记录清理](#claim-retention) · [Agent 验收](#agent) · [旧安装退役](#retirement) · [排障](#diagnosis)。命令从仓库根目录执行。
 
 <a id="manifests"></a>
 ## YAML 与 Kustomize 资源组织
 
-资源按组件职责归集，完整布局见[部署资源说明](../deploy/README.md)。`deploy/lab/` 保存 kind 与工具锁；`components/gvisor/`、`components/calico/`、`components/agent-sandbox/` 保存各自配置、镜像文件和版本锁；`agentbox/api/` 与 `agentbox/cleanup/` 保存应用及独立管理员权限。只有 `agentbox/overlays/lab/` 表达应用环境差异，smoke/gVisor/network/sessions 夹具集中在 acceptance 下。
+资源按组件职责归集，完整布局见[部署资源说明](../deploy/README.md)。`deploy/lab/` 保存 kind 与工具锁；`components/gvisor/`、`components/calico/`、`components/agent-sandbox/`、`components/kueue/` 保存各自配置、镜像文件和版本锁；`agentbox/api/` 与 `agentbox/cleanup/` 保存应用及独立管理员权限。只有 `agentbox/overlays/lab/` 表达应用环境差异，smoke/gVisor/network/sessions 夹具集中在 acceptance 下。
 
 ```bash
 python3 -m pip install -r scripts/requirements-platform.txt
@@ -19,7 +19,7 @@ python3 scripts/render_manifests.py --fixture network
 
 渲染只调用本地 Kustomize，不连接集群/Docker，不启用远端资源、Helm 或插件。Python 在实验中选择必要资源，并更新明确的动态 namespace/归属、镜像、参数、探针程序与发现的 API CIDR；静态 RBAC、资源预算及环境约束保存在 YAML 中。不引入每个调用一个 overlay、参数 ConfigMap 转发或整段模板替换。实际创建继续经过原 platform 入口的 UID/归属检查。
 
-四份锁均使用 YAML；`lab/format-compatibility.yaml` 仅在锁值、资源语义与受控补丁精确等价时，承接旧本地状态和镜像缓存身份，不强迫重建健康集群，也不授权版本升级。v1 bundle 的历史输入 ID 只是缓存协议标识，不读取旧文件路径；当前 YAML 字节哈希仍进入源文件证据。历史 JSON、运行报告和生成缓存元数据不回写。
+五份版本锁使用 YAML；`lab/format-compatibility.yaml` 仅在锁值、资源语义与受控补丁精确等价时，承接旧本地状态和镜像缓存身份，不强迫重建健康集群，也不授权版本升级。v1 bundle 的历史输入 ID 只是缓存协议标识，不读取旧文件路径；当前 YAML 字节哈希仍进入源文件证据。历史 JSON、运行报告和生成缓存元数据不回写。
 
 Python 镜像默认通过 [image-sources.yaml](../deploy/lab/image-sources.yaml) 中的 `docker.m.daocloud.io/library/python` 下载，digest 仍取自工具版本锁。该来源已通过本机网络验收；`docker.io/library/python` 本轮曾拉取失败。smoke、gVisor/network 和 session-build 统一读取默认配置，API 构建沿用 session bundle 的已校验来源；不再需要重复传 Python 镜像源参数。显式参数仍可覆盖，且必须保留锁定 digest。其他组件仓库不进行未经验证的整体替换。
 
@@ -250,6 +250,34 @@ host 独立核对三组执行 Pod 的运行时和资源归属，最后等待 API
 
 该 fault 用例本身只验证验收器的 Pod UID 检查；生命周期 API 的持久绑定与归属保护见下节，执行/文件接口另行验证原身份连接与并发边界。本轮不宣称对外多租户鉴权、持久化工作区或故障后透明续接。
 
+<a id="batch"></a>
+## Kueue 与固定规格批任务验收
+
+P3a 提供受控批任务的功能底座，依赖已有 ready 的 Calico/gVisor 开发集群和原 UID/归属记录。Kueue v0.20.3 使用 v1beta2 API，上游支持 Kubernetes 1.34+；固定发布清单、官方发布资产 SHA-256 和控制器 digest 见[版本锁](../deploy/components/kueue/versions.lock.yaml)。清单必须预先下载，安装器先校验内容，不在安装中自动下载或升级。
+
+```bash
+curl --fail --location --retry 2 --connect-timeout 15 --max-time 120 \
+  https://github.com/kubernetes-sigs/kueue/releases/download/v0.20.3/manifests.yaml \
+  -o .local/platform-tools/kueue-v0.20.3.yaml
+python3 scripts/platform_lab.py batch-install --dry-run
+make platform-batch-install
+make platform-batch-test
+```
+
+安装器只在本项目原有集群中应用校验后的官方 92 个对象，以本地 Kustomize 限定控制器位置、预算、配置和 webhook。控制器在控制面节点运行，声明 100m/128Mi 请求和 1 CPU/512Mi 上限；仅启用 `batch/job`，仅管理带 `agentbox.dev/batch-managed=true` 的 namespace，未命名队列的 Job 不自动接管。非 Job 的第三方工作负载 webhook 已从实验配置中移除，Kueue 自身 API 的校验保留。TLS Secret 仅查询元数据，不把生成的私钥读入状态或报告。
+
+控制器镜像默认从 `lab/image-sources.yaml` 的 `kueue_repository` 获取，保留官方 digest；可通过 `batch-install --kueue-image-source REPOSITORY@sha256:DIGEST` 显式覆盖相同 digest 的来源，`--kueue-manifest PATH` 指定同内容文件。重复安装只验证原资源 UID、实际配置和 Ready 状态，不 rollout；已有定义/镜像源不符时拒绝替换。失败安装保留阶段和已记录对象身份，再次执行同配置继续核对；升级与移除另行制定，不通过覆盖本地状态接管。
+
+批任务资源位于 `agentbox/batch/`，lab 的 ResourceQuota 位于唯一环境 overlay，计算夹具位于 `acceptance/batch/`。每轮验收创建独立 namespace、ResourceFlavor、ClusterQueue、LocalQueue 与预算，队列无 cohort、借用、抢占或健康 AdmissionCheck。500m CPU/256Mi 内存的队列、namespace 配额和 Job 请求/上限一致，最多一个计算 Pod。会话预算继续使用独立 namespace/固定池声明，运行前检查已有 Worker Pod 请求、完整会话上限与批预算之和不超过节点 allocatable；该保守检查不代表物理资源预留，kind 的两个节点仍共享宿主机。
+
+Job 初始 suspend=true，仅由 Kueue 准入后启动。批计算在 Worker 的 gVisor Pod 内直接执行，不调用远端沙箱；非 root、只读根、无 SA token、内存临时卷、默认拒绝网络，backoffLimit=0，明确观察单次尝试。CPU 计算期间验证 Pod UID → CRI handler/sandbox → runsc 进程与 cgroup 的 500m/256Mi、零 swap 边界。Job Complete 后仍核对实际退出码、固定结果 333833500 和 run/Pod 身份。
+
+验收依次覆盖配额占用后的排队/无 Pod、排队取消、忽略 TERM 的运行中父子计算取消、配额释放后下一任务准入与正确结果、单任务超过名义配额、显式退出 23 和 Job deadline。取消使用 API 的 UID 前置条件；清理独立核对 Job、Workload、Pod、CRI sandbox 和捕获的 gVisor 进程。Job 完成后的 TTL 为 600 秒，仅作为残留保底，不作为验收成功条件；夹具结果写在临时工作卷和报告中，尚无独立持久产物服务。
+
+失败时保留本轮 `artifacts/platform-batch-test-*/batch-test.json`，先看原始报告和诊断，再将该实际文件路径传给 `python3 scripts/platform_lab.py batch-cleanup --batch-report PATH`。清理器验证 run、namespace/队列/flavor 名称、原 UID 和本集群归属；不清其他 namespace 或其他 run，也不删除 Kueue 安装。正常验收仅清本轮 Job、队列、配额和 namespace，保留健康开发集群与镜像缓存。
+
+此阶段没有批任务 Go API/MCP、真实图片数据集、可重试产物发布、Prometheus/Grafana 或 R/B 性能实验；后续范围与门槛见[路线图](roadmap.md)。
+
 <a id="session-api"></a>
 ## Go 会话服务部署与验收
 
@@ -319,7 +347,7 @@ bin/agentbox-cleanup --kubeconfig /path/to/cleanup.kubeconfig \
 | P3 批处理 | Kueue、固定图片 Job 模板、受控输入与产物 | 会话与批预算分开，Job attempt 输出隔离，提交/取消/TTL 可收敛 |
 | P4 策略 | 健康 AdmissionCheck | 最小 RBAC、指标新鲜度、恢复节奏、升级状态兼容 |
 
-Prometheus/Grafana 与最小会话指标从 P1/P2 配套引入，P3 补齐批任务和压测；不等到策略开发后才建立观测。Python 入口负责可重复安装/验收和记录，Go 服务与上游控制器负责长期运行。
+会话与批任务的完整 Prometheus/Grafana 指标、固定压测轨迹与 R/B 基线将在 P3c 补齐；当前 P3a 的事件/运行时报告不能代替连续观测。Python 入口负责可重复安装/验收和记录，Go 服务与上游控制器负责长期运行。
 
 ### 固定预热池与资源预算
 

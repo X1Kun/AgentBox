@@ -4,6 +4,8 @@ resources:
 - ../../api
 - ../../cleanup
 - ../../../components/agent-sandbox
+- ../../batch
+- batch-quota.yaml
 - quota.yaml
 patches:
 - target:

@@ -1,0 +1,27 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: agentbox-batch
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview
+spec:
+  queueingStrategy: StrictFIFO
+  namespaceSelector:
+    matchLabels:
+      agentbox.dev/batch-run: preview
+      agentbox.dev/batch-managed: 'true'
+  preemption:
+    withinClusterQueue: Never
+    reclaimWithinCohort: Never
+    borrowWithinCohort:
+      policy: Never
+  resourceGroups:
+  - coveredResources: [cpu, memory]
+    flavors:
+    - name: agentbox-batch-worker
+      resources:
+      - name: cpu
+        nominalQuota: 500m
+      - name: memory
+        nominalQuota: 256Mi

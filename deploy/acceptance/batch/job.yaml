@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-probe
+  namespace: agentbox-batch
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview
+    kueue.x-k8s.io/queue-name: batch
+spec:
+  suspend: true
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  ttlSecondsAfterFinished: 600
+  parallelism: 1
+  completions: 1
+  template:
+    metadata:
+      labels:
+        agentbox.dev/session: development
+        agentbox.dev/batch-run: preview
+    spec:
+      runtimeClassName: agentbox-gvisor
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 3
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: compute
+        image: agentbox/probe:local
+        imagePullPolicy: IfNotPresent
+        command: []
+        env:
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: BATCH_RUN
+          value: preview
+        resources:
+          requests:
+            cpu: 500m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+        - name: work
+          mountPath: /work
+        - name: work
+          mountPath: /tmp
+      volumes:
+      - name: work
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi

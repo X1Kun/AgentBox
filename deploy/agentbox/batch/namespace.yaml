@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentbox-batch
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview
+    agentbox.dev/batch-managed: 'true'
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.36
