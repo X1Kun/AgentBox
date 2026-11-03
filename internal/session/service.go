@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/telemetry"
 	"log/slog"
 	"regexp"
 	"strconv"
@@ -95,7 +96,10 @@ type Service struct {
 	now     func() time.Time
 	runtime Runtime
 	logger  *slog.Logger
+	metrics *telemetry.Metrics
 }
+
+func (s *Service) SetTelemetry(metrics *telemetry.Metrics) { s.metrics = metrics }
 
 func ValidPrincipal(value string) bool { return principalPattern.MatchString(value) }
 func New(client dynamic.Interface, cfg Config) (*Service, error) {

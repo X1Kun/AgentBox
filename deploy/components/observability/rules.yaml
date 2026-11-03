@@ -1,0 +1,33 @@
+groups:
+- name: agentbox-validity
+  rules:
+  - record: agentbox:api_observation_valid
+    expr: agentbox_backend_observation_valid * on(instance) group_left() up{job="agentbox-api"}
+  - alert: AgentBoxObserverUnavailable
+    expr: up{job="observer"} == 0 or absent(up{job="observer"})
+    for: 15s
+    labels:
+      severity: warning
+    annotations:
+      summary: Namespace and runtime observations are unavailable
+  - alert: AgentBoxApplicationMetricsMissing
+    expr: agentbox_observer_scope unless on(domain) label_replace(up{job="agentbox-api"} == 1, "domain", "$1", "instance", "(session|batch)")
+    for: 15s
+    labels:
+      severity: warning
+    annotations:
+      summary: An explicitly observed application has no healthy metrics target
+  - alert: AgentBoxInventoryUnknown
+    expr: agentbox_inventory_valid == 0
+    for: 15s
+    labels:
+      severity: warning
+    annotations:
+      summary: Inventory is stale, incomplete, or unreadable; do not interpret it as idle
+  - alert: AgentBoxRuntimeUnknown
+    expr: agentbox_runtime_observation_valid == 0
+    for: 15s
+    labels:
+      severity: warning
+    annotations:
+      summary: Kubelet resource observations are unavailable

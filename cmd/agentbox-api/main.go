@@ -19,6 +19,7 @@ import (
 	"github.com/X1Kun/AgentBox/internal/session"
 	"github.com/X1Kun/AgentBox/internal/sessionapi"
 	"github.com/X1Kun/AgentBox/internal/sessionruntime"
+	"github.com/X1Kun/AgentBox/internal/telemetry"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -34,11 +35,13 @@ func run() error {
 	var cfg session.Config
 	var batchCfg batch.Config
 	var mode string
+	var metricsListen string
 	var listen, kubeconfig, principalsFile, cert, key string
 	var timeout time.Duration
 	var maxInflight int
 	var execution bool
 	flag.StringVar(&mode, "mode", "session", "API mode: session or batch")
+	flag.StringVar(&metricsListen, "metrics-listen", "", "optional separate HTTP metrics listener; explicit IP required")
 	flag.StringVar(&batchCfg.DataDir, "batch-data-dir", "", "mounted batch artifacts PVC root")
 	flag.StringVar(&batchCfg.TemplateFile, "batch-template-file", "", "administrator-controlled image Job YAML")
 	flag.StringVar(&batchCfg.ContractFile, "batch-contract-file", "", "fixed dataset/output contract JSON")
@@ -112,6 +115,15 @@ func run() error {
 	var handler interface {
 		http.Handler
 		RunReadiness(context.Context)
+		SetTelemetry(*telemetry.Metrics)
+	}
+	var metrics *telemetry.Metrics
+	if metricsListen != "" {
+		host, _, e := net.SplitHostPort(metricsListen)
+		if e != nil || net.ParseIP(host) == nil {
+			return errors.New("metrics listener requires an explicit IP")
+		}
+		metrics = telemetry.New(mode)
 	}
 	if mode == "batch" {
 		batchCfg.Namespace, batchCfg.Instance = cfg.Namespace, cfg.Instance
@@ -120,6 +132,7 @@ func run() error {
 			return e
 		}
 		defer backend.Close()
+		backend.SetTelemetry(metrics)
 		handler, err = batchapi.New(backend, principals, timeout, maxInflight)
 	} else {
 		backend, e := session.New(client, cfg)
@@ -129,11 +142,13 @@ func run() error {
 		if execution {
 			backend.SetRuntime(sessionruntime.New())
 		}
+		backend.SetTelemetry(metrics)
 		handler, err = sessionapi.New(backend, principals, timeout, maxInflight)
 	}
 	if err != nil {
 		return err
 	}
+	handler.SetTelemetry(metrics)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	listener, err := net.Listen("tcp", listen)
@@ -141,11 +156,29 @@ func run() error {
 		return err
 	}
 	defer listener.Close()
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second,
+	var publicHandler http.Handler = handler
+	if metrics != nil {
+		publicHandler = metrics.Wrap(handler)
+	}
+	server := &http.Server{Handler: publicHandler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second,
 		WriteTimeout: 76 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10,
 		BaseContext: func(net.Listener) context.Context { return ctx }}
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
+	if metrics != nil {
+		metricListener, e := net.Listen("tcp", metricsListen)
+		if e != nil {
+			return e
+		}
+		metricServer := &http.Server{Handler: metrics.Handler(), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 4096}
+		defer metricServer.Close()
+		go func() {
+			if e := metricServer.Serve(metricListener); e != nil && !errors.Is(e, http.ErrServerClosed) {
+				logger.Error("metrics listener stopped", "reason", "serve_error")
+			}
+		}()
+		logger.Info("metrics listening", "mode", mode, "address", metricListener.Addr().String())
+	}
 	monitorCtx, cancelMonitor := context.WithCancel(ctx)
 	monitorDone := make(chan struct{})
 	go func() {

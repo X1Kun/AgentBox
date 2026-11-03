@@ -240,9 +240,17 @@ func (s *Service) Execute(ctx context.Context, principal, id string, r ExecuteRe
 		outcome = "unknown"
 	}
 	s.operationEvent(ctx, id, token, "execute", outcome, err, started)
+	elapsed := time.Since(started)
 	if err = s.finish(ctx, principal, id, r.IdentityRevision, token, err, true); err != nil {
+		s.metrics.Operation("execute", "unknown", elapsed)
 		return ExecutionView{}, err
 	}
+	if result.ExitCode != 0 {
+		outcome = "program_failure"
+	} else {
+		outcome = "complete"
+	}
+	s.metrics.Operation("execute", outcome, elapsed)
 	return ExecutionView{Execution: result, SessionID: id, IdentityRevision: r.IdentityRevision}, nil
 }
 func (s *Service) Write(ctx context.Context, principal, id string, r FileRequest) (FileView, error) {

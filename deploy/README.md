@@ -9,7 +9,8 @@ deploy/
 │   ├── gvisor/                  # RuntimeClass、runsc.toml、版本/归档锁
 │   ├── calico/                  # 上游版本/镜像锁、lab 覆盖补丁
 │   ├── agent-sandbox/           # Template、WarmPool、控制器补丁、runtime 镜像
-│   └── kueue/                   # 发布锁、控制器配置、batch/job webhook 补丁
+│   ├── kueue/                   # 发布锁、控制器配置、batch/job webhook 补丁
+│   └── observability/           # 本地 Compose、Prometheus、Grafana、只读 Role 和镜像锁
 ├── agentbox/
 │   ├── api/                     # Deployment、RBAC、Dockerfile
 │   ├── cleanup/                 # 独立管理员 RBAC
@@ -39,16 +40,18 @@ kubectl kustomize deploy/agentbox/overlays/lab
 
 以上只渲染，不联系 Kubernetes 或 Docker。默认值是审阅样例；实验实际创建由 `scripts/platform_lab.py` 的现有入口执行，保留专用 kubeconfig、版本、UID/归属和回收检查。Python 只更新明确的动态叶子字段，不替换整段 YAML、不生成静态权限/预算，也不引入参数 ConfigMap 转发层或全局 namespace/selector 变换。实验命令与动态 API CIDR 仍由编排层注入。
 
-版本锁位于 `lab/versions.lock.yaml` 和四个组件各自的 `versions.lock.yaml`；原有版本、镜像 digest、下载摘要不因迁移改变，Kueue 在 P3a 独立锁定。版本/摘要应保留为字符串。YAML 采用安全加载器并拒绝重复键和可执行标签；普通检查要求可用 kubectl/Kustomize 和 PyYAML，当前固定 kubectl v1.35.8 内置 Kustomize v5.7.1。
+版本锁位于 `lab/versions.lock.yaml` 和各组件的 `versions.lock.yaml`；原有版本、镜像 digest、下载摘要不因迁移改变，Kueue 在 P3a 独立锁定。版本/摘要应保留为字符串。YAML 采用安全加载器并拒绝重复键和可执行标签；普通检查要求可用 kubectl/Kustomize 和 PyYAML，当前固定 kubectl v1.35.8 内置 Kustomize v5.7.1。
 
 P3b 的第六份库/ABI/wheel 锁、四张公开图片及其许可/摘要、预期像素契约集中在 `agentbox/batch-images/`。二进制图片和 wheel 进入忽略的本地准备缓存，运行时输入预装进固定镜像，不在任务中随机取图。`batch-api/` 是独立应用入口，复用静态队列但使用自己的 API/PVC 配额，与 P3a 的单 Pod 验收预算分别渲染，不能把两个配额混用于同一 namespace。
 
 Python 镜像的默认下载仓库集中在 `lab/image-sources.yaml`，使用本实验已验证的 `docker.m.daocloud.io/library/python`；实际引用的 digest 取自版本锁。smoke、gVisor/network 验收和 session-build 共用该配置，API 基镜像沿用 session bundle 已校验的来源。版本锁中的官方仓库地址保留为内容基线，不是这些入口的默认下载地址。命令行 `--smoke-image-source` / `--session-python-source` 可显式覆盖，但必须保留相同 digest。镜像源变更进入源码报告，不修改集群版本身份；更改 digest 仍使旧版本身份失效。当前官方 Python 源的一次拉取失败不代表其他仓库不可用。
 
-`lab/format-compatibility.yaml` 仅承接 8958f50 的精确等价配置：解析后的锁值及资源/补丁指纹都相同，才沿用旧集群状态与镜像缓存身份。实际源文件仍逐一记录当前字节哈希；内容、权限或版本改变不会被格式桥接许可。镜像 bundle 的 v1 输入 ID 保留历史名称，不表示继续读取旧 JSON/Dockerfile 路径。
+`lab/format-compatibility.yaml` 承接 8958f50 的精确等价配置：解析后的锁值及资源/补丁指纹都相同，才沿用旧集群状态与镜像缓存身份。P3c 另记录 e8fa761 的 go.mod 精确字节桥接：仅将已选中的 Prometheus 依赖提升为 direct，所选模块图及 go.sum 不变，才能复用旧 SDK bundle；任意其他依赖输入变更使缓存失效。实际源文件仍逐一记录当前字节哈希；权限或版本改变不会被桥接许可。镜像 bundle 的 v1 输入 ID 保留历史名称，不表示继续读取旧 JSON/Dockerfile 路径。
 
 运行报告、缓存元数据、私有 principals 以及历史验收 JSON 保留原格式，不与静态资源混放；原始证据位于忽略的 artifacts 中。凭据和 Secret 内容不进入这里的清单或渲染参数。等价检查和真实集群复核见[迁移验收](../docs/validation.md#manifests)。
 
 批任务资源可通过 `python3 scripts/render_manifests.py --component batch --environment lab` 审阅，计算夹具使用 `--fixture batch`。Kueue 的上游发行清单校验后离线组合，不在 Kustomize 构建中读取远端 URL。安装、固定配额与失败夹具清理见[批任务运维](../docs/operations.md#batch)。
 
 图片产品入口使用 `--component batch-api`，实际实例须注入经过构建/CRI 验证的 API 镜像、工作镜像、配置 ID 与 manifest digest。Job YAML 与像素契约通过本地 ConfigMap 文件生成器组合，Python 仅对解析后的 namespace/归属、镜像和明确参数更新动态字段；不做模板文本替换。API 凭据单独提供，计算容器只挂载本次尝试的产物子目录。使用与清理见[图片产品运维](../docs/operations.md#batch-images)。
+
+观测组件使用第七份镜像锁。`components/observability/` 的仪表盘源为 YAML，运行时生成 Grafana 所需 JSON；Compose 的凭据和生成配置保存在忽略的 `.local/observability/`。`agentbox/overlays/lab/api-metrics-patch.yaml` 是显式选择的 metrics 端口补丁，观测验收调用，普通部署入口继续由管理员决定是否开启。命令与范围见[观测运维](../docs/operations.md#observability)。

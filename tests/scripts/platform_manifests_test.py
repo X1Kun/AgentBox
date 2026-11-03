@@ -1,5 +1,6 @@
 """Offline Kustomize semantics, identity bridges and parser safety."""
 import copy
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -10,11 +11,22 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
-from lib.platform_manifests import ManifestError,canonical,definition,lock_identity,normalized,objects,read_yaml,load_lock,LOCK_PATHS,render,render_component,profiles,python_image_source
+from lib.platform_manifests import ManifestError,canonical,definition,lock_identity,normalized,objects,read_yaml,load_lock,LOCK_PATHS,render,render_component,profiles,python_image_source,build_input_identity
 import yaml
 
 
 class ManifestTests(unittest.TestCase):
+    def test_dependency_metadata_bridge_is_exact_and_fails_closed(self):
+        config = ROOT / 'deploy'
+        bridge = read_yaml(config / 'lab/format-compatibility.yaml')['build_inputs']['go.mod']
+        raw = (ROOT / 'go.mod').read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        self.assertEqual(digest, bridge['current_sha256'])
+        self.assertEqual(build_input_identity(config, 'go.mod', digest), bridge['legacy_sha256'])
+        changed = hashlib.sha256(raw + b'// changed dependency input\n').hexdigest()
+        self.assertEqual(build_input_identity(config, 'go.mod', changed), changed)
+        self.assertEqual(build_input_identity(config, 'go.sum', digest), digest)
+
     def test_all_pre_migration_resource_shapes_are_equivalent(self):
         baseline=read_yaml(ROOT/'tests/fixtures/platform-manifests.yaml')
         for profile,expected in baseline['profiles'].items():

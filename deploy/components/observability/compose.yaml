@@ -1,0 +1,82 @@
+services:
+  prometheus:
+    image: docker.m.daocloud.io/prom/prometheus@sha256:d445d1806b38f85b5c394a1b87f94113fde0473b45245922c2e8b1bd41fa68ae
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.5
+    mem_limit: 512m
+    labels:
+      agentbox.dev/session: ${AGENTBOX_OBS_OWNER:?}
+      agentbox.dev/component: observability
+    command:
+    - --config.file=/etc/prometheus/prometheus.yaml
+    - --web.listen-address=127.0.0.1:19090
+    - --storage.tsdb.path=/prometheus
+    - --storage.tsdb.retention.time=2d
+    - --storage.tsdb.retention.size=512MB
+    - --query.max-concurrency=4
+    - --query.timeout=5s
+    volumes:
+    - ${AGENTBOX_OBS_CONFIG:?}/prometheus:/etc/prometheus:ro
+    - prometheus-data:/prometheus
+  grafana:
+    image: docker.m.daocloud.io/grafana/grafana@sha256:6e5d306338670f381a942f1c50d3c266bf71531e5ddd9ee4fc1a133dac5ce63d
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.5
+    mem_limit: 512m
+    labels:
+      agentbox.dev/session: ${AGENTBOX_OBS_OWNER:?}
+      agentbox.dev/component: observability
+    environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: '13000'
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${AGENTBOX_OBS_GRAFANA_PASSWORD:?}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      GF_PLUGINS_CHECK_FOR_UPDATES: 'false'
+      GF_SECURITY_DISABLE_GRAVATAR: 'true'
+    volumes:
+    - ${AGENTBOX_OBS_CONFIG:?}/grafana/provisioning:/etc/grafana/provisioning:ro
+    - ${AGENTBOX_OBS_CONFIG:?}/grafana/dashboards:/etc/grafana/dashboards:ro
+    - grafana-data:/var/lib/grafana
+  host:
+    image: docker.m.daocloud.io/prom/node-exporter@sha256:da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e234b4f171e0d92798
+    network_mode: host
+    user: '65534:65534'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.2
+    mem_limit: 128m
+    labels:
+      agentbox.dev/session: ${AGENTBOX_OBS_OWNER:?}
+      agentbox.dev/component: observability
+    command:
+    - --web.listen-address=127.0.0.1:19100
+    - --path.procfs=/host/proc
+    - --path.sysfs=/host/sys
+    - --collector.disable-defaults
+    - --collector.cpu
+    - --collector.meminfo
+    - --collector.diskstats
+    - --collector.pressure
+    - --collector.loadavg
+    - --collector.stat
+    volumes:
+    - /proc:/host/proc:ro
+    - /sys:/host/sys:ro
+volumes:
+  prometheus-data:
+    labels:
+      agentbox.dev/session: ${AGENTBOX_OBS_OWNER:?}
+  grafana-data:
+    labels:
+      agentbox.dev/session: ${AGENTBOX_OBS_OWNER:?}

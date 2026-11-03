@@ -375,7 +375,7 @@ bin/agentbox-cleanup --kubeconfig /path/to/cleanup.kubeconfig \
 | P3 批处理 | Kueue、固定图片 Job 模板、受控输入与产物 | 会话与批预算分开，Job attempt 输出隔离，提交/取消/TTL 可收敛 |
 | P4 策略 | 健康 AdmissionCheck | 最小 RBAC、指标新鲜度、恢复节奏、升级状态兼容 |
 
-会话与批任务的完整 Prometheus/Grafana 指标、固定压测轨迹与 R/B 基线将在 P3c 补齐；当前 P3a 的事件/运行时报告不能代替连续观测。Python 入口负责可重复安装/验收和记录，Go 服务与上游控制器负责长期运行。
+P3c 首步提供下述连续观测，固定压测轨迹与 R/B 基线后续单独交付。Python 入口负责可重复安装/验收和记录，Go 服务与上游控制器负责长期运行。
 
 ### 固定预热池与资源预算
 
@@ -397,10 +397,54 @@ bin/agentbox-cleanup --kubeconfig /path/to/cleanup.kubeconfig \
 
 卸载先停止新领取/提交并处理活动会话/批任务，再按上游固定版本流程停止补池、清理对象与控制器。共享 CRD、RuntimeClass、节点组件和存储必须确认无其他使用者才移除；输入、产物、凭据与日志按各自保留要求处理。真实操作命令在对应实现验收后补入本页。
 
+<a id="observability"></a>
+## 本地 Prometheus/Grafana 与只读观察器
+
+需要原开发集群 ready，以及 Compose v2。监控组件的来源、版本、linux/amd64 manifest digest 固定在 `deploy/components/observability/versions.lock.yaml`。先显式预载其中三张镜像，再启动；入口不会隐式拉取或更换内容：
+
+```bash
+docker pull docker.m.daocloud.io/prom/prometheus@sha256:d445d1806b38f85b5c394a1b87f94113fde0473b45245922c2e8b1bd41fa68ae
+docker pull docker.m.daocloud.io/grafana/grafana@sha256:6e5d306338670f381a942f1c50d3c266bf71531e5ddd9ee4fc1a133dac5ce63d
+docker pull docker.m.daocloud.io/prom/node-exporter@sha256:da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e234b4f171e0d92798
+make observability-up
+make platform-observability-test
+```
+
+Prometheus 为 `http://127.0.0.1:19090`，Grafana 为 `http://127.0.0.1:13000`，仪表盘 UID 为 `agentbox-observation`。Grafana 用户 admin，随机密码只保存在 `.local/observability/grafana-password`，权限 0600；凭据不进入报告。静态规则、仪表盘源和锁文件均为 YAML，生成的 Grafana JSON 与目标文件在忽略缓存中。Prometheus 保留 2 天/512MB 时序，两者先到即清理；这不是完整长期实验归档，验收另导出原始 query_range 与事件。
+
+验收创建临时会话 API 和图片产品 API，各自选择 `api-metrics-patch.yaml`，自动建立独立 metrics 转发和只读观察范围。它核对程序失败与 HTTP 成功分离、真实 CPU/内存、批任务发布、指标通道丢失、只读权限撤销、观察器重启 initial 事件，以及原有七组图片产品行为。结束时删除本轮工作负载/队列/PVC，停止观察器和转发、移除动态 API 目标，保留集群、监控栈和已归属的基础只读 RBAC。业务故障时原产品报告保留，可按[图片夹具清理](#batch-images)使用其中 `batch-product-test.json` 限定清理；不要直接删除未识别的对象。
+
+已有自管业务实例可手动指定执行资源所在 namespace：
+
+```bash
+python3 scripts/observability.py watch --session-namespace agentbox-WORK --batch-namespace agentbox-BATCH
+python3 scripts/observability.py stop-watch
+make observability-down
+```
+
+上面的 namespace 是占位值，替换为本开发集群中已归属的实际名称，至少提供一个 scope。观察器不自行发现其他项目，也不控制业务。`watch` 更新独立只读 Role/Binding、限定 namespace GET 和两个原节点的 `nodes/metrics` GET，凭据为一小时 ServiceAccount token；到期数据变为 unknown，重新执行 watch 刷新。不授予 Secret 或 `nodes/proxy` 权限，不跳过节点 TLS 校验。管理 namespace/SA 和限定节点的只读 ClusterRole 随集群保留，业务 namespace 的 Role 随其回收。down 验证归属后停止本项目监控容器/观察器，保留时序卷，不删除集群。
+
+手动实例还需显式开启 `agentbox-api --metrics-listen=0.0.0.0:9091`（默认关闭），再对 API Pod 使用仅 loopback 的 `kubectl port-forward ... :9091`。业务 TLS/Bearer 监听不承载 metrics，API Pod 可以与执行 namespace 不同。将固定本地转发地址写入 `.local/observability/config/prometheus/targets.yaml`，例如：
+
+```yaml
+- targets: ['127.0.0.1:19091']
+  labels: {instance: session}
+- targets: ['127.0.0.1:19092']
+  labels: {instance: batch}
+```
+
+metrics 不带业务凭据，只供受控网络/本地转发，不应暴露公网。标签仅包含有限的 operation/status/outcome/domain/role/source 等维度，不包含 request_id、session_id、Job/Pod UID、路径或 token；原始 ID 只用于 JSON 事件关联。所有 scrape 只访问内存快照，不按 scrape 请求量访问 Kubernetes/产物存储。
+
+解读时同时查看 `up`、`agentbox_backend_observation_valid`、`agentbox_inventory_valid` 和带 source 的 `agentbox_runtime_observation_valid`。有效性为 0/序列缺失时不能补零；完整读取后确实为空的库存才报告 0。已有对象在观察器重启时计作 initial，与 live 分开；轮询会漏过短对象，事件计数不能代替后续实验的完整逐请求账本。API/业务计数器随进程重置，API P95 是请求时延，不等于首次可执行或完整批任务时延。
+
+CPU/working set 来自 kubelet `/metrics/resource`；补充 RSS/throttling/I/O 来自可用的 `/metrics/cadvisor` 叶统计。当前 gVisor 的 cAdvisor 叶 CPU 缺失、部分内存为零，不能据此报告无成本；观察器仅在同叶 CPU 序列存在时采用它的补充统计，其他缺项保持未知。CRI 容器 start time 用于区分同名重建，首样本、计数器回退和过期源时间戳不产生速率。两种 source 分别标记有效性；此容器口径不承诺覆盖 Pod 外 shim/Sentry。物理宿主机 `/proc`、`/sys` 由只读 node-exporter 单独采集，CPU/内存/磁盘/PSI 不与容器或 kind 节点相加。端点差异参见 [Kubernetes 节点指标说明](https://kubernetes.io/docs/reference/instrumentation/node-metrics/)。
+
+本次仅验收采集语义和业务兼容性，报告耗时不构成性能收益或 R/B 容量结论。正式 R/B 前仍需冻结到达轨迹、首次/后续命令的逐条时间戳、请求正确性和资源口径，记录采集本身成本；不以当前稀疏样本给出 SLO。
+
 <a id="agent"></a>
 ## Agent/MCP 部署与真实验收
 
-`make build` 只构建 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent。管理员先安装受控平台与 API，再向调用方提供 API URL、可信 CA 和一个配置身份；不把 Kubernetes 或模型凭据放进执行 Pod。`make tools` 另行构建上游 SDK 验收客户端和可选 mockcore，不参与默认产品路径。
+`make build` 只构建 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent。管理员先安装受控平台与 API，再向调用方提供 API URL、可信 CA 和一个配置身份；不把 Kubernetes 或模型凭据放进执行 Pod。`make tools` 另行构建只读观察器、上游 SDK 验收客户端和可选 mockcore，不参与默认产品路径。
 
 `make platform-agent-test` 或 `make integration` 在当前专用实验集群创建临时 API/执行 namespace，以确定性模型 HTTP 替身启动真实 Agent 与 stdio MCP 子进程。验证 CSV 写入、程序失败修正、报告导出、跨命令文件和新解释器；再验证命令超时，以及经可信 loopback 故障夹具转发一次成功执行后丢弃响应，确认 Agent 不重放、不执行批次后续命令，并在独立预算内关闭会话。API 事件核对实际执行次数，宿主确认三个 gVisor 环境的 CRI/进程回收，最后清理本轮 namespace，保留集群。该入口不调用付费模型。
 

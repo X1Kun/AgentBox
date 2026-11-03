@@ -1,0 +1,19 @@
+schema_version: 1
+platform: linux/amd64
+images:
+  prometheus:
+    version: v3.15.1
+    source: prom/prometheus:v3.15.1
+    image: docker.m.daocloud.io/prom/prometheus@sha256:d445d1806b38f85b5c394a1b87f94113fde0473b45245922c2e8b1bd41fa68ae
+    release: https://github.com/prometheus/prometheus/releases/tag/v3.15.1
+  grafana:
+    version: '13.3.0'
+    source: grafana/grafana:13.3.0
+    image: docker.m.daocloud.io/grafana/grafana@sha256:6e5d306338670f381a942f1c50d3c266bf71531e5ddd9ee4fc1a133dac5ce63d
+    release: https://github.com/grafana/grafana/releases/tag/v13.3.0
+  node_exporter:
+    version: v1.12.1
+    source: prom/node-exporter:v1.12.1
+    image: docker.m.daocloud.io/prom/node-exporter@sha256:da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e234b4f171e0d92798
+    release: https://github.com/prometheus/node_exporter/releases/tag/v1.12.1
+scope: Owned lab observation; loopback listeners; no workload control or performance claims.

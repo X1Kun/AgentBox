@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/telemetry"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,7 +17,10 @@ import (
 	"time"
 )
 
-type Store struct{ root *os.Root }
+type Store struct {
+	root    *os.Root
+	metrics *telemetry.Metrics
+}
 
 var stagingRecord = regexp.MustCompile(`^(bat-[a-f0-9]{40})\.json\.[a-f0-9]{32}\.tmp$`)
 
@@ -31,7 +35,7 @@ func NewStore(path string) (*Store, error) {
 			return nil, err
 		}
 	}
-	return &Store{r}, nil
+	return &Store{root: r}, nil
 }
 func (s *Store) Close() error { return s.root.Close() }
 func (s *Store) lock(ctx context.Context, name string) (func(), error) {
@@ -136,7 +140,20 @@ func (s *Store) write(r *Record) error {
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 		return readErr
 	}
-	return atomicWrite(s.root, "records/"+r.Name+".json", data)
+	if err = atomicWrite(s.root, "records/"+r.Name+".json", data); err != nil {
+		return err
+	}
+	if s.metrics != nil {
+		from := "none"
+		if readErr == nil {
+			var previous Record
+			if json.Unmarshal(old, &previous) == nil {
+				from = previous.State
+			}
+		}
+		s.metrics.Transition(from, r.State, r.Name+"."+r.JobUID, time.Now())
+	}
+	return nil
 }
 func (s *Store) names() ([]string, error) {
 	d, err := s.root.Open("records")

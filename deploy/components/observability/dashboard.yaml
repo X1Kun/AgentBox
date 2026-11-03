@@ -1,0 +1,101 @@
+uid: agentbox-observation
+title: AgentBox observation and validity
+schemaVersion: 39
+version: 1
+editable: false
+refresh: 5s
+timezone: browser
+time: {from: now-15m, to: now}
+tags: [agentbox, functional-observation]
+panels:
+- id: 1
+  type: timeseries
+  title: Target availability (missing is unknown)
+  gridPos: {x: 0, y: 0, w: 12, h: 7}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - refId: A
+    expr: up{job=~"agentbox-api|observer|host"}
+    legendFormat: '{{job}} / {{instance}}'
+- id: 2
+  type: timeseries
+  title: Fresh backend and inventory observations
+  gridPos: {x: 12, y: 0, w: 12, h: 7}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - {refId: A, expr: 'agentbox:api_observation_valid', legendFormat: 'API {{mode}}'}
+  - {refId: B, expr: 'agentbox_inventory_valid', legendFormat: 'inventory {{domain}}'}
+  - {refId: C, expr: 'agentbox_runtime_observation_valid', legendFormat: 'runtime {{node_role}}'}
+  - {refId: D, expr: 'agentbox_backend_ready and on(instance) (agentbox:api_observation_valid == 1)', legendFormat: 'ready {{mode}}'}
+- id: 3
+  type: timeseries
+  title: API request rate including rejections and errors
+  gridPos: {x: 0, y: 7, w: 12, h: 8}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - refId: A
+    expr: sum by(mode,operation,status)(rate(agentbox_http_requests_total[1m]))
+    legendFormat: '{{mode}} / {{operation}} / {{status}}'
+- id: 4
+  type: timeseries
+  title: API request P95 (not workload end-to-end latency)
+  gridPos: {x: 12, y: 7, w: 12, h: 8}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - refId: A
+    expr: histogram_quantile(0.95, sum by(le,mode,operation)(rate(agentbox_http_request_duration_seconds_bucket[2m])))
+    legendFormat: '{{mode}} / {{operation}}'
+- id: 5
+  type: timeseries
+  title: Business outcomes (program failure differs from transport success)
+  gridPos: {x: 0, y: 15, w: 12, h: 8}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - refId: A
+    expr: sum by(mode,operation,outcome)(rate(agentbox_operations_total[1m]))
+    legendFormat: '{{mode}} / {{operation}} / {{outcome}}'
+- id: 6
+  type: timeseries
+  title: Current inventory (only complete fresh observations)
+  gridPos: {x: 12, y: 15, w: 12, h: 8}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - refId: A
+    expr: agentbox_inventory_items and on(domain) (agentbox_inventory_valid == 1) and on() (max(up{job="observer"}) == 1)
+    legendFormat: '{{domain}} / {{kind}} / {{state}}'
+- id: 7
+  type: timeseries
+  title: Leaf container CPU and throttling (outside-Pod runtime cost excluded)
+  gridPos: {x: 0, y: 23, w: 12, h: 8}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - refId: A
+    expr: agentbox_runtime_resource{resource=~"cpu_cores|throttled_seconds_per_second"} and on(node_role,source) (agentbox_runtime_observation_valid == 1) and on() (max(up{job="observer"}) == 1)
+    legendFormat: '{{node_role}} / {{domain}} / {{role}} / {{resource}} / {{source}}'
+- id: 8
+  type: timeseries
+  title: Leaf container memory and I/O
+  gridPos: {x: 12, y: 23, w: 12, h: 8}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - refId: A
+    expr: agentbox_runtime_resource{resource!~"cpu_cores|throttled_seconds_per_second"} and on(node_role,source) (agentbox_runtime_observation_valid == 1) and on() (max(up{job="observer"}) == 1)
+    legendFormat: '{{domain}} / {{role}} / {{resource}} / {{source}}'
+- id: 9
+  type: timeseries
+  title: Physical host CPU and I/O pressure (do not sum with Pod metrics)
+  gridPos: {x: 0, y: 31, w: 12, h: 8}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - {refId: A, expr: '(1 - avg(rate(node_cpu_seconds_total{mode="idle",job="host"}[1m]))) and on() (max(up{job="host"}) == 1)', legendFormat: physical CPU busy}
+  - {refId: B, expr: 'rate(node_pressure_io_stalled_seconds_total[1m]) and on() (max(up{job="host"}) == 1)', legendFormat: physical I/O PSI full}
+  - {refId: C, expr: 'rate(node_pressure_io_waiting_seconds_total[1m]) and on() (max(up{job="host"}) == 1)', legendFormat: physical I/O PSI some}
+- id: 10
+  type: timeseries
+  title: Kubernetes stage P95 (initial recovery separated from live events)
+  gridPos: {x: 12, y: 31, w: 12, h: 8}
+  datasource: {type: prometheus, uid: agentbox-prometheus}
+  targets:
+  - refId: A
+    expr: histogram_quantile(0.95,sum by(le,domain,stage,origin)(rate(agentbox_lifecycle_duration_seconds_bucket[2m])))
+    legendFormat: '{{domain}} / {{stage}} / {{origin}}'

@@ -16,6 +16,7 @@ import (
 
 	"github.com/X1Kun/AgentBox/internal/batch"
 	"github.com/X1Kun/AgentBox/internal/httpauth"
+	"github.com/X1Kun/AgentBox/internal/telemetry"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -25,7 +26,10 @@ type Server struct {
 	timeout time.Duration
 	permits chan struct{}
 	ready   atomic.Bool
+	metrics *telemetry.Metrics
 }
+
+func (s *Server) SetTelemetry(metrics *telemetry.Metrics) { s.metrics = metrics }
 
 func New(backend batch.Backend, principals []httpauth.Principal, timeout time.Duration, maxInflight int) (*Server, error) {
 	if backend == nil || timeout < time.Second || timeout > 30*time.Second || maxInflight < 1 || maxInflight > 128 {
@@ -204,9 +208,11 @@ func (s *Server) RunReadiness(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
+		started := time.Now()
 		budget, cancel := context.WithTimeout(ctx, s.timeout)
 		err := s.backend.Ready(budget)
 		s.ready.Store(err == nil)
+		s.metrics.Backend(err == nil && budget.Err() == nil, started)
 		if err == nil {
 			_ = s.backend.Reconcile(budget)
 		}

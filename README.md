@@ -15,7 +15,7 @@ make check
 
 Agent 自动创建并绑定一个会话，仅向模型开放查询/执行/文件工具；结束或异常退出时在独立预算内请求关闭并确认。创建恢复使用相同 request_id；未知执行/写入不重放。MCP 子进程只获得 API token，模型和集群凭据不进入 MCP 或执行 Pod。
 
-静态部署资源使用 [YAML＋Kustomize](docs/operations.md#manifests)：配置按组件集中，agentbox/overlays/lab/ 表达环境差异，验收夹具单独归档；六份版本锁使用 YAML。Python 保留实验编排和验证，JSON 用于运行报告、缓存元数据及历史证据。普通检查的 Python 依赖包含固定 Pillow，见 scripts/requirements-platform.txt。
+静态部署资源使用 [YAML＋Kustomize](docs/operations.md#manifests)：配置按组件集中，agentbox/overlays/lab/ 表达环境差异，验收夹具单独归档；七份版本锁使用 YAML。Python 保留实验编排和验证，JSON 用于运行报告、缓存元数据及历史证据。普通检查的 Python 依赖包含固定 Pillow，见 scripts/requirements-platform.txt。
 
 ## 开发平台与真实验收
 
@@ -34,6 +34,8 @@ platform-up 依赖已准备的锁定归档和镜像 bundle；不隐式下载/更
 准备固定 Kueue 清单后，可运行 `make platform-batch-install`、`make platform-batch-test`。批任务使用独立 namespace/静态队列，在 Worker 的 gVisor Job 内直接计算；入口验证排队、准入、取消、失败、deadline 与实际运行时回收，不提供批任务产品 API。范围与失败夹具清理见[批任务运维](docs/operations.md#batch)。
 
 图片产品闭环使用 `python3 scripts/prepare_batch_images.py --download`、`make platform-batch-image-build` 和 `make platform-batch-product-test`。输入为四张有许可和 SHA-256 的公开样例，每任务输出八张经过字节/像素校验的 PNG。`agentbox-api --mode=batch` 使用独立权限与 PVC，结果在 Job 删除后保留，原会话模式保持兼容。接口见[批任务 API](docs/usage.md#batch-api)，部署与临时数据清理见[图片任务运维](docs/operations.md#batch-images)。
+
+P3c 首步增加 [Prometheus/Grafana 与只读观察器](docs/operations.md#observability)。预载锁定镜像后运行 `make observability-up`；`make platform-observability-test` 自动连接临时会话/图片 API，验证真实指标、采集中断、权限丢失及重启恢复，导出原始时序和事件。Grafana 仅监听 `127.0.0.1:13000`，密码位于忽略的 `.local/observability/grafana-password`。宿主机与容器资源分别展示，缺失数据保留未知；固定到达轨迹和 R/B 性能基线后续实现。
 
 ## 文档导航
 

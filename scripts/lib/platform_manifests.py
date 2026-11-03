@@ -57,6 +57,11 @@ def read_yaml(path, mapping=True):
 def load_lock(config,name):return read_yaml(Path(config)/LOCK_PATHS[name])
 
 
+def build_input_identity(config, name, digest):
+    bridge=read_yaml(Path(config)/'lab/format-compatibility.yaml').get('build_inputs',{}).get(name,{})
+    return bridge['legacy_sha256'] if digest==bridge.get('current_sha256') else digest
+
+
 def repository_image_source(config, name, image):
     sources = read_yaml(Path(config) / 'lab/image-sources.yaml')
     repository = sources.get(name + '_repository')

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/telemetry"
 	"regexp"
 	"sync"
 	"time"
@@ -107,6 +108,7 @@ type Service struct {
 	now            func() time.Time
 	reconcileMu    sync.Mutex
 	reconcileAfter string
+	metrics        *telemetry.Metrics
 }
 type Backend interface {
 	Submit(context.Context, string, Request) (View, bool, error)

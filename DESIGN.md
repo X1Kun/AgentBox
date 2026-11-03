@@ -1,6 +1,6 @@
 # AgentBox 系统设计
 
-版本：V3.3｜更新：2026-11-02｜平台、会话 API、记录保留及 MCP/Agent v2 已实现；新增 Kueue 固定图片任务、独立产物和 Go 批任务接口，性能基线与资源策略仍为后续阶段。
+版本：V3.4｜更新：2026-11-03｜增加会话/批任务指标、只读平台观察器与本地 Prometheus/Grafana；性能基线与资源策略仍为后续阶段。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
@@ -115,7 +115,17 @@ Job/Pod UID 和 attempt 隔离输出，发布结果处理重复尝试。Job Comp
 
 会话与批任务通过输入清单和产物引用衔接。Agent 可以在会话内试验，再由可信产品层提交已允许的批模板；首版不自动把任意生成脚本提升为可信批程序，不让沙箱自行创建 Kubernetes 工作负载。
 
-## 7. 局部研发与验证边界
+## 7. 观测与测量口径
+
+API 的独立可选 metrics 监听只读取内存中的有限标签指标，不在 scrape 时查询 Kubernetes 或业务存储。HTTP 成功与程序成功分开，程序非零退出记录 program_failure；批任务发布校验单独计数。状态转换仅在持久记录提交后观察，进程重启会重置计数，不能将其当作唯一任务吞吐量。
+
+`agentbox-observer` 使用独立只读 ServiceAccount，限定两个显式 namespace、两个原节点的 metrics 子资源，不读取 Secret 或控制 Job/Claim。轮询器缓存完整快照，暴露新鲜度/有效性；丢失权限、过期或不完整时省略库存值。生命周期以 Kubernetes 时间戳和 UID 引用链关联，重启时已有对象的 initial 事件与 live 事件分别记录，原始 ID 只进入结构化事件。5s 轮询可能错过短对象，正式逐请求时延与积压由后续实验驱动逐条记录。
+
+容器 CPU/working set 使用 kubelet CRI 资源端点；cAdvisor 补充其确实支持的叶容器 RSS、throttling 与 I/O，排除 POD/父 cgroup。CRI start time 隔离同名容器替换，首样本、计数器回退和过期样本不产生速率。当前 gVisor 的 cAdvisor 叶资源不完整，缺项保留未知，不能以零说明无成本。该口径不承诺覆盖 Pod 外 shim/Sentry 开销。物理宿主机 CPU/内存/磁盘/PSI 由只读 node-exporter 单列，不与 kind 节点或容器数值求和。
+
+本地监控栈固定镜像 digest，Prometheus/Grafana/node-exporter 使用 loopback 监听、独立归属和持久数据卷。静态规则、仪表盘源和版本锁均为 YAML；Grafana JSON 仅在忽略缓存内生成。操作和有效性边界见[运维指南](docs/operations.md#observability)。
+
+## 8. 局部研发与验证边界
 
 健康 AdmissionCheck 从有效交互质量窗口决定未准入批 Workload 是否获得许可，不自行排队、预留资源或改 Job suspend。第一轮固定预热池、会话规格和批任务预算，比较 R（仅会话）、B（调优静态批配额）、A（同配置＋健康准入）；样本失效、滞回、恢复节奏、Pending 占配额及状态竞态见[扩展设计](docs/admission-check.md)。
 
@@ -125,7 +135,7 @@ Job/Pod UID 和 attempt 隔离输出，发布结果处理重复尝试。Job Comp
 
 正式实验记录全部到达、拒绝、超时、积压、失败重试、预热空闲和清理成本；功能正确、测量有效与性能收益分别下结论。协议见[验证指南](docs/validation.md#platform)。生产导向体现为版本、边界、故障恢复与可复现证据，不以安装成功或厂商启动数字声明生产就绪。
 
-## 8. 迁移与选型决定
+## 9. 迁移与选型决定
 
 | 现有能力/候选 | 决定与边界 |
 | --- | --- |
@@ -140,7 +150,7 @@ Job/Pod UID 和 attempt 隔离输出，发布结果处理重复尝试。Job Comp
 
 新会话 API/MCP 独立验收后即可切换并清退旧 Daemon，不必等待批任务策略或 Koordinator。旧在途请求先排空或明确取消，不自动转换为新会话/Job；旧接口明确停用，新平台失败不回退到旧链路。退役操作和发布收敛见[运维指南](docs/operations.md#retirement)。
 
-## 9. 官方依据
+## 10. 官方依据
 
 检索日期：2026-10-26。以下支持组件职责和选型，实际部署另行锁版本；不引用厂商性能数字作为本项目验收目标。
 
