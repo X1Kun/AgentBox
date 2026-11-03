@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+configMapGenerator:
+- name: batch-template
+  namespace: agentbox-batch
+  files:
+  - job.yaml=image-job.yaml
+  - contract.yaml
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview

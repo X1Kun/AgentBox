@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentbox-batch-api
+  namespace: agentbox-batch
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: agentbox-batch-api
+  template:
+    metadata:
+      labels:
+        app: agentbox-batch-api
+        agentbox.dev/session: development
+        agentbox.dev/batch-run: preview
+        agentbox.dev/batch-role: api
+    spec:
+      serviceAccountName: batch-api
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 12
+      nodeSelector:
+        kubernetes.io/hostname: agentbox-platform-lab-worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: api
+        image: agentbox/api:local
+        imagePullPolicy: Never
+        args:
+        - --mode=batch
+        - --listen=0.0.0.0:8090
+        - --namespace=agentbox-batch
+        - --instance=api-preview
+        - --batch-data-dir=/data
+        - --batch-template-file=/etc/batch/job.yaml
+        - --batch-contract-file=/etc/batch/contract.yaml
+        - --batch-image-id=sha256:0000000000000000000000000000000000000000000000000000000000000000
+        - --batch-image-digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
+        - --principals-file=/etc/agentbox/principals.json
+        - --tls-cert-file=/etc/agentbox/tls.crt
+        - --tls-key-file=/etc/agentbox/tls.key
+        ports:
+        - name: https
+          containerPort: 8090
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: 1000m, memory: 512Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: https
+            scheme: HTTPS
+          periodSeconds: 2
+          failureThreshold: 60
+        volumeMounts:
+        - name: artifacts
+          mountPath: /data
+        - name: template
+          mountPath: /etc/batch
+          readOnly: true
+        - name: credentials
+          mountPath: /etc/agentbox
+          readOnly: true
+      volumes:
+      - name: artifacts
+        persistentVolumeClaim:
+          claimName: batch-artifacts
+      - name: template
+        configMap:
+          name: batch-template
+      - name: credentials
+        secret:
+          secretName: agentbox-api-credentials
+          defaultMode: 288

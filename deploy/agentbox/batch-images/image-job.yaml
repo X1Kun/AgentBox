@@ -1,0 +1,98 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: image-job
+  namespace: agentbox-batch
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview
+    kueue.x-k8s.io/queue-name: batch
+spec:
+  suspend: true
+  backoffLimit: 1
+  activeDeadlineSeconds: 180
+  parallelism: 1
+  completions: 1
+  template:
+    metadata:
+      labels:
+        agentbox.dev/session: development
+        agentbox.dev/batch-run: preview
+        agentbox.dev/batch-role: compute
+    spec:
+      runtimeClassName: agentbox-gvisor
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 3
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: prepare
+        image: agentbox/image-worker:local
+        imagePullPolicy: Never
+        args: [prepare]
+        env:
+        - name: JOB_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['batch.kubernetes.io/controller-uid']
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        resources:
+          requests: {cpu: 500m, memory: 256Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+        - name: artifacts
+          mountPath: /data
+        - name: scratch
+          mountPath: /tmp
+      containers:
+      - name: image-worker
+        image: agentbox/image-worker:local
+        imagePullPolicy: Never
+        args: [run]
+        env:
+        - name: JOB_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['batch.kubernetes.io/controller-uid']
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        resources:
+          requests: {cpu: 500m, memory: 256Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+        - name: artifacts
+          mountPath: /output
+          subPathExpr: attempts/$(JOB_UID)/$(POD_UID)
+        - name: scratch
+          mountPath: /tmp
+      volumes:
+      - name: artifacts
+        persistentVolumeClaim:
+          claimName: batch-artifacts
+      - name: scratch
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi

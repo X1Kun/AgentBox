@@ -19,7 +19,7 @@ python3 scripts/render_manifests.py --fixture network
 
 渲染只调用本地 Kustomize，不连接集群/Docker，不启用远端资源、Helm 或插件。Python 在实验中选择必要资源，并更新明确的动态 namespace/归属、镜像、参数、探针程序与发现的 API CIDR；静态 RBAC、资源预算及环境约束保存在 YAML 中。不引入每个调用一个 overlay、参数 ConfigMap 转发或整段模板替换。实际创建继续经过原 platform 入口的 UID/归属检查。
 
-五份版本锁使用 YAML；`lab/format-compatibility.yaml` 仅在锁值、资源语义与受控补丁精确等价时，承接旧本地状态和镜像缓存身份，不强迫重建健康集群，也不授权版本升级。v1 bundle 的历史输入 ID 只是缓存协议标识，不读取旧文件路径；当前 YAML 字节哈希仍进入源文件证据。历史 JSON、运行报告和生成缓存元数据不回写。
+六份版本锁使用 YAML；`lab/format-compatibility.yaml` 仅在锁值、资源语义与受控补丁精确等价时，承接旧本地状态和镜像缓存身份，不强迫重建健康集群，也不授权版本升级。v1 bundle 的历史输入 ID 只是缓存协议标识，不读取旧文件路径；当前 YAML 字节哈希仍进入源文件证据。历史 JSON、运行报告和生成缓存元数据不回写。
 
 Python 镜像默认通过 [image-sources.yaml](../deploy/lab/image-sources.yaml) 中的 `docker.m.daocloud.io/library/python` 下载，digest 仍取自工具版本锁。该来源已通过本机网络验收；`docker.io/library/python` 本轮曾拉取失败。smoke、gVisor/network 和 session-build 统一读取默认配置，API 构建沿用 session bundle 的已校验来源；不再需要重复传 Python 镜像源参数。显式参数仍可覆盖，且必须保留锁定 digest。其他组件仓库不进行未经验证的整体替换。
 
@@ -277,6 +277,34 @@ Job 初始 suspend=true，仅由 Kueue 准入后启动。批计算在 Worker 的
 失败时保留本轮 `artifacts/platform-batch-test-*/batch-test.json`，先看原始报告和诊断，再将该实际文件路径传给 `python3 scripts/platform_lab.py batch-cleanup --batch-report PATH`。清理器验证 run、namespace/队列/flavor 名称、原 UID 和本集群归属；不清其他 namespace 或其他 run，也不删除 Kueue 安装。正常验收仅清本轮 Job、队列、配额和 namespace，保留健康开发集群与镜像缓存。
 
 此阶段没有批任务 Go API/MCP、真实图片数据集、可重试产物发布、Prometheus/Grafana 或 R/B 性能实验；后续范围与门槛见[路线图](roadmap.md)。
+
+<a id="batch-images"></a>
+## 固定图片任务、Go API 与独立产物
+
+P3b 合并交付固定图片处理、独立产物和 Go 批任务接口。原图来自 scikit-image v0.25.2：chelsea/coffee 为摄影者 CC0，astronaut/Hubble 为公共领域，来源、署名、尺寸、大小和 SHA-256 逐项保存在[数据清单](../deploy/agentbox/batch-images/dataset.yaml)，许可依据链接也随清单保留。库与 cp312/amd64 wheel 的固定版本/摘要见[处理库锁](../deploy/agentbox/batch-images/versions.lock.yaml)；实际像素契约见[contract.yaml](../deploy/agentbox/batch-images/contract.yaml)。
+
+```bash
+python3 -m pip install -r scripts/requirements-platform.txt
+python3 scripts/prepare_batch_images.py --download
+make platform-batch-image-build
+make platform-batch-product-test
+```
+
+准备脚本只在显式 `--download` 时下载缺失文件，缓存于忽略的 `.local/batch-images/`；已有文件也检查大小、SHA-256、解码和尺寸。构建阶段使用已校验的 Python 基镜像、wheel、原图及固定程序，Docker build 关闭网络，任务热路径也不联网安装或取图。构建后在目标镜像内再次核对八个预期输出的像素摘要，再将镜像导入原 Worker。构建 bundle 同时绑定 Docker 配置 ID、该 CRI 镜像的不可变 manifest digest 和本地内容标签；Pod 上报的 import 日期仓库名是 kind 的导入引用，不把它误认为远程仓库或另一张镜像。
+
+产品资源按职责放在 `agentbox/batch-api/` 与 `agentbox/batch-images/`，继续复用静态队列组件。`python3 scripts/render_manifests.py --component batch-api` 可离线审阅组合资源；默认镜像和零摘要是审阅占位值。实际部署由管理员提供相同 namespace 的 `agentbox-api-credentials` Secret，并设置经过验证的 `API_IMAGE`、`WORKER_IMAGE`、`WORKER_IMAGE_ID`、`WORKER_IMAGE_DIGEST`、namespace/instance 及队列引用；永久数据和凭据不能使用验收生成的临时值。环境入口、存储类和镜像分发按部署环境配置，当前清单固定于同一 lab Worker 的单副本模式。
+
+`agentbox-api --mode=batch` 使用 `--batch-data-dir` 挂载 artifacts PVC，`--batch-template-file` 与 `--batch-contract-file` 指向只读配置，`--batch-image-id` / `--batch-image-digest` 指定同一已校验镜像的两种不可变身份。默认会话模式、原会话 Role 和六个 MCP 工具保持原契约；批任务模式使用单独的 SA/Role，能管理本 namespace 的 Job、读关联 Pod/Workload、固定 PVC/LocalQueue，没有 Secret 读取、Pod 创建/删除或会话 Claim 权限。请求只选择固定 dataset 和有限 passes，不能提交程序或 PodSpec。
+
+独立 `batch-artifacts` PVC 声明 1Gi，kind 使用 standard/local-path 与 ReadWriteOnce，API 和计算 Pod 放在同一 Worker。API 预算 100m/128Mi 请求、1 CPU/512Mi 上限，与计算 Pod 的 500m/256Mi 预算分别计入 namespace 配额（最多两个 Pod）。实际入场前还保守核对已有 Worker 请求、完整会话预算和 API/计算上限。PVC 请求大小不等于物理磁盘硬限额，local-path 的底层存储及宿主 I/O 仍是实验边界；固定可信处理程序另行限制输入、单文件 256KiB、每次输出 2MiB 和记录数，不把小规模成功视为磁盘容量或生产 SLO 证明。
+
+受信任的准备 init 容器只创建当前 Job UID/Pod UID 的目录；实际图片解码容器只挂载该尝试子目录。两者都使用固定镜像、非 root/只读根/无 SA token 与受限资源；计算 Pod 默认拒绝网络，API 仅允许必要 DNS 和发现的 Kubernetes API 地址。API 在尝试根目录内用 Go os.Root 限定读取，检查结果清单、实际 PNG、字节与像素摘要，再原子发布到独立目录。发布、取消和记录更新通过跨进程文件锁串行化；活跃的原子写暂存文件不计入提交目录，孤立暂存文件按相应锁回收。
+
+成功产物默认 24h 后不可下载，后台在原对象回收后删除相应数据；记录保留以承接幂等，默认上限 128，满时明确拒绝。后台扫描按稳定顺序保留进程内进度，预算耗尽后从上一条尝试之后继续，避免前部记录反复占用预算；进程重启后重新开始扫描，持久任务和产物仍按原 UID 恢复。API 重启、客户断线不取消已提交任务。Job TTL 只在结果或失败摘要提交后启用；取消不发布半成品，成功后 DELETE 仅清运行资源。跨 Kubernetes/PVC 没有原子事务，未知提交或执行状态不声明 exactly-once，也不通过新建另一份 Job 掩盖不确定性。
+
+真实验收每轮创建独立 `agentbox-batch-product-<run>` namespace、队列和临时 PVC，验证丢弃提交响应后的同对象恢复、冲突与跨身份拒绝、实际 PNG/像素、Job 删除及 API 重启后下载、损坏产物拒绝、排队/运行取消、Pod 故障后的尝试隔离及单份发布。故障期间的 API/客户端密钥只在私有临时目录与本轮 Secret，报告不读 Secret 数据。正常验收最终确认 Job/Workload/Pod/CRI/运行时、namespace/队列以及此临时 PV 回收，保留原平台与会话镜像 bundle。
+
+失败时保留原始 `batch-product-test.json`，将实际路径传给 `python3 scripts/platform_lab.py batch-product-cleanup --batch-report PATH`。该命令会验证原 namespace UID、run/归属，再清理该验收夹具（包括其临时产物/PVC），不会清其他项目或永久产品数据。结果与范围见[图片批任务验收](validation.md#batch-images)。本轮不提供任意图片上传、批任务 MCP 工具、跨节点存储/调度或性能基线；观测与 R/B 仍在 P3c。
 
 <a id="session-api"></a>
 ## Go 会话服务部署与验收

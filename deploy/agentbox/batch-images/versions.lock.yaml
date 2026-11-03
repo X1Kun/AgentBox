@@ -1,0 +1,17 @@
+schema_version: 1
+pillow_version: 12.2.0
+wheel:
+  filename: pillow-12.2.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+  url: https://files.pythonhosted.org/packages/e9/9e/c05e19657fd57841e476be1ab46c4d501bffbadbafdc31a6d665f8b737b6/pillow-12.2.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+  bytes: 8094744
+  sha256: b86024e52a1b269467a802258c25521e6d742349d760728092e1bc2d135b4d76
+  metadata_source: https://pypi.org/pypi/Pillow/12.2.0/json
+python_abi: cp312
+python_base: deploy/lab/versions.lock.yaml#smoke.image
+threads: 1
+thumbnail: [128, 128]
+resample: LANCZOS
+output: RGB PNG; thumbnail and grayscale per input
+max_input_bytes: 4194304
+max_output_file_bytes: 262144
+max_output_bytes: 2097152

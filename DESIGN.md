@@ -1,6 +1,6 @@
 # AgentBox 系统设计
 
-版本：V3.2｜更新：2026-11-02｜平台、会话 API、记录保留及 MCP/Agent v2 已实现；新增 Kueue 固定配额批任务功能底座，批任务产品接口、产物、性能基线与资源策略仍为后续阶段。
+版本：V3.3｜更新：2026-11-02｜平台、会话 API、记录保留及 MCP/Agent v2 已实现；新增 Kueue 固定图片任务、独立产物和 Go 批任务接口，性能基线与资源策略仍为后续阶段。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
@@ -103,7 +103,9 @@ RuntimeClass 不自动保证完整隔离，需逐项验证：
 <a id="batch"></a>
 ## 6. 批任务与结果契约
 
-当前 P3a 仅提供固定版本 Kueue、隔离静态队列及真实 gVisor CPU Job 的功能验收，关闭借用、抢占和健康 AdmissionCheck；队列、namespace 配额与 Job 的 CPU/内存请求和上限一致。批任务计算直接在 Job Pod 内运行，按原 UID 取消并独立检查 Workload/Pod/CRI/进程回收。安装与故障夹具清理见[运维指南](docs/operations.md#batch)。下面的图片、产品接口与持久产物契约继续作为 P3b/P3c 的目标。
+P3a 提供固定版本 Kueue、隔离静态队列及真实 gVisor CPU Job 的功能验收，关闭借用、抢占和健康 AdmissionCheck。P3b 合并交付四张固定公开图片、预装 Pillow 的受控镜像、独立产物 PVC 和 Go 提交/查询/取消/下载接口。批计算直接在 Job Pod 内运行；产品 API 与会话 API 是同一二进制的独立运行模式，使用不同权限和部署入口。操作见[运维指南](docs/operations.md#batch-images)。
+
+任务名由 instance/principal/request_id 确定，Job UID 绑定和请求摘要持久化在 PVC 的有限记录中，不自建队列账本或生命周期 CRD。未知创建只查询同名对象，已绑定 Job 消失不重建；明确拒绝与传输未知区分处理。记录通过文件锁与原子提交承接 API 重启，产物按 Job/Pod UID 分目录并由 API 对固定字节/像素契约验证后发布。发布与取消串行化，成功产物独立于 Job TTL；保留期到期拒绝下载，对象回收后尽力清理数据，元数据容量满时显式拒绝。该单 Worker/PVC 模式不承诺跨系统 exactly-once、分布式存储或生产 SLO。
 
 首个负载是固定图片数据集与处理库；冻结 manifest 哈希、数量、尺寸、编码/线程参数和输出校验。一个 Job 处理一份有界输入或一个分片，任务粒度由启动成本与失败代价测量决定，不默认每张图片创建 Pod。
 

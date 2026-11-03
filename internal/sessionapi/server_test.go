@@ -49,7 +49,7 @@ func (b *backend) Close(context.Context, string, string) (session.View, error) {
 func (b *backend) Ready(context.Context) error { return b.err }
 func handler(t *testing.T, b Backend, max int) *Server {
 	t.Helper()
-	h, e := New(b, []Principal{{"alice", aliceToken}, {"bob", bobToken}}, time.Second, max)
+	h, e := New(b, []Principal{{ID: "alice", Token: aliceToken}, {ID: "bob", Token: bobToken}}, time.Second, max)
 	if e != nil {
 		t.Fatal(e)
 	}

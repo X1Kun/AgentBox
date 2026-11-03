@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../batch
+- ../batch-images
+- pvc.yaml
+- quota.yaml
+- rbac.yaml
+- deployment.yaml
+- networkpolicy.yaml
+patches:
+- target:
+    kind: NetworkPolicy
+    name: batch-default-deny
+  patch: |-
+    - op: add
+      path: /spec/podSelector/matchLabels
+      value:
+        agentbox.dev/batch-role: compute

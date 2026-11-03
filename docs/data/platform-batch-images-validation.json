@@ -1,0 +1,612 @@
+{
+  "baseline_commit": "9be1d83",
+  "budgets": {
+    "api_limits": {
+      "cpu": "1000m",
+      "memory": "512Mi"
+    },
+    "existing_requests": {
+      "cpu": "0.250",
+      "memory": "0"
+    },
+    "scope": "Conservative scheduling check only; kind nodes still share physical host resources",
+    "session_reference": {
+      "count/sandboxclaims.extensions.agents.x-k8s.io": "32",
+      "limits.cpu": "1500m",
+      "limits.memory": "1536Mi",
+      "pods": "3",
+      "requests.cpu": "300m",
+      "requests.memory": "384Mi"
+    },
+    "worker_allocatable": {
+      "cpu": "12",
+      "ephemeral-storage": "603633768Ki",
+      "hugepages-1Gi": "0",
+      "hugepages-2Mi": "0",
+      "memory": "32776756Ki",
+      "pods": "110"
+    },
+    "worker_limits": {
+      "cpu": "500m",
+      "memory": "256Mi"
+    }
+  },
+  "contracts": {
+    "api_mode": "agentbox-api --mode=batch",
+    "default_download_retention_hours": 24,
+    "default_max_records": 128,
+    "default_mode": "session",
+    "job_active_deadline_seconds": 180,
+    "job_backoff_limit": 1,
+    "known_rejection": "No background retry; only the explicit caller can retry the same request",
+    "max_file_bytes": 262144,
+    "max_output_bytes": 2097152,
+    "program_deadline_seconds": 150,
+    "queue_wait_deadline": null,
+    "record_retention": "No automatic metadata deletion; capacity rejection preserves idempotency",
+    "storage": "one ReadWriteOnce PVC in a single worker; declared 1Gi is not a physical capacity guarantee",
+    "ttl_after_summary_commit_seconds": 600,
+    "unknown_submission": "Query same named object; no new create after an uncertain attempted create when no UID can be confirmed"
+  },
+  "date": "2026-11-02",
+  "earlier_success": {
+    "note": "Full product flow passed before the final metadata lock-allocation capacity hardening; original stage source hashes retained",
+    "report": "artifacts/platform-batch-product-test-b88d7ed555f8/report.json",
+    "sha256": "d366f7d52c65694f58c7321484b8ea33dfacfdee7c4c84fe67194974790121b2"
+  },
+  "inputs": {
+    "dataset_id": "image-small-v1",
+    "dataset_sha256": "3f9f90adc7d19ae9b29952f8133d0d76df6f8fce6d219bdcb1c3bb1815d4bac9",
+    "library_lock": "deploy/agentbox/batch-images/versions.lock.yaml",
+    "library_lock_sha256": "fd30ebdcfdb0c573365ffd4e1c1122173b2cb9059d89baa8988eb9394d386d2a",
+    "manifest": "deploy/agentbox/batch-images/dataset.yaml",
+    "manifest_sha256": "5be78b815c3477b3247881562aca0eb61596b051a7227d2d3f09d13ecec638fb",
+    "original_images": 4,
+    "outputs_per_success": 8,
+    "pillow_version": "12.2.0",
+    "pixel_contract": "deploy/agentbox/batch-images/contract.yaml",
+    "pixel_contract_sha256": "b26aa1612c1382e3afb9ba993fbf11417c5ac20ed7ce30845642ca40326ad413",
+    "threads": 1
+  },
+  "limits": [
+    "Fixed public images and trusted administrator-maintained template only; no arbitrary URL/code/PodSpec/upload",
+    "No batch MCP tools or automatic promotion of Agent scripts into trusted templates",
+    "Job/Pod/Workload cleanup reported by API; physical CRI/gVisor cleanup is independent host acceptance evidence",
+    "Retention/capacity/unknown-create edge cases use deterministic tests; no 24h soak or disk-full production proof",
+    "Single-worker local-path PVC; no multi-node, distributed storage, migration or HA claim",
+    "No automatic queue waiting deadline; explicit query/cancel controls waiting work",
+    "No continuous observability, R/B performance baseline or health AdmissionCheck conclusion",
+    "Root disk I/O/reclamation issues are not declared fixed; raw artifacts remain local and ignored"
+  ],
+  "native_product": {
+    "api_restart_preserved_records_and_downloads": true,
+    "checks": [
+      {
+        "name": "bounded_api_role_and_no_worker_credentials",
+        "passed": true
+      },
+      {
+        "name": "idempotent_submit_lost_body_conflict_and_principal_isolation",
+        "passed": true
+      },
+      {
+        "name": "real_image_pixels_and_download_checksums",
+        "passed": true
+      },
+      {
+        "name": "artifacts_and_idempotency_survive_job_deletion_and_api_restart",
+        "passed": true
+      },
+      {
+        "name": "corrupted_published_artifact_is_rejected",
+        "passed": true
+      },
+      {
+        "name": "queued_and_running_cancel_do_not_publish_partial_output",
+        "passed": true
+      },
+      {
+        "name": "retry_attempts_are_isolated_and_publish_one_valid_result",
+        "passed": true
+      }
+    ],
+    "discarded_submit_response_recovered_same_api_pod": true,
+    "gvisor_environments": 4,
+    "jobs": {
+      "bat-753ba8ebea551c252bb5993655e3146f012fd6ae": {
+        "job_uid": "73814e25-7f9e-48f6-adde-9348c3020003",
+        "pods": {
+          "cd952f23-b57f-46ca-86f6-8459f6c00603": {
+            "name": "bat-753ba8ebea551c252bb5993655e3146f012fd6ae-k9xss",
+            "sandbox_id": "40c7ea01fb90ec7ce182ee9cde37aad2c83a8aee5c3326f925705ae8c9653c2f",
+            "uid": "cd952f23-b57f-46ca-86f6-8459f6c00603"
+          },
+          "ea5d99c1-58f5-4cbb-9e3d-a2096dc2048f": {
+            "name": "bat-753ba8ebea551c252bb5993655e3146f012fd6ae-cgqgd",
+            "sandbox_id": "3af83e292f02009e28d504d9a835af0bc5ceafd7ac3a41004c3b10ee4914db7e",
+            "uid": "ea5d99c1-58f5-4cbb-9e3d-a2096dc2048f"
+          }
+        },
+        "runtime_cleanup_complete": true
+      },
+      "bat-951019de0b0edf40c0283ec3c3c7a352f5dbf438": {
+        "job_uid": "1c8638d4-5a35-4b96-8ad1-8ba640ea4f96",
+        "pods": {
+          "e7180595-963f-4fa9-8603-2a96b2b35729": {
+            "name": "bat-951019de0b0edf40c0283ec3c3c7a352f5dbf438-rzpv9",
+            "sandbox_id": "0148617ab91bf5cd67927e1a693c0d8c8e0ad0b3c39304c93903b187156b90db",
+            "uid": "e7180595-963f-4fa9-8603-2a96b2b35729"
+          }
+        },
+        "runtime_cleanup_complete": true
+      },
+      "bat-978024fbc4f6ec00ae62539c5177ebf8f58bae4a": {
+        "job_uid": "fe44052f-ae7f-439e-a0d2-1890c820e7cf",
+        "pods": {},
+        "runtime_cleanup_complete": true
+      },
+      "bat-e1e9b48e3be3fe16df78d1d34ad4d8ab9e00d38c": {
+        "job_uid": "95f79eb7-6b27-4675-8c11-bd52c62e0af9",
+        "pods": {
+          "232436af-54cd-42c2-b62b-a608e3f14565": {
+            "name": "bat-e1e9b48e3be3fe16df78d1d34ad4d8ab9e00d38c-zzvhw",
+            "sandbox_id": "7e3b8d97e18f287785a7648afc612affeef47cde306fc873e2306f94745a4284",
+            "uid": "232436af-54cd-42c2-b62b-a608e3f14565"
+          }
+        },
+        "runtime_cleanup_complete": true
+      }
+    },
+    "namespace_and_volume_cleanup_complete": true,
+    "report": "artifacts/platform-batch-product-test-c989bdabca62/report.json",
+    "report_sha256": "0cc510b75c0a5faffff9825a7772923a8a5a1b7e20953d00b2423aaeaaa18048",
+    "temporary_pv": {
+      "name": "pvc-43b9222d-c2df-4abb-bd4f-6edb89b3f988",
+      "uid": "33e607d1-9bbf-40de-8e99-568cc4c29cce"
+    },
+    "transport_recoveries": [
+      {
+        "error": "RemoteDisconnected",
+        "method": "GET",
+        "path": "/v2/batches/bat-e1e9b48e3be3fe16df78d1d34ad4d8ab9e00d38c.95f79eb7-6b27-4675-8c11-bd52c62e0af9/artifacts/chelsea-thumb.png"
+      }
+    ],
+    "views": {
+      "bat-753ba8ebea551c252bb5993655e3146f012fd6ae.73814e25-7f9e-48f6-adde-9348c3020003": {
+        "artifact_expires_at": "2026-11-03T08:22:33Z",
+        "artifacts": [
+          {
+            "bytes": 24199,
+            "height": 85,
+            "name": "chelsea-thumb.png",
+            "pixel_sha256": "880bbba3852771e0fce7da55556508f5bf4a53bac99984e33d52476a041ef163",
+            "sha256": "e62c54acc4f41de5f1ae8ee6973000ccdd40c1c4d1d372410a6ecb960c94a316",
+            "width": 128
+          },
+          {
+            "bytes": 15966,
+            "height": 85,
+            "name": "chelsea-gray.png",
+            "pixel_sha256": "7366e9eef1f591903a95fbfa89cd36f6311b80330c2e354e77f13122ff34b034",
+            "sha256": "a758c908faa2ef28497a293690f5fa3e90ddb2ae9deededa80b344028342e648",
+            "width": 128
+          },
+          {
+            "bytes": 22233,
+            "height": 85,
+            "name": "coffee-thumb.png",
+            "pixel_sha256": "8a8d496eed20e67f81d0b3024c9cd9cb1b92c56b269633a76736d0c070224225",
+            "sha256": "22ca38c5f146af1dbc68f9b4c9c39e9ad04441bbf59766c722d3a5699d7efbbd",
+            "width": 128
+          },
+          {
+            "bytes": 14739,
+            "height": 85,
+            "name": "coffee-gray.png",
+            "pixel_sha256": "79b721694d6934120a7d8adda8cc93e2d046266462d3391a8b156d07ecb45cb7",
+            "sha256": "73da6872d986b01b523bffe8cdb56c0337100c1963edf3988aaaa6036a0cb71d",
+            "width": 128
+          },
+          {
+            "bytes": 35044,
+            "height": 128,
+            "name": "astronaut-thumb.png",
+            "pixel_sha256": "0a23b78b2e9bacd19500d086ebd17f038bbb922dab97dba2761e1281528af13e",
+            "sha256": "db38938d5f6d4eb135d69d78af0281a0165da7f21485d215fd97cac43fa29e2a",
+            "width": 128
+          },
+          {
+            "bytes": 24923,
+            "height": 128,
+            "name": "astronaut-gray.png",
+            "pixel_sha256": "4aa401b027ee3dbd4aac1838131f006c5f1c91db05f63bd8b8c39e1ef463b828",
+            "sha256": "96bdf22180acc7cb85c2cec3f89e492b6623dcb4af1f938d60208c2ba6cda578",
+            "width": 128
+          },
+          {
+            "bytes": 30539,
+            "height": 112,
+            "name": "hubble_deep_field-thumb.png",
+            "pixel_sha256": "2939de8e0169f26ac278897d1c41920855dcf1ab698b546b4754dc8ac7210b11",
+            "sha256": "849f17c3201cdd19d4ccb78488e07fd771cc63e5319c682e39d0e39432ccd582",
+            "width": 128
+          },
+          {
+            "bytes": 20819,
+            "height": 112,
+            "name": "hubble_deep_field-gray.png",
+            "pixel_sha256": "95a3b4901fb611805916adc6a3448fb4020eedd8bc149ee02bef644ca9bde859",
+            "sha256": "44c6718a4ef5f4f18fcb2c86b397c31d943a24b3b8a6f9a55480181d4342251e",
+            "width": 128
+          }
+        ],
+        "cleanup_complete": true,
+        "state": "succeeded"
+      },
+      "bat-951019de0b0edf40c0283ec3c3c7a352f5dbf438.1c8638d4-5a35-4b96-8ad1-8ba640ea4f96": {
+        "artifact_expires_at": "2026-11-03T08:19:20Z",
+        "artifacts": [
+          {
+            "bytes": 24199,
+            "height": 85,
+            "name": "chelsea-thumb.png",
+            "pixel_sha256": "880bbba3852771e0fce7da55556508f5bf4a53bac99984e33d52476a041ef163",
+            "sha256": "e62c54acc4f41de5f1ae8ee6973000ccdd40c1c4d1d372410a6ecb960c94a316",
+            "width": 128
+          },
+          {
+            "bytes": 15966,
+            "height": 85,
+            "name": "chelsea-gray.png",
+            "pixel_sha256": "7366e9eef1f591903a95fbfa89cd36f6311b80330c2e354e77f13122ff34b034",
+            "sha256": "a758c908faa2ef28497a293690f5fa3e90ddb2ae9deededa80b344028342e648",
+            "width": 128
+          },
+          {
+            "bytes": 22233,
+            "height": 85,
+            "name": "coffee-thumb.png",
+            "pixel_sha256": "8a8d496eed20e67f81d0b3024c9cd9cb1b92c56b269633a76736d0c070224225",
+            "sha256": "22ca38c5f146af1dbc68f9b4c9c39e9ad04441bbf59766c722d3a5699d7efbbd",
+            "width": 128
+          },
+          {
+            "bytes": 14739,
+            "height": 85,
+            "name": "coffee-gray.png",
+            "pixel_sha256": "79b721694d6934120a7d8adda8cc93e2d046266462d3391a8b156d07ecb45cb7",
+            "sha256": "73da6872d986b01b523bffe8cdb56c0337100c1963edf3988aaaa6036a0cb71d",
+            "width": 128
+          },
+          {
+            "bytes": 35044,
+            "height": 128,
+            "name": "astronaut-thumb.png",
+            "pixel_sha256": "0a23b78b2e9bacd19500d086ebd17f038bbb922dab97dba2761e1281528af13e",
+            "sha256": "db38938d5f6d4eb135d69d78af0281a0165da7f21485d215fd97cac43fa29e2a",
+            "width": 128
+          },
+          {
+            "bytes": 24923,
+            "height": 128,
+            "name": "astronaut-gray.png",
+            "pixel_sha256": "4aa401b027ee3dbd4aac1838131f006c5f1c91db05f63bd8b8c39e1ef463b828",
+            "sha256": "96bdf22180acc7cb85c2cec3f89e492b6623dcb4af1f938d60208c2ba6cda578",
+            "width": 128
+          },
+          {
+            "bytes": 30539,
+            "height": 112,
+            "name": "hubble_deep_field-thumb.png",
+            "pixel_sha256": "2939de8e0169f26ac278897d1c41920855dcf1ab698b546b4754dc8ac7210b11",
+            "sha256": "849f17c3201cdd19d4ccb78488e07fd771cc63e5319c682e39d0e39432ccd582",
+            "width": 128
+          },
+          {
+            "bytes": 20819,
+            "height": 112,
+            "name": "hubble_deep_field-gray.png",
+            "pixel_sha256": "95a3b4901fb611805916adc6a3448fb4020eedd8bc149ee02bef644ca9bde859",
+            "sha256": "44c6718a4ef5f4f18fcb2c86b397c31d943a24b3b8a6f9a55480181d4342251e",
+            "width": 128
+          }
+        ],
+        "cleanup_complete": true,
+        "state": "succeeded"
+      },
+      "bat-978024fbc4f6ec00ae62539c5177ebf8f58bae4a.fe44052f-ae7f-439e-a0d2-1890c820e7cf": {
+        "artifact_expires_at": null,
+        "artifacts": [],
+        "cleanup_complete": true,
+        "state": "cancelled"
+      },
+      "bat-e1e9b48e3be3fe16df78d1d34ad4d8ab9e00d38c.95f79eb7-6b27-4675-8c11-bd52c62e0af9": {
+        "artifact_expires_at": null,
+        "artifacts": [],
+        "cleanup_complete": true,
+        "state": "cancelled"
+      }
+    }
+  },
+  "offline_validation": {
+    "go_mod_tidy": "passed; go.mod/go.sum unchanged",
+    "log": "artifacts/p3b-images-20261102/final-check.log",
+    "log_sha256": "e467932ff60af2145addcec80f2ea1b28b1fd61cfeba4371f190ff71e18f3ff4",
+    "make_check": "passed outside restricted sandbox",
+    "new_go_test_functions": 21,
+    "new_image_product_python_tests": 10,
+    "platform_python_tests": 151,
+    "render_selections": 27
+  },
+  "preservation": {
+    "no_component_upgrade_or_cluster_recreation": true,
+    "original_cluster_state_bytes_unchanged": true,
+    "original_nodes_and_installed_components_retained": true,
+    "product_and_agent_same_final_source_hashes": true,
+    "session_image_bundle_bytes_unchanged": true
+  },
+  "preserved_failures": [
+    {
+      "cleanup_complete": true,
+      "cleanup_report": "artifacts/platform-batch-product-cleanup-d40e79790f3d/report.json",
+      "cleanup_sha256": "aa73caa5f041fd565785fe47e6b6975044d9e9932da1c86b38014558c6372b33",
+      "reason": "Short TLS/port-forward connection and discarded submission transport failed before completing the API scenario",
+      "report": "artifacts/platform-batch-product-test-bd8e01222f0b/report.json",
+      "sha256": "22e262971b38e65fec8eac55e394b17c0c54855066272aa0c372bdcabf1ed477"
+    },
+    {
+      "cleanup_complete": true,
+      "cleanup_report": "artifacts/platform-batch-product-cleanup-88d186ad9a05/report.json",
+      "cleanup_sha256": "859d0f04ca059fc484635738cab17d7cba5f95f265f69d4026f55ff985e0836f",
+      "reason": "Docker config ID was incorrectly compared directly with the kind-import manifest reference; publication was rejected",
+      "report": "artifacts/platform-batch-product-test-e6b601cd36bb/report.json",
+      "sha256": "7bf303a439217944d07e63b62d084f224f2ae5e635216596351ebf1c151c033a"
+    },
+    {
+      "cleanup_complete": true,
+      "cleanup_report": "artifacts/platform-batch-product-cleanup-9554200fa5e0/report.json",
+      "cleanup_sha256": "9ded5bdca2e3cdf237029a5bc904aaf22284eac8f5eff743faf25f100097cbdb",
+      "reason": "Repeated short TLS handshakes still triggered local tunnel EOF; fixture now uses persistent verified TLS and bounded idempotent control recovery",
+      "report": "artifacts/platform-batch-product-test-e5e5e00a559a/report.json",
+      "sha256": "a71373090d147948ed68f3905a44dcfef54652c4ec4979a0c9906927316933c8"
+    }
+  ],
+  "review_fixes": {
+    "before_fix_reproduced_failures": [
+      "active temporary catalog recognition",
+      "restart with interrupted initial record creation",
+      "tail result publication and Job TTL without client polling",
+      "tail artifact expiration across simulated request budgets"
+    ],
+    "cursor": "process-local stable-name cursor, serialized across reconciliation calls; advances before a record attempt",
+    "historical_evidence": "Earlier live product/Agent reports and their source maps remain unchanged; the follow-up does not claim those reports exercised these later source changes",
+    "issues": [
+      "P1: Match atomic record temporary filenames including .json; reclaim orphans without charging record capacity",
+      "P2: Retain stable-key reconciliation progress across bounded passes, including slow lock/API attempts"
+    ],
+    "logs": {
+      "artifacts/p3b-review-fixes/make-check.log": "817168ba262a58f3eec0f378fe015452686cda5bd09a5c7e7d1a4488ffd60093",
+      "artifacts/p3b-review-fixes/targeted-race.log": "447fec73843129e806da5b8c009c644dad51b7ddf680f168e06d28cfb7b2f2e7"
+    },
+    "source_sha256": {
+      "internal/batch/recovery_test.go": "ce17ddb46800ed708054c5d727af4f7bb7d3f22ac7688e8a2fbca0149fbd280f",
+      "internal/batch/service.go": "48c61b2f60864cbe13baa826b9dfc32afcfe4d78a1e903912f4ca3a0fc9f0763",
+      "internal/batch/service_test.go": "59fd90471dfe59e0b4544c4ca7f50a75a89538d019cf137b8304cfc7e7a3e99d",
+      "internal/batch/store.go": "266a44ad8eb3666fac25e580b54dd6b056298678270e6a7f6849afcf98eab7f2",
+      "internal/batch/types.go": "6f8f5fc7da2c43baed035758f5c9d150ead33247885cbb15459d33932ffc27b6"
+    },
+    "verification": {
+      "existing_regression_corrected": 1,
+      "live_kubernetes_rerun": false,
+      "make_check": "passed",
+      "new_go_regressions": 4,
+      "scope": "real filesystem recovery and maximum-capacity cases; deterministic Kubernetes API context-budget exhaustion, without client polling",
+      "targeted_packages_race": "passed"
+    }
+  },
+  "schema_version": 1,
+  "scope": "P3b combined fixed-image processing, independent artifacts and Go batch API; functional acceptance only",
+  "session_regression": {
+    "api_execution_counts": {
+      "flow": 3,
+      "lost-reply": 1,
+      "timeout": 1
+    },
+    "checks": [
+      {
+        "name": "namespace_scoped_credentials_and_no_secret_or_pod_mutation",
+        "passed": true
+      },
+      {
+        "name": "agent_flow_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "agent_timeout_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "agent_lost_reply_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "native_api_execution_counts_confirm_no_replay",
+        "passed": true
+      }
+    ],
+    "cleanup_complete": true,
+    "report": "artifacts/platform-agent-test-d1cd67660650/report.json",
+    "report_sha256": "4e2a2d828fd2a511bd86000811017405c4d6c8167c0e7ed3fab736d5ed70c518"
+  },
+  "source_sha256": {
+    "cmd/agentbox-agent/main.go": "2c38d350318a516a79deefe90f8c4533f61b3bbf6725206853b003854c5ea40c",
+    "cmd/agentbox-api/main.go": "9cb9601c9955dcdc99b3fa56b299b833796c83d834a5e606d1ae3a8fea9d4d78",
+    "cmd/agentbox-cleanup/main.go": "d06a2a2292338db0ecd3e6043c802b232803bc8330a8615e626b466e8285c627",
+    "cmd/agentbox-cleanup/main_test.go": "450d955f5370bab697f47a5dd34e43271b153a42e4b18c3160bd0cdad0475af7",
+    "cmd/agentbox-mcp/main.go": "67b3da67612f658c03ab7f65da5e939f7cba1e164432a8ab88f72e4ac3aa819d",
+    "cmd/agentbox-session-smoke/fault.go": "cfadfd4173711103e534480f94f521df8deecc920e9704c09e897565a715b789",
+    "cmd/agentbox-session-smoke/fault_test.go": "b999f8426d99d84a6e22500c60e9e41088e4ce17d2f17c39bbf373f8630f6527",
+    "cmd/agentbox-session-smoke/main.go": "be2bbb3415fb5984a01758ee8be677bcd1cecdb8073d8c443020e98b2e251798",
+    "cmd/agentbox-session-smoke/warm.go": "f76fed5bd97c15d3bf72310757afbac98a99c60bf516893c8f30caf98f8307f6",
+    "cmd/agentbox-session-smoke/warm_test.go": "b263569c077c88d32f151a44d721c19dc55dad5a2b5a5f1549b012b3e5249a12",
+    "deploy/acceptance/batch/deadline-patch.yaml": "426d56aaf07e6054c329ee6635b1895bfbe4b283839ebcf00fcd4b10e58b3db0",
+    "deploy/acceptance/batch/job.yaml": "98428e7f80b9cfc7a322b14c8a9f2ea75708b809bef6966b54f20d1e7103d781",
+    "deploy/acceptance/batch/kustomization.yaml": "c732f144eac5aea7e5af099ee710af3739944cae1f998f0ffd0fda1eb6f16633",
+    "deploy/acceptance/batch/oversized-patch.yaml": "9d47c82003bd28c77f1988d78ec13f282bcc48dbb1046c0417a610a0c0815b45",
+    "deploy/acceptance/gvisor/job.yaml": "de253c372380d2f40668e7c1a0175e49249c6aeb47151bc6fba30073d67c191e",
+    "deploy/acceptance/gvisor/kustomization.yaml": "6c71f92b6b84439b1ce158a04b0f67b19717b2b0713913eb2dbe874bebd5d407",
+    "deploy/acceptance/gvisor/lab-patch.yaml": "cedfa8db97c910d9e694ebd17a2354b821bab440bd5a0988f615b3fd39264a2c",
+    "deploy/acceptance/network/control-patch.yaml": "94929e847c500de29fe54e6ce25b026fb349e9506dc1c23d872bd120ca7b6e18",
+    "deploy/acceptance/network/kustomization.yaml": "0baa7ad75183bee8d190d3c0d2afab482ad05b0b9c7f1209f8088c87a3a84f69",
+    "deploy/acceptance/network/namespace.yaml": "a70e58363944c88ce7b16e2abd0b9285272eafaa6fe56f8aea9036513d6618f2",
+    "deploy/acceptance/network/observer-patch.yaml": "9bb2aeea83487a482e7f003905841b7854e02a87229f6d87780538f579c34869",
+    "deploy/acceptance/network/pod.yaml": "1da5765a63417d047d5d3905742e3f219fb0cd20f205e24e0c1cade32b79e575",
+    "deploy/acceptance/network/policies.yaml": "e87390222bb2b4942ec6a60caaa144022632c38233ed5f9c4fb983807bb43b40",
+    "deploy/acceptance/network/worker-patch.yaml": "7eb7944b82fa781a4d0955e1ea89e579ee3979809487ddf1e24c49a9bdad5431",
+    "deploy/acceptance/sessions/client-job.yaml": "7385e6e7b226fd75acedc6c8a1e9044f0bc28195de68c79bef1afcb40a56b485",
+    "deploy/acceptance/sessions/client-network-policy.yaml": "7fd181e6a8664d74d80ef09efcabaf1689aa0fa84080d85160b4f1192426c507",
+    "deploy/acceptance/sessions/client.Dockerfile": "d6d3509065f1f41fb9b7f1afeba3c0fe673ee156b4b6a105e56d05ae93e4f3b5",
+    "deploy/acceptance/sessions/kustomization.yaml": "f8fcbc2e09567469b33fd9de2ffd132f60feb927ecec999c245ba4ee9fa6f667",
+    "deploy/acceptance/sessions/namespace.yaml": "7a5d9fbbef916354eecd09a6d7df4fc290c281abde94a3751b215b783f0b6f84",
+    "deploy/acceptance/sessions/quota.yaml": "c40424b51960222b14d2b8f182fcecf0f154e9b815528545792dcb7007d04ba4",
+    "deploy/acceptance/sessions/rbac.yaml": "5710eeb5b04136616f22622a98b05b8043862ec4756a3e2dfa5a9f501ded7935",
+    "deploy/acceptance/sessions/warm-pool-patch.yaml": "9ba1d4a78fa9e321f1817138a0b8dbee66fd4f003ecdcf31ff758af1cf0c3c6b",
+    "deploy/acceptance/smoke/job.yaml": "10d52aa985b4e6aaf31c7706c11274a0a90d9c846778beafe307758b4732e598",
+    "deploy/acceptance/smoke/kustomization.yaml": "c732f144eac5aea7e5af099ee710af3739944cae1f998f0ffd0fda1eb6f16633",
+    "deploy/agentbox/api/Dockerfile": "8907b2c1d9e7239d7d7a00c7f4762b4cc1d126155bad2473ec6f2969c14e42a0",
+    "deploy/agentbox/api/deployment.yaml": "346a3ff3c06b9fe56343e47ddb96e7c59d4191a7a8fa0e8fb61bacd56541271d",
+    "deploy/agentbox/api/kustomization.yaml": "ce2c8755ccdc8426b0d5424351c864a8543d703fce439d26be1cd0e470f0b197",
+    "deploy/agentbox/api/rbac.yaml": "00f9fd7e9f170a14a77f6e07b340f35ed70fc7893fcdd7eb071c352c95076d2e",
+    "deploy/agentbox/batch-api/deployment.yaml": "0918471cacb5677815f81a732c1d5adc20935bd62c9bac1d73e516b77adad523",
+    "deploy/agentbox/batch-api/kustomization.yaml": "27854b6299889462c2d74007fce985a3af42276342064be274e4e4d185c658e4",
+    "deploy/agentbox/batch-api/networkpolicy.yaml": "647af86aeb216972aba257938f8a88a0e124155e0cc792cfc1c079bfe675c70f",
+    "deploy/agentbox/batch-api/pvc.yaml": "4ac14c5639cf5843410ccd634fe2c9b91a9452d9d58ba001af6c7bdffa5a8331",
+    "deploy/agentbox/batch-api/quota.yaml": "dcc06bbd5a9c3c0fbf65fc3a13a20c074805388a75f87ce4814b4cc811071f50",
+    "deploy/agentbox/batch-api/rbac.yaml": "6566d1316612784e88c94e718c304b695299a400577e00850cfb60403433c09a",
+    "deploy/agentbox/batch-images/contract.yaml": "b26aa1612c1382e3afb9ba993fbf11417c5ac20ed7ce30845642ca40326ad413",
+    "deploy/agentbox/batch-images/dataset.yaml": "5be78b815c3477b3247881562aca0eb61596b051a7227d2d3f09d13ecec638fb",
+    "deploy/agentbox/batch-images/image-job.yaml": "dc0c3b545e6d4ba549234cf2178ef12e8c012bf5118daa43b8aeae5d1b06ae0f",
+    "deploy/agentbox/batch-images/kustomization.yaml": "93d511f49aa68578624c88d84f1f735597268f9eeda02cdcd431afb60b5b3ea2",
+    "deploy/agentbox/batch-images/versions.lock.yaml": "fd30ebdcfdb0c573365ffd4e1c1122173b2cb9059d89baa8988eb9394d386d2a",
+    "deploy/agentbox/batch-images/worker.Dockerfile": "6e18ff56fcc610f07d3e1538fa26fa27d690bea006e18f3ee0093721aeedfcdd",
+    "deploy/agentbox/batch/clusterqueue.yaml": "ad94eb71c998bd7d99a31b4565e8469034e7bd8da0438a25441ef67d850fc705",
+    "deploy/agentbox/batch/kustomization.yaml": "414043b3a4b5aacba0a54c57f9f7440a49cf1b94ab0682938908f8fd4bb5b8c5",
+    "deploy/agentbox/batch/localqueue.yaml": "eda8b9132818d28ed017e1a2ad9b7964392e2c34490a52aacaa0b5e4c33a47f5",
+    "deploy/agentbox/batch/namespace.yaml": "c8a7206c962e339a42531dad5eb478f12c536355c3fc3a58d2cb6acc309ae6eb",
+    "deploy/agentbox/batch/networkpolicy.yaml": "d99318313c4226c7652b5ea90fa7a9b3fd21a6d9daa7f6358ef2a629f674bf26",
+    "deploy/agentbox/batch/resourceflavor.yaml": "2ef4a12e039f7fa908aa38b685f2ad5022c6a63639719b160cc53a25901a50bb",
+    "deploy/agentbox/cleanup/kustomization.yaml": "1d43322ce5d3b9fc022c047c046a334d69711d1f6a60760998992c7d6767f3e3",
+    "deploy/agentbox/cleanup/rbac.yaml": "41f49c8afbe9256e4d5d1f9e8b4a82286821cf7ee19bc9c7c6ecacbc83997e2e",
+    "deploy/agentbox/overlays/lab/api-patch.yaml": "97965f89b76094f4053df99fad6b37e2dcae09ddef8a6a001471781a21199654",
+    "deploy/agentbox/overlays/lab/batch-quota.yaml": "c5602f3881e2cceb8dcf77aebb5bce337d637673e68d3323760050369ba5f881",
+    "deploy/agentbox/overlays/lab/kustomization.yaml": "fe3ecea269aa744eda4667005cca4ea1fc330c90ea962e3d414caab923a52200",
+    "deploy/agentbox/overlays/lab/quota.yaml": "0689f45c293459acde251768b353b3775efd7ff64ef31e452175218046710fdd",
+    "deploy/agentbox/overlays/lab/sandbox-patch.yaml": "d642c1475acfe00f94518e770d4813d43b25e1ccd440efea2d102204bcef697f",
+    "deploy/components/agent-sandbox/controller-lab-patch.yaml": "26fe7b18487f58956e2fd4eab3f723e211764dd75e9ba03fe0717c96cefebe23",
+    "deploy/components/agent-sandbox/kustomization.yaml": "4aa75335955c35390f687a1f1a56e24a53d599afe14421985f2adf8c94b2f986",
+    "deploy/components/agent-sandbox/runtime.Dockerfile": "7a2a450282d5dbb0d06d9457ef0acdd1a3eb120d407d564c8ab03fc1110124bc",
+    "deploy/components/agent-sandbox/template.yaml": "ebe338bf354cb0ccbb339be67b7779430f0fa3741a7f2ea972f520836250cb91",
+    "deploy/components/agent-sandbox/versions.lock.yaml": "7430ef24e369e4266246afbd63ffe99ed945ed20182d70b89c1e971b3771fc57",
+    "deploy/components/agent-sandbox/warmpool.yaml": "9a96191cf7099b6b36bd8a8c91b7cf8b925bffe758d000d02e71848ce2e8a5aa",
+    "deploy/components/calico/lab-patch.yaml": "6304dd6c5d7ec0ee7737ec63d270e61eb8580b2a494f5876adab0b0a0e783a33",
+    "deploy/components/calico/versions.lock.yaml": "a467394c777484348a7d78f3cf25b83e0ea53fd0315be0cb2322842e78415507",
+    "deploy/components/gvisor/kustomization.yaml": "822e156058107a54ce1f2d3f5f998dd61ebaff33e38dcf541b24197d08a624ee",
+    "deploy/components/gvisor/runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+    "deploy/components/gvisor/runtimeclass.yaml": "551349dca104de0f2913f0bebc452a62ed4b1e9dde33b217f4c3d099c828b0f5",
+    "deploy/components/gvisor/versions.lock.yaml": "5c992d8962a7eff72ceef4cde80a74f25669f0fad879ff6af0d8e50ddaa0a43a",
+    "deploy/components/kueue/controller-config.yaml": "fb1a9a4f58433fde8b8f449ec80af775ed8cf7d35f27e61cc505107d177cb1cc",
+    "deploy/components/kueue/controller-lab-patch.yaml": "fa31456bcce39c4828ce8327eefb7b4896253655b4b23d4a65896cdc77d2f3f9",
+    "deploy/components/kueue/mutating-lab-patch.yaml": "cfa628ce0658683719c2378dfbc1d4b96c268ce7fd271e94be73cbc9d30c13d7",
+    "deploy/components/kueue/validating-lab-patch.yaml": "a955ff81bce38a06c6fa355f3c19e51ecba7e032853eb054d52b569e70a3cb16",
+    "deploy/components/kueue/versions.lock.yaml": "049b1e726b102f37d34479e50a903597e5ad26edf1b709e262ec6dda3966abf1",
+    "deploy/lab/format-compatibility.yaml": "b0a5a9a93970c65ef7134bb042d90895c2f0c9e9c3f4033d4da46caed3ec3693",
+    "deploy/lab/gvisor-patch.yaml": "2749df28836a1d46f2535b9d51574ef72379ce92bd126078d81fc2507364ece4",
+    "deploy/lab/image-sources.yaml": "ecd502f8d2c52746ed9786a81fcae50c11c0250a6a2271033799d9294c431eaa",
+    "deploy/lab/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+    "deploy/lab/kind.yaml": "d05a77df48d7cb236594932c65c7d4a31283a5d3c11ab9d68e6adfe4bb5181ab",
+    "deploy/lab/namespace.yaml": "f5aa4dcf9d58a2ddd3c678be3baf62a7f35062a4d8dc7b5978a2b923febfcfe4",
+    "deploy/lab/versions.lock.yaml": "1dc37d6c851ba0d6793beb19954cea56b36fe31130568ddf9d6a9b2739ede617",
+    "docs/data/legacy-source-retirement.json": "092db6d07fa4776d25da2e437844871bd6a4965b8668b0e647d711e7a7d2d34f",
+    "go.mod": "6788d70352f4e17577d3ed96ffcde76b96380db2f0f19b41a17d3ca9ccc4cad4",
+    "go.sum": "a7c5debcb697cf21973d6cfe8cbabcc047da7c4543ba01b0080b001fe15eedb1",
+    "internal/agent/runner.go": "cde509e8dfce509183aa7003dd19fd054d4c524dd92168b965f20db1cd29823d",
+    "internal/agent/runner_test.go": "495a881580c6c4c391954cf174ef9a672f7054baa79aaa5d37344fa63c86be53",
+    "internal/batch/artifacts.go": "b8d48fc1aecd7005dea16f6822ccb84d590a77888010893e30b322adbae7ee56",
+    "internal/batch/service.go": "f35e50e659e9c4a3da3ac426258d4ee977c44924590b58ce2d3e9b7cda4d008d",
+    "internal/batch/service_test.go": "9d696cc0a0f5dc462dcb4351325e83157ea560c7bbebb2ac7dfd4f14e600222a",
+    "internal/batch/store.go": "92094c66cbcbdf13bbb79ff674f2770d34ec0e67ca8f687337f161e8ea6e601a",
+    "internal/batch/types.go": "c36980fd28c9aaa51ed44a484cd0ee633f7719d9c8eae4930e6e343b1a45b991",
+    "internal/batchapi/server.go": "42c0bd5087caff6fa4a6cf2b265230ba03af59309c702cf371b46db62d6aa93b",
+    "internal/batchapi/server_test.go": "f55afddcd154d33ac952400719c0c930d74d26ee527467d0dfb70382a1d8ffbd",
+    "internal/deepseek/client.go": "da80176ee916e7d71e2c6a34fcda2830f552d9874f7b68a7c309164add6bcbf5",
+    "internal/deepseek/client_test.go": "ddf8ebfe239d8c9553bfe393216c2f1f4f95650f3230919146cd1210ac610af4",
+    "internal/httpauth/auth.go": "dbd8afc6be320f742b8f2ee728a9a281fb1298b4867b8ff7c485d7714f523208",
+    "internal/httpauth/auth_test.go": "c4fa414f29b38bd936d8cb32bf9400d3402bc7f89395aceac04d903ea5200877",
+    "internal/mcpclient/client.go": "cd50c6a78e51f97b744c5afb543abe52ae2e87504b67495dbb93894c6d98c97a",
+    "internal/mcpclient/client_test.go": "f2511c27f5f8bc953d595090be66fb4b7733431b6ffcf5799181d91dca3a72af",
+    "internal/mcpserver/server.go": "7c3608c43d7cc94004c2b5903b3f6940c5af9aa75366aa14a30630f5346851a2",
+    "internal/mcpserver/server_test.go": "0a4de0621fb55e4f9283e0b7ebd1f2e482350c48a229744befe7d4e16cac3856",
+    "internal/session/diagnostics.go": "ba9e78cd618cbf01e1696f6cb2e0a5906bb17ca4815eef62a44458d31251b41e",
+    "internal/session/operations.go": "2cae0a6db67586b5bfe14b989223b1acc04dc135e5da512690cf55e85d75ee34",
+    "internal/session/operations_test.go": "8acd05fbfe9c082ed9f651deaba88c2794e6b3c98fa5b389de3f2152892eeab0",
+    "internal/session/requests_test.go": "cbf7138c567391936f90c5da774796ac778a00d83fabc98bfec4e6ea5b430e04",
+    "internal/session/retention.go": "b9ccc5562909d72ed22a5056af9c28c554a05708f519f74085a68de84429bd7c",
+    "internal/session/retention_test.go": "37e55d25e1f725d66524d7e54eadd6a13ad3d20a08a12fa6b87598f5eb5e9360",
+    "internal/session/service.go": "8b491b8be7cf21d36a6bcefeca2f0126e5e7e0413530106fc16d7d5ccb484dcc",
+    "internal/session/service_test.go": "c1c8d27fb3701e873a81503cc9264ef56f995f6f27b3a3fe9364ea965ac03c1f",
+    "internal/sessionapi/operations_test.go": "248448d70b0a4a154482ca74b250a956e6edc4fd07c8c73d6a18653e5c2171ce",
+    "internal/sessionapi/readiness.go": "2f76ff2a4f843a50e5111c8a3b734f3104f85795283e83fbe7d3ee230bf296c8",
+    "internal/sessionapi/readiness_test.go": "1c994e03546690f622c3e29f75aa70a43145d8129b984500bce17ee729021903",
+    "internal/sessionapi/server.go": "a62b0f957605b6a9b912eed94a675dcf382c43ada2bf9be9be9365a26276548a",
+    "internal/sessionapi/server_test.go": "c6474565902ee6e6d81b4a8da7651d1c616fe5754309712f4331451c27ece0e0",
+    "internal/sessionclient/client.go": "8691855c0750454143dc72e51b99e36b6ca9a2c01d8e468dfd23b56d5811d97e",
+    "internal/sessionclient/client_test.go": "e03809fd13160e0d9d51df4cfc5497e5c08b03084a0be9178fa5f8b2615b7004",
+    "internal/sessionprobe/operations.go": "38a248d6c25d5b4997da6c182f286431ad7b2d2a8dabdc0236f3bb981097bd28",
+    "internal/sessionprobe/operations_test.go": "e13ab80d787eb1e2be5ebd6db3e08543a840f6dd546baeba9fd2c4727bd75d77",
+    "internal/sessionruntime/runtime.go": "79b2e470c02396eda1c8137825aefa47b9f0c26b23f5f0de1063ee0d9e07e3ca",
+    "internal/sessionruntime/runtime_test.go": "222815cea3c7067663c817391a7dec39e0d075cda26c3c1b85225398d3721f5c",
+    "scripts/lib/batch_guest_probe.py": "5d691f20ad49f988508f77ce771ad2c74fb1fb7a858a0908875bb6bfae77714b",
+    "scripts/lib/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "scripts/lib/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "scripts/lib/image_worker.py": "f1a53b6542d3b9008b94068cbf7e0aca7c83c57eca50bc12add37cf6332a2ad5",
+    "scripts/lib/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+    "scripts/lib/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+    "scripts/lib/platform_agent.py": "a7922c2c8102ec75a1dfb084f2f14412330bf595e6f9932163e085f946207c1c",
+    "scripts/lib/platform_api.py": "9349023ab0f1851fe80952a943c1d271c20f0672e5bf38070c0c719a4cc47b31",
+    "scripts/lib/platform_api_execution.py": "ef55ef4051bc7ce1155244eb3b94153a50e0cf498ae6d8627195e88cd2013810",
+    "scripts/lib/platform_batch.py": "da784577c2884ba445937bb26650f9e28e4da4fa5a25bdd41bfbdf4dd82c9f6b",
+    "scripts/lib/platform_batch_product.py": "5ebf97ebfb3943a8fad99d676e9e3a02f85d23213990c5caa9548124a915d0c5",
+    "scripts/lib/platform_gvisor.py": "68a4c6cca70a16a4e59d5a0522b605e5431f32d8b6261507a22590cbc96ea9ae",
+    "scripts/lib/platform_manifests.py": "0e57548319057546efe1894d4daae16f20a2b5ad6fad7f4e138ac4f0c5a79fe2",
+    "scripts/lib/platform_network.py": "62756a2e7731393eb8d45e45ab2fa1445c03df5c30e16d0396b5d1d1bbae0fa7",
+    "scripts/lib/platform_retention.py": "e35e3da2456a50951691458389230ce7fa9c342e5b30c166b98f6aae22c3054a",
+    "scripts/lib/platform_sessions.py": "c02e09f29e42ed6bcb67b57153a8cbce17dd8d4fb509f21cf8f43b577518e8c5",
+    "scripts/lib/session_faults.py": "38432be7dcdbc5e2f633b84272c6222bbb52ab45711e20e42c527be9025ebea3",
+    "scripts/platform_lab.py": "3ea2b606b20d6ffa3e301f4fa2e37ee95d042c5590fc7a271cd1292ab145ea57",
+    "scripts/prepare_batch_images.py": "ccf8613da268a8c30ee081114a44022839aa7f24750369ad723857cb67bde7c3",
+    "scripts/render_manifests.py": "b5932fcde6467dd8ea4248f1c207b0a6b79ac4eb2068ee680ec4d268ead48df9",
+    "scripts/requirements-platform.txt": "41beda9b8fed65122e2955036d0a083280d7ecbf62eb8a7922604dc9d0a7ca80",
+    "scripts/retire_legacy.py": "9dd13592dc1d23c2484e1606569e8fb274293c5d6d90fba53863dc56cdb6d8b0"
+  },
+  "worker": {
+    "dataset": "image-small-v1",
+    "dataset_sha256": "3f9f90adc7d19ae9b29952f8133d0d76df6f8fce6d219bdcb1c3bb1815d4bac9",
+    "docker_id": "4c591da8-837b-4e7b-9e99-235ddbb0d3a4",
+    "fingerprint": "ccef1ff4ae3a0dcaceaa94dde46ba095b1209954bf1e647a69430ba2136bec32",
+    "image": "agentbox/image-worker:ccef1ff4ae3a0dca",
+    "image_digest": "sha256:e9ebd2e8fff1e49ee465b648a2d4fa3a8956fccddc65fae8725165be60fde1bd",
+    "image_id": "sha256:9f2c23d938c60c8fa0650384968238a4f5c85054cc3512d67d36e60e5468d3d2",
+    "inputs": {
+      "base": "docker.m.daocloud.io/library/python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+      "base_id": "sha256:4f228bc1cbcfc794e4878312cfc241d368eff55a21c08d1e2bb263116c4ef524",
+      "deploy/agentbox/batch-images/contract.yaml": "b26aa1612c1382e3afb9ba993fbf11417c5ac20ed7ce30845642ca40326ad413",
+      "deploy/agentbox/batch-images/dataset.yaml": "5be78b815c3477b3247881562aca0eb61596b051a7227d2d3f09d13ecec638fb",
+      "deploy/agentbox/batch-images/versions.lock.yaml": "fd30ebdcfdb0c573365ffd4e1c1122173b2cb9059d89baa8988eb9394d386d2a",
+      "deploy/agentbox/batch-images/worker.Dockerfile": "6e18ff56fcc610f07d3e1538fa26fa27d690bea006e18f3ee0093721aeedfcdd",
+      "scripts/lib/image_worker.py": "f1a53b6542d3b9008b94068cbf7e0aca7c83c57eca50bc12add37cf6332a2ad5"
+    },
+    "node_cache_reused": true,
+    "reused": true,
+    "schema_version": 1
+  }
+}
