@@ -116,6 +116,12 @@ RECIPES={
  'batch-job':('acceptance/batch',[],{('Job','batch-probe')}),
  'batch-oversized':('acceptance/batch',[('Job','acceptance/batch/oversized-patch.yaml')],{('Job','batch-probe')}),
  'batch-deadline':('acceptance/batch',[('Job','acceptance/batch/deadline-patch.yaml')],{('Job','batch-probe')}),
+ 'image-job':('agentbox/batch-images/image-job.yaml',[],{('Job','image-job')}),
+ 'batch-api-resources':('agentbox/batch-api',[],{('Namespace','agentbox-batch'),('ClusterQueue','agentbox-batch'),
+     ('ResourceFlavor','agentbox-batch-worker'),('LocalQueue','batch'),('NetworkPolicy','batch-default-deny'),
+     ('NetworkPolicy','batch-api'),('ConfigMap','batch-template'),('PersistentVolumeClaim','batch-artifacts'),
+     ('ResourceQuota','batch-product-budget'),('ServiceAccount','batch-api'),('Role','batch-api'),
+     ('RoleBinding','batch-api'),('Deployment','agentbox-batch-api')}),
 }
 REQUIRED={
  'runtime':{'OWNER'},'gvisor-probe':{'OWNER','NAME','IMAGE'},'smoke':{'OWNER','RUN_ID','SMOKE_IMAGE'},
@@ -131,8 +137,10 @@ REQUIRED={
  'batch-resources':{'OWNER','RUN','NAME','NAMESPACE','QUEUE_NAME','FLAVOR_NAME'},
  'batch-job':{'OWNER','RUN','NAME','NAMESPACE','IMAGE'},'batch-oversized':{'OWNER','RUN','NAME','NAMESPACE','IMAGE'},
  'batch-deadline':{'OWNER','RUN','NAME','NAMESPACE','IMAGE'},
+ 'image-job':{'OWNER','RUN','NAME','NAMESPACE','WORKER_IMAGE'},
+ 'batch-api-resources':{'OWNER','RUN','NAME','NAMESPACE','QUEUE_NAME','FLAVOR_NAME','API_IMAGE','WORKER_IMAGE','WORKER_IMAGE_ID','WORKER_IMAGE_DIGEST'},
 }
-PARAMETERS={'OWNER','RUN','RUN_ID','WORK_NS','CLIENT_NS','NAMESPACE','NAME','ROLE','RUNTIME_IMAGE','CLIENT_IMAGE','API_IMAGE','IMAGE','SMOKE_IMAGE','RUNTIME_NAME','HANDLER','API_INSTANCE','QUEUE_NAME','FLAVOR_NAME'}
+PARAMETERS={'OWNER','RUN','RUN_ID','WORK_NS','CLIENT_NS','NAMESPACE','NAME','ROLE','RUNTIME_IMAGE','CLIENT_IMAGE','API_IMAGE','IMAGE','SMOKE_IMAGE','RUNTIME_NAME','HANDLER','API_INSTANCE','QUEUE_NAME','FLAVOR_NAME','WORKER_IMAGE','WORKER_IMAGE_ID','WORKER_IMAGE_DIGEST'}
 
 
 def profiles(config):return sorted(RECIPES)
@@ -143,6 +151,7 @@ def _validate_tree(directory):
         value=read_yaml(path)
         refs=value.get('resources',[])+value.get('components',[])+value.get('configurations',[])
         refs += [v['path'] for v in value.get('patches',[]) if 'path' in v]
+        refs += [ref.split('=',1)[-1] for entry in value.get('configMapGenerator',[]) for ref in entry.get('files',[])]
         for ref in refs:
             if not isinstance(ref,str) or '://' in ref or ref.startswith(('git@','/')) or not (path.parent/ref).resolve().is_relative_to(directory.resolve()):
                 raise ManifestError('Kustomize references must stay within the local deploy tree')
@@ -181,6 +190,7 @@ def _parameters(profile,params,strict):
         if not isinstance(value,str) or not value or len(value)>1024 or any(ord(c)<32 for c in value):raise ManifestError('invalid scalar parameter: '+key)
         if key in {'OWNER','RUN','RUN_ID','ROLE'} and not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?',value):raise ManifestError('invalid label parameter: '+key)
         if key in {'WORK_NS','CLIENT_NS','NAMESPACE','NAME','RUNTIME_NAME','HANDLER','API_INSTANCE','QUEUE_NAME','FLAVOR_NAME'} and not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?',value):raise ManifestError('invalid DNS parameter: '+key)
+        if key in ('WORKER_IMAGE_ID','WORKER_IMAGE_DIGEST') and not re.fullmatch(r'sha256:[a-f0-9]{64}',value):raise ManifestError('invalid worker image ID/digest')
     if 'RUN' in p:p.setdefault('API_INSTANCE','api-'+p['RUN'])
     return p
 
@@ -202,8 +212,8 @@ def _namespace(value,p):
 
 def _pod(pod,metadata,p,profile):
     _labels(metadata.get('labels',{}),p)
-    for c in pod.get('containers',[]):
-        key={'sandboxd':'RUNTIME_IMAGE','api':'API_IMAGE','client':'CLIENT_IMAGE'}.get(c['name'],'SMOKE_IMAGE' if profile=='smoke' else 'IMAGE')
+    for c in pod.get('initContainers',[])+pod.get('containers',[]):
+        key={'sandboxd':'RUNTIME_IMAGE','api':'API_IMAGE','client':'CLIENT_IMAGE','image-worker':'WORKER_IMAGE','prepare':'WORKER_IMAGE'}.get(c['name'],'SMOKE_IMAGE' if profile=='smoke' else 'IMAGE')
         if key in p:c['image']=p[key]
         for e in c.get('env',[]):
             source={'NET_RUN':'RUN','BATCH_RUN':'RUN','SESSION_NAMESPACE':'WORK_NS','SESSION_OWNER':'OWNER','SESSION_RUN':'RUN'}.get(e['name'])
@@ -211,7 +221,10 @@ def _pod(pod,metadata,p,profile):
         for i,arg in enumerate(c.get('args',[])):
             key=arg.partition('=')[0]
             if key=='--namespace' and 'WORK_NS' in p:c['args'][i]='--namespace='+p['WORK_NS']
+            if key=='--namespace' and profile.startswith('batch-') and 'NAMESPACE' in p:c['args'][i]='--namespace='+p['NAMESPACE']
             if key=='--instance' and 'API_INSTANCE' in p:c['args'][i]='--instance='+p['API_INSTANCE']
+            if key=='--batch-image-id' and 'WORKER_IMAGE_ID' in p:c['args'][i]='--batch-image-id='+p['WORKER_IMAGE_ID']
+            if key=='--batch-image-digest' and 'WORKER_IMAGE_DIGEST' in p:c['args'][i]='--batch-image-digest='+p['WORKER_IMAGE_DIGEST']
 
 
 def _selectors(value,p):
@@ -238,6 +251,10 @@ def _inject(values,p,profile):
         if kind=='SandboxTemplate':
             template=obj['spec']['podTemplate'];_pod(template['spec'],template.get('metadata',{}),p,profile);_selectors(obj['spec']['networkPolicy'],p)
         if kind=='NetworkPolicy':_selectors(obj['spec'],p)
+        if kind=='ConfigMap' and meta['name']=='batch-template':
+            job=yaml.load(obj['data']['job.yaml'],Loader=UniqueLoader)
+            nested={k:v for k,v in p.items() if k!='NAME'}
+            obj['data']['job.yaml']=yaml.safe_dump(_inject([job],nested,'image-job')[0],sort_keys=False)
         if kind=='ClusterQueue':
             meta['name']=p.get('QUEUE_NAME',meta['name']);_selectors(obj['spec'],p)
             if 'FLAVOR_NAME' in p:obj['spec']['resourceGroups'][0]['flavors'][0]['name']=p['FLAVOR_NAME']
@@ -252,7 +269,7 @@ def _inject(values,p,profile):
 def render(config,profile,params=None,strict=True):
     if profile not in RECIPES:raise ManifestError('unknown experiment resource selection: '+profile)
     p=_parameters(profile,params,strict)
-    optional={'runtime':{'RUNTIME_NAME','HANDLER'},'api':{'API_INSTANCE'}}.get(profile,set())
+    optional={'runtime':{'RUNTIME_NAME','HANDLER'},'api':{'API_INSTANCE'},'batch-api-resources':{'API_INSTANCE'}}.get(profile,set())
     p={k:v for k,v in p.items() if k in REQUIRED[profile] | optional}
     entry,patches,selected=RECIPES[profile]
     with _stage(config) as root:
@@ -262,7 +279,7 @@ def render(config,profile,params=None,strict=True):
 
 
 def render_component(config,name,params=None,environment='lab'):
-    entries={'api':'agentbox/api','cleanup':'agentbox/cleanup','agent-sandbox':'components/agent-sandbox','gvisor':'components/gvisor','batch':'agentbox/batch'}
+    entries={'api':'agentbox/api','cleanup':'agentbox/cleanup','agent-sandbox':'components/agent-sandbox','gvisor':'components/gvisor','batch':'agentbox/batch','batch-api':'agentbox/batch-api'}
     if name not in entries:raise ManifestError('unknown component')
     if environment=='lab' and name in ('api','cleanup','agent-sandbox','batch'):
         entry=APP_LAB

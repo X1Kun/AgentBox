@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/X1Kun/AgentBox/internal/batch"
+	"github.com/X1Kun/AgentBox/internal/batchapi"
 	"github.com/X1Kun/AgentBox/internal/session"
 	"github.com/X1Kun/AgentBox/internal/sessionapi"
 	"github.com/X1Kun/AgentBox/internal/sessionruntime"
@@ -30,10 +32,20 @@ func main() {
 }
 func run() error {
 	var cfg session.Config
+	var batchCfg batch.Config
+	var mode string
 	var listen, kubeconfig, principalsFile, cert, key string
 	var timeout time.Duration
 	var maxInflight int
 	var execution bool
+	flag.StringVar(&mode, "mode", "session", "API mode: session or batch")
+	flag.StringVar(&batchCfg.DataDir, "batch-data-dir", "", "mounted batch artifacts PVC root")
+	flag.StringVar(&batchCfg.TemplateFile, "batch-template-file", "", "administrator-controlled image Job YAML")
+	flag.StringVar(&batchCfg.ContractFile, "batch-contract-file", "", "fixed dataset/output contract JSON")
+	flag.StringVar(&batchCfg.WorkerImageID, "batch-image-id", "", "verified worker image ID")
+	flag.StringVar(&batchCfg.WorkerImageDigest, "batch-image-digest", "", "verified worker manifest digest from the same CRI image")
+	flag.DurationVar(&batchCfg.Retention, "batch-retention", 24*time.Hour, "artifact download retention, 1m..168h")
+	flag.IntVar(&batchCfg.MaxRecords, "batch-max-records", 128, "bounded durable submission records, 1..1024")
 	flag.StringVar(&listen, "listen", "127.0.0.1:8090", "HTTP address; non-loopback addresses require TLS")
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "explicit scoped kubeconfig; default is in-cluster credentials")
 	flag.StringVar(&cfg.Namespace, "namespace", "", "fixed workload namespace")
@@ -54,6 +66,9 @@ func run() error {
 		return errors.New("unexpected arguments")
 	}
 	host, _, err := net.SplitHostPort(listen)
+	if mode != "session" && mode != "batch" {
+		return errors.New("mode must be session or batch")
+	}
 	if err != nil {
 		return errors.New("invalid listen address")
 	}
@@ -94,14 +109,28 @@ func run() error {
 	if err != nil {
 		return errors.New("unable to configure Kubernetes client")
 	}
-	backend, err := session.New(client, cfg)
-	if err != nil {
-		return err
+	var handler interface {
+		http.Handler
+		RunReadiness(context.Context)
 	}
-	if execution {
-		backend.SetRuntime(sessionruntime.New())
+	if mode == "batch" {
+		batchCfg.Namespace, batchCfg.Instance = cfg.Namespace, cfg.Instance
+		backend, e := batch.New(client, batchCfg)
+		if e != nil {
+			return e
+		}
+		defer backend.Close()
+		handler, err = batchapi.New(backend, principals, timeout, maxInflight)
+	} else {
+		backend, e := session.New(client, cfg)
+		if e != nil {
+			return e
+		}
+		if execution {
+			backend.SetRuntime(sessionruntime.New())
+		}
+		handler, err = sessionapi.New(backend, principals, timeout, maxInflight)
 	}
-	handler, err := sessionapi.New(backend, principals, timeout, maxInflight)
 	if err != nil {
 		return err
 	}
@@ -127,7 +156,11 @@ func run() error {
 		cancelMonitor()
 		<-monitorDone
 	}()
-	logger.Info("session lifecycle API listening", "address", listener.Addr().String(), "namespace", cfg.Namespace, "pool", cfg.Pool, "instance", cfg.Instance, "tls", cert != "")
+	message := "session lifecycle API listening"
+	if mode == "batch" {
+		message = "batch API listening"
+	}
+	logger.Info(message, "mode", mode, "address", listener.Addr().String(), "namespace", cfg.Namespace, "pool", cfg.Pool, "instance", cfg.Instance, "tls", cert != "")
 	done := make(chan error, 1)
 	go func() {
 		if cert != "" {

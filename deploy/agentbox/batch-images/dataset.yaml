@@ -1,0 +1,37 @@
+schema_version: 1
+dataset_id: image-small-v1
+source_version: scikit-image-v0.25.2
+license_source: https://scikit-image.org/docs/stable/api/skimage.data.html
+images:
+- name: chelsea.png
+  width: 451
+  height: 300
+  bytes: 240512
+  sha256: 596aa1e7cb875eb79f437e310381d26b338a81c2da23439704a73c4651e8c4bb
+  url: https://raw.githubusercontent.com/scikit-image/scikit-image/v0.25.2/skimage/data/chelsea.png
+  license: CC0-1.0
+  credit: Stefan van der Walt
+- name: coffee.png
+  width: 600
+  height: 400
+  bytes: 466706
+  sha256: cc02f8ca188b167c775a7101b5d767d1e71792cf762c33d6fa15a4599b5a8de7
+  url: https://raw.githubusercontent.com/scikit-image/scikit-image/v0.25.2/skimage/data/coffee.png
+  license: CC0-1.0
+  credit: Rachel Michetti / Pikolo Espresso Bar
+- name: astronaut.png
+  width: 512
+  height: 512
+  bytes: 791555
+  sha256: 88431cd9653ccd539741b555fb0a46b61558b301d4110412b5bc28b5e3ea6cb5
+  url: https://raw.githubusercontent.com/scikit-image/scikit-image/v0.25.2/skimage/data/astronaut.png
+  license: Public domain
+  credit: NASA / Eileen Collins photograph
+- name: hubble_deep_field.jpg
+  width: 1000
+  height: 872
+  bytes: 527940
+  sha256: 3a19c5dd8a927a9334bb1229a6d63711b1c0c767fb27e2286e7c84a3e2c2f5f4
+  url: https://raw.githubusercontent.com/scikit-image/scikit-image/v0.25.2/skimage/data/hubble_deep_field.jpg
+  license: Public domain
+  credit: NASA / HubbleSite

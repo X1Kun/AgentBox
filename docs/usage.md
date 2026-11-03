@@ -59,6 +59,38 @@ Content-Type: application/json
 执行超时为 504/execution_timeout；执行或写入结果不确定、客户端断线等返回 503/operation_outcome_unknown（断线时可能收不到响应），保留操作标记并在独立 5 秒预算内请求上游关闭。释放操作标记的补丁响应丢失时，只读回原 Claim UID 确认标记已清除；无法确认则返回 unknown 并尝试关闭。关闭请求失败时仍不得重放或继续，调用方必须重试关闭/查询，硬 TTL 是最终兜底。错误本身不等于清理完成，仍需 GET 确认 closed/cleanup_complete。成功执行响应丢失也没有命令结果查询或去重账本，调用方不能自动重试代码；创建幂等不代表执行 exactly-once。
 
 <a id="mcp"></a>
+<a id="batch-api"></a>
+## Go 图片批任务 API v2
+
+`agentbox-api --mode=batch` 在独立批任务 namespace 运行，使用专用 Role、固定 Kueue 队列、Job 模板和 artifacts PVC。默认 `--mode=session` 保持原会话接口。批任务模式提供下面的 HTTP 接口；凭据仍来自管理员配置的 principal/token，不向计算 Pod 分发集群或调用方凭据。部署参数与准备流程见[运维指南](operations.md#batch-images)。
+
+| 请求 | 行为 |
+| --- | --- |
+| `POST /v2/batches` | 提交固定图片处理任务；新请求 202，相同请求恢复或重放返回 200 |
+| `GET /v2/batches/{batch_id}` | 查询排队、运行、结果与 Kubernetes 对象回收状态 |
+| `DELETE /v2/batches/{batch_id}` | 活动任务请求取消；成功任务只释放运行资源并保留已发布产物 |
+| `GET /v2/batches/{batch_id}/artifacts/{name}` | 按返回的文件名下载已验证 PNG；身份、大小、字节摘要及像素契约再次校验 |
+
+```bash
+curl --cacert "$AGENTBOX_CA" -H "Authorization: Bearer $AGENTBOX_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"request_id":"images-001","dataset_id":"image-small-v1","passes":1}' \
+  "$AGENTBOX_API_URL/v2/batches"
+
+curl --cacert "$AGENTBOX_CA" -H "Authorization: Bearer $AGENTBOX_API_TOKEN" \
+  "$AGENTBOX_API_URL/v2/batches/$BATCH_ID"
+```
+
+`image-small-v1` 固定四张有来源和许可记录的原图；每张输出一张最大 128×128 的等比 RGB 缩略图及一张 RGB 灰度 PNG，共八张。`passes` 省略或为 0 时按 1 处理，实际执行 1..4096 次重复同一固定变换以构造有界 CPU 工作，最终仍输出八张；Job 的 180 秒期限和程序自身期限独立生效，不保证所有负载都能在期限内完成。不能传入用户代码、URL、文件路径、镜像、PodSpec、资源规格或任意线程配置。
+
+队列等待不计入 Job 的运行期限；首版通过查询和显式取消管理排队任务，尚未提供自动排队截止策略。
+
+提交标识绑定配置实例、调用方和请求内容，返回 ID 关联原 Job UID。同标识更改有效参数返回 409/request_conflict；跨身份查询/下载返回 404。提交响应丢失后只按同 request_id 和相同内容恢复，不补建另一份任务；记录在 PVC 上，通过文件锁、原子替换和 fsync 承接进程重启。明确的 Kubernetes 拒绝返回 submission_rejected，只有调用方显式重复提交才再次尝试；传输不确定而原 Job 又无法查询时返回 submission_outcome_unknown，不自动重新执行。原 Job 消失但未确认结果时返回 unknown。
+
+状态包括 submitting、queued、running、succeeded、failed、cancelling、cancelled、unknown。Job Complete 之后仍需检查成功 Pod/退出码、同一镜像的 Docker 配置 ID/CRI manifest digest、Job/Pod/request/dataset 身份、文件集合及像素摘要，才发布 succeeded。允许一次 Job 失败重试；每次 Pod 使用独立输出目录，只有验证成功的尝试可以发布。取消和发布按任务记录串行化：取消先确认则不发布；成功先提交则 DELETE 保留成功与产物，仅清运行资源。
+
+产物默认可下载 24 小时（管理员可设 1 分钟至 7 天），到期返回 410/artifact_expired；物理删除等待原 Job/Pod/Workload 消失后，由 API 后台尽力收敛。Job TTL 仅在结果或失败摘要持久化后设置为 600 秒；产物不随 Job 删除。`cleanup_complete` 只证明 Kubernetes 对象消失，CRI/gVisor 进程回收由独立平台验收核对。元数据默认最多保留 128 个提交，满时返回 429/record_capacity；它不因产物到期自动删除，避免默默缩短幂等窗口，归档/重置需管理员在排空后处理。
+
 ## stdio MCP v2
 
 `agentbox-mcp` 只访问配置的 Session API，不读取 Kubernetes 凭据或连接宿主运行时。配置 `AGENTBOX_API_TOKEN`，通过 `--api-url` 指定 API；可选 `--api-ca-file` 信任专用 CA。远端必须 HTTPS，HTTP 仅允许显式 loopback IP。客户端不使用环境代理，不跟随重定向；数据操作没有重放请求体或自动重试。stdout 只输出 MCP 协议，日志写 stderr。

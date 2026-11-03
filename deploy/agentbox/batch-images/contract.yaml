@@ -1,0 +1,36 @@
+schema_version: 1
+dataset_id: image-small-v1
+dataset_sha256: 3f9f90adc7d19ae9b29952f8133d0d76df6f8fce6d219bdcb1c3bb1815d4bac9
+outputs:
+- name: chelsea-thumb.png
+  pixel_sha256: 880bbba3852771e0fce7da55556508f5bf4a53bac99984e33d52476a041ef163
+  width: 128
+  height: 85
+- name: chelsea-gray.png
+  pixel_sha256: 7366e9eef1f591903a95fbfa89cd36f6311b80330c2e354e77f13122ff34b034
+  width: 128
+  height: 85
+- name: coffee-thumb.png
+  pixel_sha256: 8a8d496eed20e67f81d0b3024c9cd9cb1b92c56b269633a76736d0c070224225
+  width: 128
+  height: 85
+- name: coffee-gray.png
+  pixel_sha256: 79b721694d6934120a7d8adda8cc93e2d046266462d3391a8b156d07ecb45cb7
+  width: 128
+  height: 85
+- name: astronaut-thumb.png
+  pixel_sha256: 0a23b78b2e9bacd19500d086ebd17f038bbb922dab97dba2761e1281528af13e
+  width: 128
+  height: 128
+- name: astronaut-gray.png
+  pixel_sha256: 4aa401b027ee3dbd4aac1838131f006c5f1c91db05f63bd8b8c39e1ef463b828
+  width: 128
+  height: 128
+- name: hubble_deep_field-thumb.png
+  pixel_sha256: 2939de8e0169f26ac278897d1c41920855dcf1ab698b546b4754dc8ac7210b11
+  width: 128
+  height: 112
+- name: hubble_deep_field-gray.png
+  pixel_sha256: 95a3b4901fb611805916adc6a3448fb4020eedd8bc149ee02bef644ca9bde859
+  width: 128
+  height: 112

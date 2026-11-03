@@ -6,7 +6,7 @@
 
 ## 1. 当前状态与总体顺序
 
-已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；新增固定预热池行为入口；新增生命周期、执行与文件 API；MCP/Agent v2 新链路及源码/系统旧安装退役已完成。P3a 新增 Kueue 固定配额批任务安装与生命周期验收；真实图片任务、批任务产品 API、完整观测、R/B 基线和 AdmissionCheck 仍未完成。
+已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；新增固定预热池行为入口；新增生命周期、执行与文件 API；MCP/Agent v2 新链路及源码/系统旧安装退役已完成。P3a 新增 Kueue 固定配额批任务安装与生命周期验收；P3b 已增加真实图片任务、独立产物和 Go 批任务接口；完整观测、R/B 基线和 AdmissionCheck 仍未完成。
 
 | 阶段 | 主要交付 | 进入下一阶段的条件 |
 | --- | --- | --- |
@@ -95,7 +95,9 @@ kind 可承担功能验收；若当前宿主无法稳定支持目标 runtime/CNI
 
 P3a 提供固定 Kueue v0.20.3 的受限安装、LocalQueue/ClusterQueue/Worker ResourceFlavor 与 gVisor Job 验收；队列和本轮 namespace/配额临时创建，正常测试后清理，Kueue 及健康集群保留。固定 CPU 计算验证排队、准入、排队/运行取消、超配额、执行失败和 deadline；这是功能底座，不代表图片批处理产品或性能基线完成。操作见[批任务运维](operations.md#batch)，结果见[批任务验收](validation.md#batch)。
 
-后续 P3b 实现固定图片数据集、独立产物契约和 Go 批任务接口；P3c 补齐观测、固定到达轨迹和 R/B 静态配额扫描。完成 P3 的全部门槛后再进入健康感知准入策略。
+P3b 将固定图片数据集、独立产物契约和 Go 批任务接口合并交付：四张公开图片和处理库/wheel 固定版本/摘要；真实缩略图/灰度处理在 gVisor Job 内运行；独立 PVC 保留产物与有限幂等记录；支持原 Job UID 查询/取消、跨身份拒绝、重启后恢复、失败尝试隔离及已验证 PNG 下载。接口见[使用指南](usage.md#batch-api)，准备和验收见[运维指南](operations.md#batch-images)。
+
+后续 P3c 补齐观测、固定到达轨迹和 R/B 静态配额扫描。完成 P3 的全部门槛后再进入健康感知准入策略；P3b 的功能结果不作为性能收益或磁盘问题根治证据。
 
 先完成 Job/Kueue 的 LocalQueue/ClusterQueue/ResourceFlavor，固定规格与配额，不借用、不抢占。会话 namespace/固定池预算与批任务预算分开声明，共同受 Worker 实际容量约束；首版不让 Kueue 接管 Claim 或命令。
 

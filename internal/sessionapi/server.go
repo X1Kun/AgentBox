@@ -3,8 +3,6 @@ package sessionapi
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/X1Kun/AgentBox/internal/httpauth"
 	"github.com/X1Kun/AgentBox/internal/session"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -31,17 +30,10 @@ type Operations interface {
 	Write(context.Context, string, string, session.FileRequest) (session.FileView, error)
 	Read(context.Context, string, string, session.FileRequest) (session.FileView, error)
 }
-type Principal struct {
-	ID    string `json:"id"`
-	Token string `json:"token"`
-}
-type credential struct {
-	principal string
-	sum       [32]byte
-}
+type Principal = httpauth.Principal
 type Server struct {
 	backend          Backend
-	credentials      []credential
+	auth             *httpauth.Authenticator
 	timeout          time.Duration
 	permits          chan struct{}
 	operations       chan struct{}
@@ -55,34 +47,15 @@ func New(backend Backend, principals []Principal, timeout time.Duration, maxInfl
 		return nil, errors.New("invalid lifecycle HTTP configuration")
 	}
 	s := &Server{backend: backend, timeout: timeout, permits: make(chan struct{}, maxInflight), operations: make(chan struct{}, maxInflight), now: time.Now}
-	seen := map[[32]byte]bool{}
-	for _, p := range principals {
-		if !session.ValidPrincipal(p.ID) || len(p.Token) < 32 || len(p.Token) > 4096 || strings.IndexFunc(p.Token, func(r rune) bool { return r < 33 || r > 126 }) >= 0 {
-			return nil, errors.New("invalid configured principal credentials")
-		}
-		sum := sha256.Sum256([]byte(p.Token))
-		if seen[sum] {
-			return nil, errors.New("duplicate configured token")
-		}
-		seen[sum] = true
-		s.credentials = append(s.credentials, credential{p.ID, sum})
+	var err error
+	s.auth, err = httpauth.New(principals)
+	if err != nil {
+		return nil, err
 	}
 	return s, nil
 }
 func (s *Server) authenticate(r *http.Request) string {
-	values := r.Header.Values("Authorization")
-	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") || len(values[0]) > 4103 {
-		return ""
-	}
-	token := strings.TrimPrefix(values[0], "Bearer ")
-	sum := sha256.Sum256([]byte(token))
-	principal := ""
-	for _, c := range s.credentials {
-		if subtle.ConstantTimeCompare(sum[:], c.sum[:]) == 1 {
-			principal = c.principal
-		}
-	}
-	return principal
+	return s.auth.Authenticate(r)
 }
 func write(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
