@@ -49,6 +49,7 @@ func (s *Server) checkReadiness(ctx context.Context) {
 		slog.WarnContext(ctx, "lifecycle backend readiness failed", "reason", apierrors.ReasonForError(err))
 	}
 	s.readiness.Store(&readinessResult{healthy: err == nil, checkedAt: started})
+	s.metrics.Backend(err == nil, started)
 }
 
 func (s *Server) isReady() bool {

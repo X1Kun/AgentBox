@@ -1,5 +1,13 @@
 schema_version: 1
 baseline_commit: 8958f50
+build_inputs:
+  go.mod:
+    # Only promotion of already-selected Prometheus requirements to direct use.
+    # Selected module versions/replacements/Go versions and go.sum are unchanged.
+    baseline_commit: e8fa761
+    current_sha256: 6e516060243812545aaffaf658e843c2954a4f7b079d51e2566ec0a799e53d4f
+    legacy_sha256: 6788d70352f4e17577d3ed96ffcde76b96380db2f0f19b41a17d3ca9ccc4cad4
+    selected_modules_sha256: 7b7bf6cd825c9193d301485e98a080e21b46f63d663040a66051436c9114c747
 locks:
   versions:
     semantic_sha256: 92b44efa2bbf7f7c29c787fba217a024f3ec488acbcd6d26dd3623b5e17380ac

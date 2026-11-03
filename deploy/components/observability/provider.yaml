@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+- name: agentbox
+  orgId: 1
+  folder: AgentBox
+  type: file
+  disableDeletion: true
+  editable: false
+  updateIntervalSeconds: 10
+  options:
+    path: /etc/grafana/dashboards

@@ -1,5 +1,5 @@
 """Install the upstream controller and validate cold sessions with its Go SDK."""
-from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, definition as manifest_definition, lock_identity, render_upstream, python_image_source
+from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, definition as manifest_definition, lock_identity, render_upstream, python_image_source, build_input_identity
 import hashlib
 import ipaddress
 import json
@@ -95,6 +95,7 @@ class Sessions:
         for folder in ('cmd/agentbox-session-smoke','internal/sessionprobe'):
             files += [p for p in (self.lab.root/folder).glob('*.go') if not p.name.endswith('_test.go')]
         result = {str(p.relative_to(self.lab.root)):digest(p) for p in sorted(files)}
+        result['go.mod'] = build_input_identity(self.lab.config,'go.mod',result['go.mod'])
         # Immutable input IDs of the v1 bundle protocol, not physical filenames.
         # New component paths preserve cache identity only with equal lock/payload values.
         result['deploy/platform/session.lock.json'] = lock_identity(self.lab.config,'session')

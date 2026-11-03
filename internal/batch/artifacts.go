@@ -53,7 +53,18 @@ func verifyPNG(data []byte, file, expected File) error {
 	}
 	return nil
 }
-func (s *Service) publish(r *Record, pod *corev1.Pod) error {
+func (s *Service) publish(r *Record, pod *corev1.Pod) (resultErr error) {
+	started := time.Now()
+	defer func() {
+		outcome := "complete"
+		if resultErr != nil {
+			outcome = "error"
+			if Code(resultErr) == "artifact_invalid" {
+				outcome = "invalid"
+			}
+		}
+		s.metrics.Operation("publication", outcome, time.Since(started))
+	}()
 	if !uid.MatchString(r.JobUID) || !uid.MatchString(string(pod.UID)) {
 		return fail("artifact_invalid")
 	}
@@ -141,7 +152,15 @@ func (s *Service) publish(r *Record, pod *corev1.Pod) error {
 	r.PodUID = string(pod.UID)
 	return nil
 }
-func (s *Service) Download(ctx context.Context, principal, id, name string) ([]byte, error) {
+func (s *Service) Download(ctx context.Context, principal, id, name string) (payload []byte, resultErr error) {
+	started := time.Now()
+	defer func() {
+		outcome := "complete"
+		if resultErr != nil {
+			outcome = "error"
+		}
+		s.metrics.Operation("artifact_read", outcome, time.Since(started))
+	}()
 	if !validArtifact(name) {
 		return nil, fail("not_found")
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/X1Kun/AgentBox/internal/telemetry"
 	"io"
 	"os"
 	"sort"
@@ -82,6 +83,10 @@ func New(client dynamic.Interface, cfg Config) (*Service, error) {
 	return &Service{client: client, cfg: cfg, template: &job, templateHash: hash(encoded), contract: contract, store: store, now: time.Now}, nil
 }
 func (s *Service) Close() error { return s.store.Close() }
+func (s *Service) SetTelemetry(metrics *telemetry.Metrics) {
+	s.metrics = metrics
+	s.store.metrics = metrics
+}
 func validateTemplate(job *batchv1.Job, namespace string) error {
 	p := job.Spec.Template.Spec
 	if job.APIVersion != "batch/v1" || job.Kind != "Job" || job.Namespace != namespace || job.Spec.Suspend == nil || !*job.Spec.Suspend || job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 1 || job.Spec.ActiveDeadlineSeconds == nil || *job.Spec.ActiveDeadlineSeconds < 30 || *job.Spec.ActiveDeadlineSeconds > 600 || job.Spec.TTLSecondsAfterFinished != nil || job.Spec.Parallelism == nil || *job.Spec.Parallelism != 1 || job.Spec.Completions == nil || *job.Spec.Completions != 1 || job.Labels["kueue.x-k8s.io/queue-name"] != "batch" {
@@ -526,7 +531,15 @@ func (s *Service) setTTL(ctx context.Context, j *batchv1.Job) error {
 	_, err := s.client.Resource(Jobs).Namespace(s.cfg.Namespace).Patch(ctx, j.Name, types.JSONPatchType, body, metav1.PatchOptions{})
 	return err
 }
-func (s *Service) Reconcile(ctx context.Context) error {
+func (s *Service) Reconcile(ctx context.Context) (resultErr error) {
+	started := time.Now()
+	defer func() {
+		outcome := "complete"
+		if resultErr != nil {
+			outcome = "error"
+		}
+		s.metrics.Operation("reconcile", outcome, time.Since(started))
+	}()
 	s.reconcileMu.Lock()
 	defer s.reconcileMu.Unlock()
 	names, err := s.store.names()

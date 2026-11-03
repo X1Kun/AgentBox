@@ -3,6 +3,7 @@
 .PHONY: platform-batch-install platform-batch-test
 .PHONY: platform-batch-image-build
 .PHONY: platform-batch-product-test
+.PHONY: observability-up observability-down observability-render platform-observability-test
 
 build:
 	mkdir -p bin
@@ -13,6 +14,7 @@ build:
 
 tools:
 	mkdir -p bin
+	go build -trimpath -o bin/agentbox-observer ./cmd/agentbox-observer
 	go build -trimpath -o bin/agentbox-session-smoke ./cmd/agentbox-session-smoke
 	go build -trimpath -o bin/mockcore ./cmd/mockcore
 
@@ -47,6 +49,18 @@ platform-batch-image-build:
 
 platform-batch-product-test:
 	python3 scripts/platform_lab.py batch-product-test
+
+observability-up:
+	python3 scripts/observability.py up
+
+observability-down:
+	python3 scripts/observability.py down
+
+observability-render:
+	python3 -c 'import sys,pathlib; sys.path.insert(0,"scripts"); from lib.platform_manifests import read_yaml; [read_yaml(p) for p in pathlib.Path("deploy/components/observability").glob("*.yaml")]'
+
+platform-observability-test:
+	python3 scripts/platform_lab.py observability-test
 
 # Functional Kubernetes lab; independent of the legacy daemon build.
 platform-preflight:

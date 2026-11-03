@@ -1,12 +1,12 @@
 # 路线图与阶段验收
 
-更新：2026-11-02｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
+更新：2026-11-03｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
 
 在现有 AgentBox 内演进，优先复用 Agent Sandbox 管理会话，Job/Kueue 管理批任务，共用 containerd/gVisor。agentboxd/旧 Gateway 已退出活动源码，不再提供本地运行后端；两类 Kubernetes 工作负载不等于长期维护新旧双后端。
 
 ## 1. 当前状态与总体顺序
 
-已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；新增固定预热池行为入口；新增生命周期、执行与文件 API；MCP/Agent v2 新链路及源码/系统旧安装退役已完成。P3a 新增 Kueue 固定配额批任务安装与生命周期验收；P3b 已增加真实图片任务、独立产物和 Go 批任务接口；完整观测、R/B 基线和 AdmissionCheck 仍未完成。
+已实现 kind/containerd 普通 Job 功能入口，支持版本锁、预检、独立 kubeconfig、归属保护和结果/清理验收。三次实测闭环见[平台记录](validation.md#platform-bootstrap)。已增加 gVisor 运行时与独立 Calico NetworkPolicy 实验入口；已增加 Agent Sandbox 冷会话与 Go SDK 验收入口；新增固定预热池行为入口；新增生命周期、执行与文件 API；MCP/Agent v2 新链路及源码/系统旧安装退役已完成。P3a 新增 Kueue 固定配额批任务安装与生命周期验收；P3b 已增加真实图片任务、独立产物和 Go 批任务接口；P3c 已增加连续观测入口，R/B 基线和 AdmissionCheck 仍未完成。
 
 | 阶段 | 主要交付 | 进入下一阶段的条件 |
 | --- | --- | --- |
@@ -97,7 +97,7 @@ P3a 提供固定 Kueue v0.20.3 的受限安装、LocalQueue/ClusterQueue/Worker 
 
 P3b 将固定图片数据集、独立产物契约和 Go 批任务接口合并交付：四张公开图片和处理库/wheel 固定版本/摘要；真实缩略图/灰度处理在 gVisor Job 内运行；独立 PVC 保留产物与有限幂等记录；支持原 Job UID 查询/取消、跨身份拒绝、重启后恢复、失败尝试隔离及已验证 PNG 下载。接口见[使用指南](usage.md#batch-api)，准备和验收见[运维指南](operations.md#batch-images)。
 
-后续 P3c 补齐观测、固定到达轨迹和 R/B 静态配额扫描。完成 P3 的全部门槛后再进入健康感知准入策略；P3b 的功能结果不作为性能收益或磁盘问题根治证据。
+P3c 分三步交付：当前先实现 API 指标、只读 Kubernetes/运行时观察器、本地 Prometheus/Grafana 和缺失/重启验收；下一步冻结到达轨迹、逐请求事件与仅会话 R 容量基线；再扫描共享预算下的静态批配额 B。当前采集功能不构成 R/B 成绩，也不证明所有 gVisor 叶资源均可由 cAdvisor 测得，边界见[观测验收](validation.md#observability)。完成 P3 的全部门槛后再进入健康感知准入策略；P3b 的功能结果不作为性能收益或磁盘问题根治证据。
 
 先完成 Job/Kueue 的 LocalQueue/ClusterQueue/ResourceFlavor，固定规格与配额，不借用、不抢占。会话 namespace/固定池预算与批任务预算分开声明，共同受 Worker 实际容量约束；首版不让 Kueue 接管 Claim 或命令。
 

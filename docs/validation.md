@@ -228,6 +228,23 @@ Go API 在普通 Pod 内提供 TLS，实际 Python 由锁定上游 sandboxd 在 
 
 逐阶段源码、构建资产、原始报告、失败与清理摘要见[图片产品验收记录](data/platform-batch-images-validation.json)。本轮功能结果不证明 24h 连续运行、磁盘硬容量、存储迁移、多副本/跨节点、公网部署或性能 SLO；保留期、越界/损坏、容量、未知提交与并发语义另有确定性回归。完整监控、R/B 基线和健康准入仍待 P3c/P4。
 
+<a id="observability"></a>
+## P3c 第一步：连续观测与缺失语义
+
+新增独立 API metrics 监听、只读 `agentbox-observer`，以及 digest 固定的本地 Prometheus/Grafana/node-exporter。仪表盘源、规则和锁文件使用 YAML，Grafana JSON 只在忽略缓存中生成；复现命令与凭据/归属边界见[观测运维](operations.md#observability)。
+
+API 区分 HTTP 状态、程序非零退出、批任务发布/校验失败和持久状态观察。平台观察以 Kubernetes 时间戳、Job/Workload UID 引用、Claim/Pod 条件记录阶段；重启后的已有对象标为 initial，不混入 live 吞吐量。库存只有完整、新鲜的读取才有数值；权限撤销、读取失败和过期会省略库存值，独立有效性序列说明未知，禁止以补零解释空闲。scrape 读取内存，慢/失败的后端读取不阻塞它或扩大业务调用量。
+
+真实 gVisor 探针发现 cAdvisor 只有父级 CPU、部分叶内存为零；同节点 `/metrics/resource` 可提供 CRI 容器 CPU/working set。当前 CPU/working set 使用 CRI，其他叶统计仅在 cAdvisor 同叶 CPU 计数存在时采用；缺失 RSS/throttling/I/O 保留未知。容器 start time、两样本差分和源时间戳用于防止重建、回退或旧样本制造速率。物理宿主机 CPU/内存/磁盘/PSI 与容器资源单列，排除父 cgroup 重复累计，也不宣称覆盖 Pod 外 shim/Sentry 成本。
+
+开发失败包括监控栈首次 90s 就绪超时、指标转发选择执行 namespace 而非 API namespace，以及将 cAdvisor 叶能力作为 gVisor CPU 前提。原失败报告保留；同期限重试、分离 API/执行 namespace、核对实际 CRI 数据后再验收，不以放宽预算或编造零值通过。
+
+本步仅证明采集、缺失语义与业务兼容性。5s 轮询可能漏掉短对象，API P95 也不能替代首次/后续命令的逐条端到端记录。固定到达轨迹、R 容量标定、B 静态批配额扫描、完整资源成本与性能/SLO 结论仍待后续交付。
+
+最终源码通过完整 `make check`、162 项 Python 回归和新增 14 项 Go 观测回归；九组真实观测检查及原有七组图片产品检查通过。最后一轮核对实际部署仪表盘的查询与 YAML 源一致，并在 API 重启后继续确认取消、发布成功与产物读取失败指标。一个会话和四个批任务 gVisor 环境、临时 namespace/队列/PVC/PV 均回收；监控栈和本项目基础只读 RBAC 保留。原集群状态及 SDK bundle 字节不变，所选 200 项 Go 模块的版本/替换/GoVersion 与 go.sum 不变，仅提升 Prometheus direct 标记并以精确字节表承接旧 SDK 缓存身份。原始时序、事件、仪表盘、阶段源码和失败报告摘要见[观测验收记录](data/platform-observability-validation.json)，历史 JSON 不回写。
+
+既有 Agent/MCP/API/gVisor 五项兼容性检查及三个环境回收也通过；最终观测与 Agent 报告使用相同的 168 项源码摘要，逐项匹配当前文件。原集群和会话镜像 bundle 字节仍保持不变。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>

@@ -69,3 +69,11 @@ func TestBatchImageProduct(t *testing.T) {
 		t.Fatalf("image batch product regression: %v\n%s", err, output)
 	}
 }
+
+func TestPlatformObservability(t *testing.T) {
+	cmd := exec.Command("python3", "platform_observability_test.py", "-v")
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("observability regression: %v\n%s", err, output)
+	}
+}

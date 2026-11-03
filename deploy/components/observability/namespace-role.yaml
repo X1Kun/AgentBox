@@ -1,0 +1,17 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agentbox-observer
+rules:
+- apiGroups: ['']
+  resources: [pods]
+  verbs: [get, list]
+- apiGroups: [batch]
+  resources: [jobs]
+  verbs: [get, list]
+- apiGroups: [kueue.x-k8s.io]
+  resources: [workloads]
+  verbs: [get, list]
+- apiGroups: [extensions.agents.x-k8s.io]
+  resources: [sandboxclaims, sandboxwarmpools]
+  verbs: [get, list]

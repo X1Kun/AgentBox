@@ -16,6 +16,7 @@ import (
 
 	"github.com/X1Kun/AgentBox/internal/httpauth"
 	"github.com/X1Kun/AgentBox/internal/session"
+	"github.com/X1Kun/AgentBox/internal/telemetry"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -40,7 +41,10 @@ type Server struct {
 	readinessStarted atomic.Bool
 	readiness        atomic.Pointer[readinessResult]
 	now              func() time.Time
+	metrics          *telemetry.Metrics
 }
+
+func (s *Server) SetTelemetry(metrics *telemetry.Metrics) { s.metrics = metrics }
 
 func New(backend Backend, principals []Principal, timeout time.Duration, maxInflight int) (*Server, error) {
 	if backend == nil || len(principals) == 0 || len(principals) > 64 || timeout < time.Second || timeout > 30*time.Second || maxInflight < 1 || maxInflight > 128 {

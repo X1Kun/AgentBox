@@ -12,6 +12,9 @@ import (
 // Record categories only: native transport/runtime errors can contain user
 // code, file contents, endpoints or credentials. The CAS token is never logged.
 func (s *Service) operationEvent(ctx context.Context, id, token, phase, outcome string, err error, started time.Time) {
+	if phase != "execute" {
+		s.metrics.Operation(phase, outcome, time.Since(started))
+	}
 	logger := s.logger
 	if logger == nil {
 		logger = slog.Default()
