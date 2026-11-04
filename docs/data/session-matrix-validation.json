@@ -1,0 +1,513 @@
+{
+  "batching_note": "First four cases completed before a unique burst-ID bug aborted that entrypoint; remaining three cases completed in an explicit isolated selection. These are not one uninterrupted performance trial.",
+  "checks": {
+    "make_check": {
+      "passed": true,
+      "path": "artifacts/matrix-validation-63048ead190c/agentbox-matrix-verified-check.log",
+      "sha256": "18d7b553a774b162dbbf88df40b3d9e3525e36ccb2efa21b2a4d79383defc5da"
+    },
+    "new_coverage": [
+      "Actual Python memory/file/output/failure contracts and wrong-marker rejection",
+      "Real actor backend routing and per-user accounting",
+      "Read-only transient polling and same-create-identity recovery"
+    ],
+    "python_regressions": 167
+  },
+  "completed_scenarios": {
+    "baseline-two": {
+      "assessment": {
+        "all_users_correct": true
+      },
+      "ledger": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/baseline-two.jsonl",
+        "sha256": "d1b48adfceddee2acfb7a3552c8a28ca4620798ea85e2f15769c515e8d9a9da3"
+      },
+      "per_user": {
+        "alice": {
+          "correct": 1,
+          "p95_all_sent_ms": 1044.112209,
+          "planned": 1,
+          "timely_correct": 1
+        },
+        "bob": {
+          "correct": 1,
+          "p95_all_sent_ms": 1107.9062729999998,
+          "planned": 1,
+          "timely_correct": 1
+        }
+      },
+      "pod_count": 2,
+      "quality_target_met": true,
+      "summary": {
+        "by_user": {
+          "alice": {
+            "correct": 1
+          },
+          "bob": {
+            "correct": 1
+          }
+        },
+        "correct": 2,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 1107.9062729999998,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 2
+        },
+        "p50_ms": 1044.112209,
+        "p95_ms": 1107.9062729999998,
+        "planned": 2,
+        "sent": 2,
+        "timely_correct": 2
+      },
+      "trace": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/baseline-two-trace.json",
+        "sha256": "4dc6a68ba5415ff71ca9b87b78e2d22a4c41540ffeee351e7a1d49389dad99d4"
+      },
+      "users": [
+        "alice",
+        "bob"
+      ]
+    },
+    "burst": {
+      "assessment": {
+        "all_users_correct": true
+      },
+      "ledger": {
+        "path": "artifacts/platform-session-matrix-test-0d31e2341514/burst.jsonl",
+        "sha256": "33fdfbb2070c1ea15858e8e003b70f59b75dfdb8026185aa381f4bb1b18eb7c4"
+      },
+      "per_user": {
+        "alice": {
+          "correct": 1,
+          "p95_all_sent_ms": 2929.717063,
+          "planned": 1,
+          "timely_correct": 1
+        },
+        "bob": {
+          "correct": 1,
+          "p95_all_sent_ms": 3565.1401429999996,
+          "planned": 1,
+          "timely_correct": 1
+        }
+      },
+      "pod_count": 2,
+      "quality_target_met": true,
+      "summary": {
+        "by_user": {
+          "alice": {
+            "correct": 1
+          },
+          "bob": {
+            "correct": 1
+          }
+        },
+        "correct": 2,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 3565.1401429999996,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 2
+        },
+        "p50_ms": 2929.717063,
+        "p95_ms": 3565.1401429999996,
+        "planned": 2,
+        "sent": 2,
+        "timely_correct": 2
+      },
+      "trace": {
+        "path": "artifacts/platform-session-matrix-test-0d31e2341514/burst-trace.json",
+        "sha256": "b1b7d878529840eae2fb5f1e667a8aa797cea38acb23f412a9e80f62022f8e1c"
+      },
+      "users": [
+        "alice",
+        "bob"
+      ]
+    },
+    "code-shapes": {
+      "assessment": {
+        "all_users_correct": true
+      },
+      "ledger": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/code-shapes.jsonl",
+        "sha256": "491b74f1f9b66294b93573d7c8ae7ba90815039d5422a27d76a5f624beed17da"
+      },
+      "per_user": {
+        "alice": {
+          "correct": 2,
+          "p95_all_sent_ms": 1762.5461920000007,
+          "planned": 2,
+          "timely_correct": 2
+        },
+        "bob": {
+          "correct": 2,
+          "p95_all_sent_ms": 1495.354311,
+          "planned": 2,
+          "timely_correct": 2
+        }
+      },
+      "pod_count": 2,
+      "quality_target_met": true,
+      "summary": {
+        "by_user": {
+          "alice": {
+            "correct": 2
+          },
+          "bob": {
+            "correct": 2
+          }
+        },
+        "correct": 4,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 1762.5461920000007,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 4
+        },
+        "p50_ms": 1292.660602,
+        "p95_ms": 1762.5461920000007,
+        "planned": 4,
+        "sent": 4,
+        "timely_correct": 4
+      },
+      "trace": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/code-shapes-trace.json",
+        "sha256": "50761eb5ac563476cd391a8dc3a90deef3f9581a17c7f7e3f7f8c0cebf6f7596"
+      },
+      "users": [
+        "alice",
+        "bob"
+      ]
+    },
+    "disconnect": {
+      "assessment": {
+        "cutoff_is_unknown": true,
+        "peer_succeeded": true
+      },
+      "ledger": {
+        "path": "artifacts/platform-session-matrix-test-0d31e2341514/disconnect.jsonl",
+        "sha256": "255a7fd465f84bcf131ee148cee2e36636fea5f2300e0fbec92e5db5d6f11a14"
+      },
+      "per_user": {
+        "alice": {
+          "correct": 0,
+          "p95_all_sent_ms": 800.599029,
+          "planned": 1,
+          "timely_correct": 0
+        },
+        "bob": {
+          "correct": 1,
+          "p95_all_sent_ms": 3913.50223,
+          "planned": 1,
+          "timely_correct": 1
+        }
+      },
+      "pod_count": 2,
+      "quality_target_met": true,
+      "summary": {
+        "by_user": {
+          "alice": {
+            "unknown": 1
+          },
+          "bob": {
+            "correct": 1
+          }
+        },
+        "correct": 1,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 3913.50223,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 1,
+          "unknown": 1
+        },
+        "p50_ms": 800.599029,
+        "p95_ms": 3913.50223,
+        "planned": 2,
+        "sent": 2,
+        "timely_correct": 1
+      },
+      "trace": {
+        "path": "artifacts/platform-session-matrix-test-0d31e2341514/disconnect-trace.json",
+        "sha256": "ea33613f54ca06a643e10415f91423bc351fa428bc6f0493b975c7645c4af69e"
+      },
+      "users": [
+        "alice",
+        "bob"
+      ]
+    },
+    "idle-and-close": {
+      "assessment": {
+        "all_users_correct": false
+      },
+      "ledger": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/idle-and-close.jsonl",
+        "sha256": "3ae878717586071efaa860f08e1256a54d83b83f9f10d19c4aefb3fa7a56dbe1"
+      },
+      "per_user": {
+        "alice": {
+          "correct": 0,
+          "p95_all_sent_ms": 1150.701527,
+          "planned": 2,
+          "timely_correct": 0
+        },
+        "bob": {
+          "correct": 1,
+          "p95_all_sent_ms": 1187.0666650000003,
+          "planned": 1,
+          "timely_correct": 1
+        }
+      },
+      "pod_count": 2,
+      "quality_target_met": false,
+      "summary": {
+        "by_user": {
+          "alice": {
+            "close_acknowledged": 1,
+            "unknown": 1
+          },
+          "bob": {
+            "correct": 1
+          }
+        },
+        "correct": 1,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 1187.0666650000003,
+        "measurement_valid": true,
+        "outcomes": {
+          "close_acknowledged": 1,
+          "correct": 1,
+          "unknown": 1
+        },
+        "p50_ms": 1150.701527,
+        "p95_ms": 1187.0666650000003,
+        "planned": 3,
+        "sent": 3,
+        "timely_correct": 1
+      },
+      "trace": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/idle-and-close-trace.json",
+        "sha256": "bf5d8601a1aa983d0c16d6213ef26a08d2194996e8fd8e39ee5cc91ec59f03d6"
+      },
+      "users": [
+        "alice",
+        "bob"
+      ]
+    },
+    "parallel-four": {
+      "assessment": {
+        "all_users_correct": true
+      },
+      "ledger": {
+        "path": "artifacts/platform-session-matrix-test-0d31e2341514/parallel-four.jsonl",
+        "sha256": "cac3423d582caa9098c10934bb51a56e295b84ee21474004307136ff41812db2"
+      },
+      "per_user": {
+        "alice": {
+          "correct": 2,
+          "p95_all_sent_ms": 3088.517896,
+          "planned": 2,
+          "timely_correct": 2
+        },
+        "bob": {
+          "correct": 2,
+          "p95_all_sent_ms": 2856.822255,
+          "planned": 2,
+          "timely_correct": 2
+        }
+      },
+      "pod_count": 4,
+      "quality_target_met": true,
+      "summary": {
+        "by_user": {
+          "alice": {
+            "correct": 2
+          },
+          "bob": {
+            "correct": 2
+          }
+        },
+        "correct": 4,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 3088.517896,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 4
+        },
+        "p50_ms": 2856.822255,
+        "p95_ms": 3088.517896,
+        "planned": 4,
+        "sent": 4,
+        "timely_correct": 4
+      },
+      "trace": {
+        "path": "artifacts/platform-session-matrix-test-0d31e2341514/parallel-four-trace.json",
+        "sha256": "70ed47530e208a15ac9833ff43619baa33886fde445dbcc64efa20626cce677b"
+      },
+      "users": [
+        "alice",
+        "bob",
+        "alice",
+        "bob"
+      ]
+    },
+    "users-mixed": {
+      "assessment": {
+        "all_users_correct": true
+      },
+      "ledger": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/users-mixed.jsonl",
+        "sha256": "dd9d00c4dddbc88168c6771083d9762fbde23d7a6fa9a88ecf18af48ea3c5946"
+      },
+      "per_user": {
+        "alice": {
+          "correct": 1,
+          "p95_all_sent_ms": 5028.273024,
+          "planned": 1,
+          "timely_correct": 1
+        },
+        "bob": {
+          "correct": 2,
+          "p95_all_sent_ms": 2581.7099630000002,
+          "planned": 2,
+          "timely_correct": 2
+        }
+      },
+      "pod_count": 2,
+      "quality_target_met": true,
+      "summary": {
+        "by_user": {
+          "alice": {
+            "correct": 1
+          },
+          "bob": {
+            "correct": 2
+          }
+        },
+        "correct": 3,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 5028.273024,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 3
+        },
+        "p50_ms": 2581.7099630000002,
+        "p95_ms": 5028.273024,
+        "planned": 3,
+        "sent": 3,
+        "timely_correct": 3
+      },
+      "trace": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/users-mixed-trace.json",
+        "sha256": "c4c10278d32a62ea13120d99a914f6b4b9990decc2618c9dd00ec3c8de02b848"
+      },
+      "users": [
+        "alice",
+        "bob"
+      ]
+    }
+  },
+  "credential_routing": "Actors selects a separate real client/token per target or override; unknown actors fail validation. Credentials live only in private users file.",
+  "failure_interpretation": [
+    "Initial four-Pod preparation failed on 504/backend_timeout, not an established 180s hard capacity ceiling. Pending Pod snapshots showed scheduled/ContainerCreating with namespace budget headroom.",
+    "Second attempt failed on a named creation timeout; setup now recovers only same identity within original shared budget.",
+    "Burst initially reused an existing target request ID and correctly received 200; fixture IDs are now disjoint and failed offered arrivals are preserved."
+  ],
+  "failures": [
+    {
+      "path": "artifacts/platform-session-matrix-test-7bed25f0d414/report.json",
+      "sha256": "9a74dec95848e8a5893170bd1a907f9449f8c200d02ef0bd5e7195f83ef6cbea"
+    },
+    {
+      "path": "artifacts/platform-session-matrix-test-9364e86b45c4/report.json",
+      "sha256": "a1599719368b14546ca2ac0eb0398c11afa05110659f16310ef6aa4c280674fd"
+    },
+    {
+      "path": "artifacts/platform-session-matrix-test-6d7a95fbd1d8/report.json",
+      "sha256": "2544c64e7d54727c00ae30502a248bf8ee4d6dcdbf697c24d6e4abdb10c407f4"
+    }
+  ],
+  "identity": {
+    "cluster_and_installed_sdk_bundle_match_prior_validation": true,
+    "sha256": {
+      ".local/platform/cluster.json": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      ".local/platform/session-bundle.json": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e"
+    }
+  },
+  "isolated_real_sandbox_workload_contracts": [
+    "memory",
+    "files",
+    "output",
+    "failure"
+  ],
+  "limits": [
+    "Fixed total namespace budget is not physical reservation; all cases run on one Worker.",
+    "File workload uses tmpfs, not physical disk I/O.",
+    "Expected exit 23 is validated service behavior; HTTP/code correctness and quality goals are reported separately.",
+    "idle-and-close generic all-user-success goal is false because intentional closure interrupts Alice; raw unknown/acknowledgement are preserved.",
+    "No independent five-run capacity series, multi-node scaling, OOM/disk-failure stress or production availability conclusion.",
+    "Read/create/close control recovery does not authorize execute/write replay."
+  ],
+  "operation_outcomes": {
+    "close_acknowledged": 1,
+    "correct": 17,
+    "unknown": 2
+  },
+  "planned_operations": 20,
+  "runtime_validation_runs": [
+    {
+      "cleanup_complete": true,
+      "detail": "unexpected HTTP 504 for POST /v2/sessions (backend_timeout)",
+      "entrypoint_succeeded": false,
+      "reason": "api_acceptance_failed",
+      "report": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/report.json",
+        "sha256": "f011d7b4cdae0020617128f5c30f30360261a9f027c2d9b01061f832a8d93a26"
+      },
+      "result": {
+        "path": "artifacts/platform-session-matrix-test-d078c3fcb138/observability-test.json",
+        "sha256": "5991bf25432f3354133d75ab3fef6c4959879c547e7b8eaf234a1caf26a5fa71"
+      },
+      "selected_scenarios": null,
+      "source_differences_since_run": [
+        "scripts/lib/platform_api.py",
+        "scripts/lib/platform_api_execution.py",
+        "scripts/lib/session_boundaries.py",
+        "scripts/platform_lab.py"
+      ]
+    },
+    {
+      "cleanup_complete": true,
+      "detail": null,
+      "entrypoint_succeeded": true,
+      "reason": null,
+      "report": {
+        "path": "artifacts/platform-session-matrix-test-0d31e2341514/report.json",
+        "sha256": "6dfd18d16f9df1b1443e6a16a182296670b15975065c1353faf91b128f3f4583"
+      },
+      "result": {
+        "path": "artifacts/platform-session-matrix-test-0d31e2341514/observability-test.json",
+        "sha256": "2a8a5b6c4e6f4fe52dedcde655667a8712b310a5e622d590b251ecbd183df6d8"
+      },
+      "selected_scenarios": [
+        "burst",
+        "disconnect",
+        "parallel-four"
+      ],
+      "source_differences_since_run": [
+        "scripts/lib/platform_api.py",
+        "scripts/lib/platform_api_execution.py",
+        "scripts/lib/session_boundaries.py"
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "scope": "Two actual API principals; controlled 2/4 executing sessions, fixed seven-Pod namespace budget; no maximum-throughput or fairness/SLO claim"
+}

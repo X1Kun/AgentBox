@@ -1,6 +1,6 @@
 # 运维指南
 
-当前默认构建和产品调用统一走 Kubernetes 会话 API/MCP/Agent。旧宿主 Daemon/Gateway 及其构建、安装和实验入口已清退；历史版本见[归档](archive/legacy-runtime.md)。Kueue/批任务和健康准入仍待后续交付。
+当前默认构建和产品调用统一走 Kubernetes 会话 API/MCP/Agent。旧宿主 Daemon/Gateway 及其构建、安装和实验入口已清退；历史版本见[归档](archive/legacy-runtime.md)。Kueue/图片批任务已提供功能入口，健康准入仍待后续交付。
 
 按任务跳转：[平台](#platform-lab) · [gVisor](#gvisor-runtime) · [网络](#network-policy) · [会话](#cold-sessions) · [批任务](#batch) · [API](#session-api) · [记录清理](#claim-retention) · [Agent 验收](#agent) · [旧安装退役](#retirement) · [排障](#diagnosis)。命令从仓库根目录执行。
 
@@ -477,3 +477,85 @@ sudo python3 scripts/retire_legacy.py --apply --report /tmp/agentbox-retirement-
 优先保留 API/MCP/Agent 的 session_id、request_id、identity_revision、错误类别与关闭确认；从上游 Claim/Sandbox/Pod 的 UID、generation、条件、事件及 API operation 日志关联。执行/写入结果未知时停止数据调用并关闭原会话，不手工清除操作标记后重放。关闭未确认和实际运行时回收分别记录；普通磁盘竞争仍可能使 kubelet/containerd 回收延迟。
 
 API 日志不输出代码、文件内容、原始传输错误或凭据。运行时身份只能由拥有专用集群凭据的宿主验收器核对；产品 API/MCP 没有 CRI socket/cgroup 权限。生产部署还需独立评估容量、升级兼容、持久化策略、证书/凭据轮换和监控，当前 kind 行为证据不代表生产 SLO。
+
+<a id="session-boundaries"></a>
+## 固定轨迹的会话边界实验
+
+`make platform-session-boundary-test` 在已有 Calico/gVisor/Agent Sandbox 安装上创建临时固定池、API 和观察范围。配置位于 `deploy/acceptance/boundaries/session.yaml`，Go 驱动复用真实 `session/client`，Python 负责准备、编排、对账和清理。首批包含顺序结果校准、长短任务与同会话冲突、低高低恢复、命令期限、关闭竞争、突发领取耗尽和观察器失联恢复。
+
+每个计划请求写一条 JSONL 终态记录：计划/发送/完成相对时间、原会话身份、HTTP 状态、correct/wrong/rejected/error/unknown/dropped、输出 SHA-256 和是否在诊断期限内正确完成。请求不会因为服务变慢而重新排队或自动重试；生成器超出 `max_lag_ms` 或自身并发名额不足时记录 dropped，本轮 measurement_valid=false。HTTP 200 仍需退出码和完整预期 stdout 匹配才算 correct。场景之间逐个关闭会话并确认 API 回收；最终核对捕获的 runtime 进程。关闭确认与 close_acknowledged 分别解释。
+
+配置中的 deadline_ms 是本轮诊断阈值，不是生产 SLO。摘要延迟分位数针对所有已发送操作的往返时间，包括失败和关闭；分析首次/后续/故障操作时须按原始账本 ID/action 分组，不能只看该聚合数。计划数=发送数+未发出数；业务结果错误与测量失效分别保留。固定池空闲及补池成本仍在 namespace 预算内，物理宿主与容器资源沿用独立口径，缺失数据保持 unknown。
+
+本入口是有界行为验收。正式 R 容量结论还需要多档负载和独立重复，B/A 对照及崩溃/磁盘写失败等交接窗口实验另行开展。源码、配置、逐条账本与原始 Prometheus 时序留在每轮独立 artifacts 中。
+
+<a id="session-diagnostics"></a>
+## 会话请求链路诊断
+
+客户端可通过 context 中的 requestid 传递 `X-Request-ID`，HTTP 层校验并回显；缺失或不合法时生成随机 ID。实验账本保留 request_id、trace_started_at 和 error_code，可把客户端计划/发起/结束时间与服务端 UTC 日志关联。该 ID 只用于日志，不作为 Prometheus 标签，也不提供幂等或重试许可。
+
+API 日志包含 HTTP start/completed/rejected、acquire/execute/validate/release，以及 claim_get、pool_get、sandbox_get、pods_list、services_list、claim_patch、claim_create 的 start/end、分类原因和耗时。对象读取记录 UID/resourceVersion，awaiting_pod 记录 Claim/Sandbox UID；不打印 CAS 标记、原生错误消息、代码、文件内容或凭据。execute 阶段仍包含 RPC/连接校验，不能把它等同 Python CPU 时间。
+
+`agentbox_diagnostics_total{mode,stage,reason}` 和 `agentbox_diagnostic_duration_seconds{mode,stage,reason}` 使用有限 stage/reason，未知输入归 other。可按 acquire/session_busy 查看并发拒绝，按 state_observe/awaiting_pod 查看等待现象，按后端阶段的 timeout/forbidden/throttled/conflict 查看底层分类。pool_get 包括后台 readiness 检查；scrape 本身不会查询后端。
+
+公开响应区分 session_busy、state_conflict、identity_changed、session_not_ready，以及 backend_timeout（504）、backend_conflict（409）、backend_forbidden/backend_throttled/backend_unavailable（503）。backend_forbidden 表示依赖返回 Forbidden/Unauthorized，不能仅据此断定是 RBAC 而非配额准入；具体归因需结合 Events 和控制器日志。异步 creating 的 awaiting_* 继续作为 View.reason 返回，不伪装成已失败或已清理。
+
+边界实验结束前保存 api-events.jsonl、kubernetes-events.json 和按本轮 namespace 筛选的 controller-events.log。失败另保存对象状态快照。清理后仍能沿 request ID → session ID → Sandbox/Pod UID 对账；控制器日志可能因保留窗口而缺失，缺失时保持根因未确认。
+
+<a id="session-matrix"></a>
+## 多 Pod、负载与用户行为矩阵
+
+`make platform-session-matrix-test` 使用 `deploy/acceptance/boundaries/matrix.yaml`，对照 2/4 个执行会话，固定每 Pod 规格与总 namespace 上限 7 Pod（含固定池目标 2 和回收余量）。CPU/内存 requests/limits 随该总上限显式配置，原开发集群与产品默认配额不变；这个上限不代表物理独占，也不是可扩展吞吐量结论。
+
+场景包含同构短任务并发、Alice 长计算与 Bob 多会话短任务、32MiB 有界内存、128KiB 文件读写/摘要、8KiB 输出、预期非零退出、占用但不发命令的会话、主动关闭、突发领取，以及 800ms 客户端截止。文件位于会话内存卷，本场景不测物理磁盘性能。每条代码先验证独立会话 marker，完整 stdout 与预期退出码共同决定正确性。
+
+Go 驱动按 target.user 或显式 request.user 选择真实配置的 HTTP 客户端。`--users-file` 是 0600 的 actor/token 映射，只保存在本轮私有目录，不能进入账本或 Prometheus 标签。每个多用户场景还主动验证其他身份 GET/execute 返回 404。结果按 user 输出数量、正确及时成功及分组时延，保留从未发出命令的会话 ID；这些占用记录不能等同于实际 CPU 空闲时间。总分位数含失败与控制操作，不能代替各用户、各负载分组结果。
+
+客户端截止只取消本次等待，unknown 不重放；最终由独立关闭查询和 namespace/CRI 进程核对确认回收。预期程序退出 23 可以是正确的失败表达；不将它与请求传输错误混合。所有质量未达标与准备失败仍保留日志、Events、快照和原始账本。
+
+可用 `python3 scripts/platform_lab.py session-matrix-test --matrix-scenarios burst,disconnect,parallel-four` 选择独立诊断批次；报告保存选择和实际配置，跨批次不拼接为单次性能成绩。突发创建的每个响应均保留，503/504 不补算成功；清理仅查找相同请求确定名称、同一 namespace/owner/instance 的已存在 Claim。准备阶段的命名创建和关闭控制可在原 180s/90s 共享预算内恢复瞬时错误，同一 request_id/参数保持不变；execute/write 从不重放。场景按低频基线、混合、代码类别、空闲关闭、突发、客户端截止、四 Pod 排列，保留每个阶段的成功和失败。
+
+
+<a id="static-baseline"></a>
+## R/B 静态基线
+
+在已归属、健康的 Calico/gVisor 会话集群上准备 Kueue、图片 worker bundle 和观测镜像；沿用前文已有安装命令，不重建健康集群。运行 `make platform-static-baseline`，默认只进行 R 标定；离线查看计划用 `python3 scripts/platform_lab.py static-baseline --dry-run`。另存冻结配置后可通过 `--baseline-config PATH` 运行，实际配置和内容摘要进入证据。
+
+默认 [baseline.yaml](../deploy/acceptance/boundaries/baseline.yaml) 使用固定预热目标 2、已领取会话 2、会话 namespace 总 Pod 预算 4。R 不提交批任务，B1/B2 分别提供 500m/256Mi、1000m/512Mi 的 Kueue 配额，对应固定 500m/256Mi Job 的一/两个并发名额。所有组保持相同 namespace 总预算、镜像、API、观察器和 Pod 规格；R 也部署空闲批 API，控制测量设施差异。Job 使用真实锁定图片及同一 passes；不通过 sleep 填充计算。
+
+30s 测量窗口覆盖低频稳态、高频稳态和低→高→低轨迹。R 标定先运行低峰值负载，每档五轮；业务质量未达标仍继续记录，生成器或观测失效则停止。本次配置的及时成功目标为 3s 内正确完成至少 95% 的全部计划请求，是实验目标，不是已证明的生产 SLO。进入对照时运行 `python3 scripts/platform_lab.py static-baseline --baseline-stage comparison --reference-report PATH/static-baseline.json`：报告须来自相同冻结配置、原平台及镜像且已完成回收。只有已有五轮有效且达到目标的轨迹才进入 R/B1/B2 对照，未达标的档位不静默带入；高档标定中断时，已独立完成的低档证据可以引用，报告同时保留标定不完整的事实。
+
+对照按固定种子交错组序，包含重新运行的 R 控制组。会话与批提交使用同一绝对起始时间，先领取、校验 marker 并预执行命令，再进入后续命令窗口；领取和预执行成本另列。每轮都保留原失败和所有预定请求；没有用户执行/文件写重试，批任务提交也只尝试一次。丢弃、过度迟到、观测缺失使该轮测量无效并停止后续轮次；没有可确认身份的未知批提交也阻止进入下一组合，不能让持久提交意图在后续组合恢复而污染对照。
+
+每个新输出目录包含 `static-baseline.json`、`rounds.csv`、逐组合 trace、session JSONL、batch ledger、带上游时间戳的 Job/Workload/Pod 快照和 Prometheus 原始时序。及时成功以全部计划请求为分母，P50/P95/P99 从逐请求样本计算，空集合为 null。图片产物逐个下载并核对字节及像素；完成时间是被验证的观察上界。窗口外 drain 的完成不计窗口吞吐，未完成任务和积压保持可见。下一组合开始前先取消/回收本组合 Job，确认没有 Workload 或 compute Pod；无法解决的提交不带入下一组合。
+
+容器成本仅积分明确采到的 CRI 叶容器 CPU 和工作集，相邻样本间隔超过 10s 不插值，保留实际覆盖秒数；CRI/cAdvisor、宿主/容器不重复求和。短任务未采到、进程在 Pod 外的成本及缺失资源仍为 unknown，宿主 PSI 与资源原始序列用于诊断，不自动解释成批任务因果。五轮共享一个开发宿主和安装，不能当作五台独立机器或生产 SLO；30s 窗口是有界基线扫描，不是长期稳态吞吐证明。最高已测通过负载也只是该配置下的下界，未跨过失败区间时不报告最大容量。
+
+实验结束独立清理本次会话、批任务 namespace、队列、flavor 和临时卷，并确认捕获的运行时进程；诊断失败仍尝试归属校验后的删除。保留集群、安装组件与本地监控服务。R/B 结果用于选择后续验证的静态候选配置；P4 的正式 B/A 比较需要冻结该候选及另行验证轨迹，不能把扫描中事后最优点当成已部署策略。
+
+如果回收超时，先确认原进程退出，再运行 `python3 scripts/platform_lab.py static-baseline-cleanup --baseline-report PATH/static-baseline.json`。恢复入口验证记录的 run、归属、namespace/队列/flavor 名称与 UID，接受已经删除的 namespace，将复核结果写入新的 artifacts 目录；原失败报告保持不变。它只恢复清理，不续跑或补算未完成的性能轮次。
+
+<a id="diagnostic-details"></a>
+## 观测细节与故障归档
+
+`make platform-diagnostics-test` 使用[诊断场景](../deploy/acceptance/boundaries/diagnostics.yaml)，在独立 namespace 临时撤销本轮 batch 观察器 Role 的读取权限，确认 `403/forbidden`、session 观测与执行不受该故障影响，并在 UID/resourceVersion 保护下恢复原规则。它有意触发 `baseline_observation_invalid`：`static-baseline.json` 保留负向状态，独立 `diagnostics-acceptance.json` 表示诊断、恢复与回收检查是否通过，不产生合格容量基线。
+
+库存按 domain、节点指标按 node/source 独立使用 4s 预算；库存与运行时使用独立采集循环。读取日志携带 poll ID、domain、GET/LIST、resource、namespace、分类原因、HTTP 状态、耗时和剩余预算。Prometheus 新增 `agentbox_inventory_requests_total`、`agentbox_inventory_request_duration_seconds_bucket`、`agentbox_runtime_polls_total` 和 `agentbox_runtime_poll_duration_seconds_bucket`。指标只用有限分类，实例、请求、Pod 和进程 ID 保留在日志。失败保持 unknown，预算隔离不会将缺测改为零。
+
+会话 API 的 sandboxd 日志以同一 request ID、session ID 和 Pod UID 关联以下阶段；gRPC 拨号回调会保留连接自身的取消/截止语义，同时恢复原请求关联。Init/Exit 中的 process ID 是上游句柄，不等于宿主 PID。
+
+| 阶段 | 时间范围 |
+| --- | --- |
+| runtime_validate_before / runtime_validate_after | 建连前/后的原身份校验 |
+| runtime_connect | TCP 建连 |
+| runtime_rpc_start | 发起 Start RPC；包含上述拨号及校验的嵌套耗时 |
+| runtime_wait_init | Start 返回流到收到进程 Init |
+| runtime_first_output | Init 到客户端收到第一段 stdout 或 stderr；无输出则不产生样本 |
+| runtime_process | Init 到客户端收到 Exit |
+| runtime_stream_finish | Exit 到流完成，或结束阶段的错误 |
+
+这些区间存在嵌套，不能将八项相加当作总时长；客户端接收时间也不能替代服务器 CPU 时间。日志不写用户代码、输出正文或原生错误消息。细分原因用于诊断，执行未知仍按原契约关闭并且不重放。
+
+静态基线另保留 `host-diagnostics.jsonl`（每 5s 的 PSI、磁盘计数、内存和可读取进程 I/O）、`controlplane-diagnostics.jsonl`（每 30s 的 API Server 请求/等待及 etcd WAL fsync/backend commit 直方图）和清理期间的 `cleanup-resources.jsonl`。后者按记录的 namespace UID 检查对象，保留 Pod/PVC/finalizer/事件原因与 CRI 状态；清理操作自身的开始、结束、结果和资源关联见 teardown_timeline。权限不足、采样缺失和超限明确记录，不补零；控制面直方图是聚合证据，不能自动证明某次请求的根因。
+
+成功和异常路径都在停止观察器后，将本轮时间范围的日志冻结为 `observer-events.jsonl`，另归档 `prometheus-final.json`。查询中途失败仍保存成功部分和 unavailable 标记，再返回 `diagnostic_metrics_incomplete`；所有归档失败均经过独立处理，namespace 清理继续尝试。采样器有单独的停止/失败状态，诊断子进程限制时间和输出字节；清理结束后不留下后台采样进程。

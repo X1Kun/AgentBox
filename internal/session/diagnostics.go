@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/requestid"
 	sessionprotocol "github.com/X1Kun/AgentBox/internal/session/protocol"
 	"log/slog"
 	"time"
@@ -35,7 +36,7 @@ func (s *Service) operationEvent(ctx context.Context, id, token, phase, outcome 
 	if token != "" {
 		operationID = hash(token)[:16]
 	}
-	logger.Log(ctx, level, "session operation", "session_id", id, "operation_id", operationID,
+	logger.Log(ctx, level, "session operation", "request_id", requestid.From(ctx), "session_id", id, "operation_id", operationID,
 		"phase", phase, "outcome", outcome, "error_code", code, "reason", reason,
 		"duration_ms", time.Since(started).Milliseconds())
 }

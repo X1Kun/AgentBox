@@ -32,6 +32,9 @@ from lib.platform_batch import Kueue, BatchAcceptance, BatchError, controller_so
 from lib.platform_batch_product import build_worker, ProductAcceptance, cleanup_product
 from lib.observability_acceptance import ObservationAcceptance
 from lib.maintenance_acceptance import MaintenanceAcceptance
+from lib.session_boundaries import SessionBoundaries, SessionMatrix
+from lib.static_baseline import StaticBaseline
+from lib.diagnostics_acceptance import DiagnosticsAcceptance
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -611,7 +614,12 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-image-build", "batch-product-test", "batch-product-cleanup", "observability-test", "maintenance-test"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-image-build", "batch-product-test", "batch-product-cleanup", "observability-test", "maintenance-test", "session-boundary-test", "session-matrix-test", "static-baseline", "static-baseline-cleanup", "diagnostics-test"))
+    parser.add_argument("--baseline-config", type=Path, default=ROOT / "deploy/acceptance/boundaries/baseline.yaml", help="frozen R/B baseline YAML")
+    parser.add_argument("--baseline-report", type=Path, help="original static-baseline.json for scoped cleanup recovery")
+    parser.add_argument("--baseline-stage", choices=("calibration", "comparison"), default="calibration", help="R calibration first; R/B comparison requires a matching reference")
+    parser.add_argument("--reference-report", type=Path, help="R calibration static-baseline.json for comparison gating")
+    parser.add_argument("--matrix-scenarios", help="comma-separated matrix scenarios; isolated diagnostic selection")
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
     parser.add_argument("--node-image-source", help="mirror repository with the SAME locked node digest (create)")
@@ -630,6 +638,17 @@ def arguments(argv=None):
     parser.add_argument("--gvisor-archive", type=Path, help="verified complete gVisor tar.bz2 (gvisor-install only)")
     parser.add_argument("--timeout", type=int, default=180, help="Job/probe observation budget per startup or terminal phase, 30..600 seconds")
     args = parser.parse_args(argv)
+    if args.action == "static-baseline-cleanup" and not args.baseline_report:
+        parser.error("static-baseline-cleanup requires --baseline-report")
+    if args.baseline_report and args.action != "static-baseline-cleanup":
+        parser.error("--baseline-report applies only to static-baseline-cleanup")
+    if args.action == "static-baseline":
+        if args.baseline_stage == "comparison" and not args.reference_report:
+            parser.error("comparison requires --reference-report")
+        if args.baseline_stage == "calibration" and args.reference_report:
+            parser.error("--reference-report applies only to comparison")
+    elif args.reference_report:
+        parser.error("--reference-report applies only to static-baseline")
     if args.node_image_source and args.action not in ("create", "up"):
         parser.error("--node-image-source applies only to create or up")
     if args.smoke_image_source and args.action not in ("smoke", "gvisor-test", "network-test", "batch-test"):
@@ -660,6 +679,15 @@ def arguments(argv=None):
 def main(argv=None):
     args = arguments(argv)
     if args.dry_run:
+        if args.action == "static-baseline":
+            from lib.baseline_results import plan, digest
+            config = read_yaml(args.baseline_config)
+            reference = json.loads(args.reference_report.read_text()) if args.reference_report else None
+            cells = plan(config, args.baseline_stage, reference)
+            print(json.dumps({"action": args.action, "config": config,
+                              "config_sha256": digest(config), "cells": cells,
+                              "cell_count": len(cells), "dry_run": True}, indent=2))
+            return 0
         lock = load_lock(ROOT / "deploy", "versions")
         runtime = load_lock(ROOT / "deploy", "gvisor") if args.action.startswith("gvisor-") else None
         sessions = load_lock(ROOT / "deploy", "session") if args.action.startswith("session-") else None
@@ -689,7 +717,7 @@ def main(argv=None):
                 sorted(set([Path(__file__).resolve(), source_root/'scripts/render_manifests.py',
                     source_root/'scripts/requirements-platform.txt', source_root/'scripts/retire_legacy.py',
                     source_root/'scripts/prepare_batch_images.py', source_root/'scripts/lib/image_worker.py',
-                    source_root/'scripts/observability.py', source_root/'scripts/lib/observability_acceptance.py', source_root/'scripts/lib/maintenance_acceptance.py',
+                    source_root/'scripts/observability.py', source_root/'scripts/lib/observability_acceptance.py', source_root/'scripts/lib/maintenance_acceptance.py', source_root/'scripts/lib/session_boundaries.py', source_root/'scripts/lib/boundary_workloads.py', source_root/'scripts/lib/static_baseline.py', source_root/'scripts/lib/baseline_results.py', source_root/'scripts/lib/experiment_diagnostics.py', source_root/'scripts/lib/diagnostics_acceptance.py',
                     source_root/'docs/data/legacy-source-retirement.json',
                     *list((source_root/'scripts/lib').glob('platform*.py')),
                     *list((source_root/'scripts/lib').glob('network_*.py')),
@@ -698,8 +726,8 @@ def main(argv=None):
                     source_root/'scripts/lib/gvisor_node_processes.sh',
                     *list((source_root/'deploy').rglob('*.yaml')),
                     *[p for p in (source_root/'deploy').rglob('*') if p.is_file() and (p.name=='Dockerfile' or p.suffix in ('.Dockerfile','.toml'))],
-                    *[p for folder in ('session/sandboxd','session','session/httpapi','session/client','mcpserver','mcpclient','agent','deepseek','batch','batchapi','httpauth','observer','telemetry','session/protocol','batchprotocol','toolcontract','readiness') for p in (source_root/'internal'/folder).glob('*.go')],
-                    *[p for folder in ('agentbox-api','agentbox-cleanup','agentbox-agent','agentbox-mcp','agentbox-session-smoke','agentbox-observer') for p in (source_root/'cmd'/folder).glob('*.go')],
+                    *[p for folder in ('session/sandboxd','session','session/httpapi','session/client','mcpserver','mcpclient','agent','deepseek','batch','batchapi','httpauth','observer','telemetry','session/protocol','batchprotocol','toolcontract','readiness','requestid','experiment/session') for p in (source_root/'internal'/folder).glob('*.go')],
+                    *[p for folder in ('agentbox-api','agentbox-cleanup','agentbox-agent','agentbox-mcp','agentbox-session-smoke','agentbox-observer','agentbox-session-experiment') for p in (source_root/'cmd'/folder).glob('*.go')],
                     source_root/'go.mod', source_root/'go.sum'] ))}}
 
     lab = None
@@ -770,6 +798,23 @@ def main(argv=None):
             report["ok"] = True
         elif args.action == "batch-product-test":
             report["result"] = ProductAcceptance(lab).test()
+            report["ok"] = True
+        elif args.action == "session-matrix-test":
+            matrix = SessionMatrix(lab)
+            matrix.selected_scenarios = args.matrix_scenarios.split(",") if args.matrix_scenarios else None
+            report["result"] = matrix.test()
+            report["ok"] = True
+        elif args.action == "static-baseline":
+            report["result"] = StaticBaseline(lab).test(args.baseline_config, args.baseline_stage, args.reference_report)
+            report["ok"] = True
+        elif args.action == "static-baseline-cleanup":
+            report["result"] = StaticBaseline(lab).cleanup(args.baseline_report)
+            report["ok"] = True
+        elif args.action == "diagnostics-test":
+            report["result"] = DiagnosticsAcceptance(lab).test()
+            report["ok"] = True
+        elif args.action == "session-boundary-test":
+            report["result"] = SessionBoundaries(lab).test()
             report["ok"] = True
         elif args.action == "maintenance-test":
             report["result"] = MaintenanceAcceptance(lab).test()

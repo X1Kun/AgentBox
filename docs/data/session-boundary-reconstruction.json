@@ -1,0 +1,342 @@
+{
+  "busy_case": {
+    "conclusion": "409/session_busy occurred in acquire while the original operation remained active; data operation was not dispatched for the rejected request.",
+    "conflict_phases": [
+      {
+        "msg": "session HTTP start",
+        "time": "2026-11-04T04:27:26.453124774Z"
+      },
+      {
+        "duration_ms": 405,
+        "error_code": "session_busy",
+        "msg": "session operation",
+        "operation_id": "",
+        "outcome": "rejected",
+        "phase": "acquire",
+        "time": "2026-11-04T04:27:26.85818095Z"
+      },
+      {
+        "code": "session_busy",
+        "msg": "session HTTP rejected",
+        "time": "2026-11-04T04:27:26.858215233Z"
+      },
+      {
+        "duration_ms": 405,
+        "msg": "session HTTP completed",
+        "time": "2026-11-04T04:27:26.858233523Z"
+      }
+    ],
+    "conflicting_request": {
+      "action": "execute",
+      "error_code": "session_busy",
+      "finished_ms": 811.916046,
+      "http_status": 409,
+      "id": "conflicting",
+      "outcome": "rejected",
+      "planned_ms": 400,
+      "request_id": "ae6dc54435816521688ee87bfd2f9e16",
+      "sent_ms": 400.685646,
+      "session_id": "ses-43838fe76e353622e2ac620b2aa4f81dd33b48bc.d794b823-e862-43b0-8b9a-4707152fe2a3",
+      "timely": false,
+      "trace_started_at": "2026-11-04T04:27:26.046893682Z"
+    },
+    "long_phases": [
+      {
+        "msg": "session HTTP start",
+        "time": "2026-11-04T04:27:26.056411764Z"
+      },
+      {
+        "duration_ms": 101,
+        "error_code": "",
+        "msg": "session operation",
+        "operation_id": "d46b5e42619feccf",
+        "outcome": "complete",
+        "phase": "acquire",
+        "time": "2026-11-04T04:27:26.157934361Z"
+      },
+      {
+        "duration_ms": 2912,
+        "error_code": "",
+        "msg": "session operation",
+        "operation_id": "d46b5e42619feccf",
+        "outcome": "complete",
+        "phase": "execute",
+        "time": "2026-11-04T04:27:29.070311879Z"
+      },
+      {
+        "duration_ms": 57,
+        "error_code": "",
+        "msg": "session operation",
+        "operation_id": "d46b5e42619feccf",
+        "outcome": "complete",
+        "phase": "release",
+        "time": "2026-11-04T04:27:29.14081154Z"
+      },
+      {
+        "duration_ms": 3084,
+        "msg": "session HTTP completed",
+        "time": "2026-11-04T04:27:29.140834439Z"
+      }
+    ],
+    "long_request": {
+      "action": "execute",
+      "finished_ms": 3094.475243,
+      "http_status": 200,
+      "id": "long",
+      "outcome": "correct",
+      "output_sha256": "b012a185d57dcd8677b0319a5868028c1832d4fbb0907138c44092395438411a",
+      "planned_ms": 0,
+      "request_id": "dd85b4e6cd481bcd15bb5525ea2d5c87",
+      "sent_ms": 0.034942,
+      "session_id": "ses-43838fe76e353622e2ac620b2aa4f81dd33b48bc.d794b823-e862-43b0-8b9a-4707152fe2a3",
+      "timely": true,
+      "trace_started_at": "2026-11-04T04:27:26.046893682Z"
+    }
+  },
+  "evidence_run": "artifacts/platform-session-boundary-test-ecc874f8e872",
+  "historical_limits": [
+    "The old 2.46s run lacks server phase logs; its pure CPU time and precise 409 reason cannot be recovered retrospectively.",
+    "The old 180s failure lacks Sandbox UID/controller/event snapshots; why recovery did not progress remains unconfirmed."
+  ],
+  "method": "Read-only reconstruction from retained ledger/API/controller/events; no new live fault injection",
+  "next_controlled_experiment": {
+    "capture": [
+      "continuous Claim/Sandbox/Pod UID transitions",
+      "Events and controller retries",
+      "quota hard/used and terminating resources",
+      "timestamps for quota release and next Pod create attempt"
+    ],
+    "fixed": [
+      "pool target 2",
+      "two active sessions",
+      "same trace/images/controller version",
+      "original startup/cleanup deadlines"
+    ],
+    "proof_required": "A causal sequence through quota failure, capacity release, retry or missing retry, and Pod recovery; a successful higher-quota run alone is not proof.",
+    "vary": "Pod/resource budget 3 versus 4 in separate diagnostic trials; preserve and disclose changed resource budget"
+  },
+  "quota_case": {
+    "api_wait": {
+      "claim_uid": "cab246e2-b1a2-4a52-9c60-e80162840713",
+      "level": "INFO",
+      "msg": "session backing wait",
+      "reason": "awaiting_pod",
+      "request_id": "9e12e61191b45bfdb6101bf7d28a3494",
+      "sandbox_name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+      "sandbox_uid": "42ac9cf1-7bda-42e9-bd35-03c9e891e4e5",
+      "session_id": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074.cab246e2-b1a2-4a52-9c60-e80162840713",
+      "time": "2026-11-04T04:26:35.132299507Z"
+    },
+    "conclusion": "This Sandbox Pod creation was rejected by ResourceQuota and the API observed the same Sandbox UID without a Pod. This instance belongs to the intentional burst, not the historical post-exhaustion 180s stall.",
+    "controller_entries": [
+      {
+        "msg": "Created sandbox for claim",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "97bf9178-a6bc-4e29-abd9-06eb04012660",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "2a0e379f-6cea-405c-9627-36010479ce92",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "2a0e379f-6cea-405c-9627-36010479ce92",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "3d6d811a-d15a-4ad3-a6d6-8f3d8deb54d6",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "3d6d811a-d15a-4ad3-a6d6-8f3d8deb54d6",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "55e6b04c-a90a-42ed-8254-77634e127794",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "55e6b04c-a90a-42ed-8254-77634e127794",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "4c2d217b-6723-4f29-a54e-188f1eec882d",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "4c2d217b-6723-4f29-a54e-188f1eec882d",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "bcf96b9b-9a71-4ab6-8ec6-93eca7de1358",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "bcf96b9b-9a71-4ab6-8ec6-93eca7de1358",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "2df1553c-2b5e-40fb-94d0-9ccd8b5196e8",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "2df1553c-2b5e-40fb-94d0-9ccd8b5196e8",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "5c06ff5d-07e7-49a8-9bfe-d73f6fe08ec2",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "5c06ff5d-07e7-49a8-9bfe-d73f6fe08ec2",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "6b368769-a462-4dca-8a44-484eb3cbe00b",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "6b368769-a462-4dca-8a44-484eb3cbe00b",
+        "ts": "2026-11-04T04:26:33Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "1ec46350-2dfc-4570-81e1-df705bfdd48f",
+        "ts": "2026-11-04T04:26:34Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "1ec46350-2dfc-4570-81e1-df705bfdd48f",
+        "ts": "2026-11-04T04:26:34Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "78318f3d-66f5-4e7d-a22a-dfe2b7f3c8f2",
+        "ts": "2026-11-04T04:26:35Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "78318f3d-66f5-4e7d-a22a-dfe2b7f3c8f2",
+        "ts": "2026-11-04T04:26:35Z"
+      },
+      {
+        "msg": "Creating a new Pod",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "de8736a6-91f3-4eac-b35b-2779b7055913",
+        "ts": "2026-11-04T04:26:38Z"
+      },
+      {
+        "error": "pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "msg": "Failed to create",
+        "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+        "reconcileID": "de8736a6-91f3-4eac-b35b-2779b7055913",
+        "ts": "2026-11-04T04:26:38Z"
+      }
+    ],
+    "uid_joined_quota_events": [
+      {
+        "eventTime": "2026-11-04T04:26:33.061418Z",
+        "involvedObject": {
+          "apiVersion": "agents.x-k8s.io/v1beta1",
+          "kind": "Sandbox",
+          "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+          "namespace": "agentbox-boundary-work-79bd397220",
+          "resourceVersion": "1071210",
+          "uid": "42ac9cf1-7bda-42e9-bd35-03c9e891e4e5"
+        },
+        "message": "Failed to create Pod \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\": pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "reason": "SandboxPodCreateFailed",
+        "series": {
+          "count": 2,
+          "lastObservedTime": "2026-11-04T04:26:33.256675Z"
+        }
+      },
+      {
+        "eventTime": "2026-11-04T04:26:33.343391Z",
+        "involvedObject": {
+          "apiVersion": "agents.x-k8s.io/v1beta1",
+          "kind": "Sandbox",
+          "name": "ses-b611e48b55bf4a98fb660a6860cafbde3dbec074",
+          "namespace": "agentbox-boundary-work-79bd397220",
+          "resourceVersion": "1071217",
+          "uid": "42ac9cf1-7bda-42e9-bd35-03c9e891e4e5"
+        },
+        "message": "Failed to create Pod \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\": pods \"ses-b611e48b55bf4a98fb660a6860cafbde3dbec074\" is forbidden: exceeded quota: agentbox-api-budget, requested: limits.cpu=500m,limits.memory=512Mi,pods=1,requests.cpu=100m,requests.memory=128Mi, used: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi, limited: limits.cpu=1500m,limits.memory=1536Mi,pods=3,requests.cpu=300m,requests.memory=384Mi",
+        "reason": "SandboxPodCreateFailed",
+        "series": {
+          "count": 2,
+          "lastObservedTime": "2026-11-04T04:26:33.366435Z"
+        }
+      }
+    ]
+  },
+  "schema_version": 1,
+  "sources": [
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/mixed.jsonl",
+      "sha256": "6ebd495b59dac521619231d5a1b2fb5d725d99ad958ac4086e7b6c74aad320ea"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/sequential.jsonl",
+      "sha256": "6679618ca15866aedc42e51f680a6c8416eac748affb729ebce05cd92ef88f7a"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/api-events.jsonl",
+      "sha256": "3a6bb92f9c8479358755568e5c7d877f6283311dbd0b4b5e7a44218babbe37d7"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/kubernetes-events.json",
+      "sha256": "7be2dc65c7f5397695ed412c7560b46b010b93f8135ecbdf3085dd59a00291a0"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/controller-events.log",
+      "sha256": "0c1149d276ad4e3ec2c2f18f214fa0926ca42ad6b628b87fbf77f4fb4bfefc3b"
+    }
+  ]
+}

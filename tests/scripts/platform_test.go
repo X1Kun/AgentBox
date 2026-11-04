@@ -6,6 +6,20 @@ import (
 	"testing"
 )
 
+func TestStaticBaseline(t *testing.T) {
+	cmd := exec.Command("python3", "static_baseline_test.py", "-v")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("static baseline regression: %v\n%s", err, output)
+	}
+}
+
+func TestExperimentDiagnostics(t *testing.T) {
+	cmd := exec.Command("python3", "experiment_diagnostics_test.py", "-v")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("experiment diagnostics: %v\n%s", err, output)
+	}
+}
+
 func TestPlatformLab(t *testing.T) {
 	cmd := exec.Command("python3", "platform_test.py", "-v")
 	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
@@ -75,5 +89,19 @@ func TestPlatformObservability(t *testing.T) {
 	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("observability regression: %v\n%s", err, output)
+	}
+}
+
+func TestBoundaryWorkloadContracts(t *testing.T) {
+	cmd := exec.Command("python3", "boundary_workloads_test.py", "-v")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("workload contracts: %v\n%s", err, output)
+	}
+}
+
+func TestSessionBoundaryTeardown(t *testing.T) {
+	cmd := exec.Command("python3", "session_boundary_cleanup_test.py", "-v")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("boundary cleanup regression: %v\n%s", err, output)
 	}
 }

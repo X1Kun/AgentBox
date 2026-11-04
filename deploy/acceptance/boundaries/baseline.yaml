@@ -1,0 +1,30 @@
+schema_version: 1
+scope: single-worker R/B static quota calibration; no production SLO claim
+repetitions: 5
+seed: 20261104
+window_ms: 30000
+drain_seconds: 90
+pool_replicas: 2
+session_count: 2
+session_pod_budget: 4
+deadline_ms: 3000
+minimum_timely_ratio: 0.95
+max_lag_ms: 250
+max_inflight: 16
+work: short
+groups:
+  R: 0
+  B1: 1
+  B2: 2
+profiles:
+  steady-low:
+    - {duration_ms: 30000, interval_ms: 3000}
+  steady-high:
+    - {duration_ms: 30000, interval_ms: 1000}
+  step:
+    - {duration_ms: 10000, interval_ms: 3000}
+    - {duration_ms: 10000, interval_ms: 500}
+    - {duration_ms: 10000, interval_ms: 3000}
+batch:
+  passes: 8
+  arrivals_ms: [0, 2000, 4000]

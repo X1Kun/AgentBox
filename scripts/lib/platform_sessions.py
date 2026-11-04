@@ -498,7 +498,10 @@ class Sessions:
 
     def close_namespaces(self, namespaces, run_id):
         for value in namespaces.values():
-            obj = json.loads(self.lab.kubectl('get', 'namespace', value['name'], '-o', 'json'))
+            text = self.lab.kubectl('get', 'namespace', value['name'], '--ignore-not-found', '-o', 'json')
+            if not text.strip():
+                continue
+            obj = json.loads(text)
             if (obj['metadata']['uid'] != value['uid'] or obj['metadata'].get('labels', {}).get(OWNER) != self.state['session'] or
                     obj['metadata']['labels'].get(RUN) != run_id):
                 raise SessionError('unowned_session_namespace', value['name'])

@@ -14,6 +14,10 @@ const (
 )
 
 const (
+	CodeBackendTimeout          = "backend_timeout"
+	CodeBackendForbidden        = "backend_forbidden"
+	CodeBackendThrottled        = "backend_throttled"
+	CodeBackendConflict         = "backend_conflict"
 	CodeAdmissionRejected       = "admission_rejected"
 	CodeBackendUnavailable      = "backend_unavailable"
 	CodeExecutionOutputLimit    = "execution_output_limit"

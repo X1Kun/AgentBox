@@ -1,0 +1,290 @@
+{
+  "captured_runtime_count": 13,
+  "checks": [
+    {
+      "name": "fixed_two_ready_members_before_trace",
+      "passed": true
+    },
+    {
+      "name": "burst_pool_exhaustion_is_bounded_and_closed",
+      "passed": true
+    },
+    {
+      "name": "sequential_result_ledger_and_cleanup",
+      "passed": true
+    },
+    {
+      "name": "mixed_result_ledger_and_cleanup",
+      "passed": true
+    },
+    {
+      "name": "step_result_ledger_and_cleanup",
+      "passed": true
+    },
+    {
+      "name": "deadline_result_ledger_and_cleanup",
+      "passed": true
+    },
+    {
+      "name": "close-race_result_ledger_and_cleanup",
+      "passed": true
+    },
+    {
+      "name": "observation_loss_and_recovery_are_explicit",
+      "passed": true
+    }
+  ],
+  "cleanup_complete": true,
+  "current_source_differences_since_native_start": [
+    "scripts/lib/session_boundaries.py"
+  ],
+  "driver_binary_sha256": "cb0b30408431423997bb29f85db9099ba92cab35306d7fed04707e9a98e75751",
+  "identity": {
+    "current_sha256": {
+      ".local/platform/cluster.json": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      ".local/platform/session-bundle.json": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e"
+    },
+    "matches_last_layout_validation_state": true
+  },
+  "late_source_change": "Summary JSON export was added after process startup; behavior and ledger code match the successful run. Raw scenario summaries are retained in the result.",
+  "ledger_and_trace_exports": [
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/close-race.jsonl",
+      "sha256": "77dc1b3597f5e789a57fcacaee7886c5e06f3eae770e33778d9cf22771fc869e"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/close-race-trace.json",
+      "sha256": "429b4ed8cc6ee80e96fa84f2c7dd717018db8db69fd79965a416bd78889b2a65"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/deadline.jsonl",
+      "sha256": "9871ba4e55f780555911b1d490b2e7848cc37ac2adfb193b50c3a8a5b4bb8769"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/deadline-trace.json",
+      "sha256": "ab79d91e71974f8b5cc97f62c035de783da0c567f7f70d83b8e0060311ce7d7d"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/mixed.jsonl",
+      "sha256": "2e8bf8b2306c57d4c194b2a7654bbfd9d6e51935c336d537dfc7e82fae1f1e9f"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/mixed-trace.json",
+      "sha256": "d2150d53237621c4d48ad1a9953783f606e57db369565d6b25bd03dc8bd32bcf"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/sequential.jsonl",
+      "sha256": "cc7a4b83bfb134cbea57cd088077914a64e82f7579dd5034444078071a756fa6"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/sequential-trace.json",
+      "sha256": "0360346ef1492716d968a51eac38ec4548c345360d87b9350945f5020d7be463"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/step.jsonl",
+      "sha256": "64b8400bd0dc4c48f2a03063cee34861c220f60076aac16b220f09f904a87558"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/step-trace.json",
+      "sha256": "b57caa23555c56e324c739b1b5e2f91cd16837a4316019eb2df274bf8924151d"
+    }
+  ],
+  "limits": [
+    "One assessed full run is not a capacity/SLO estimate or five independent repetitions.",
+    "The small fixed trace tests per-session contention and recovery; it does not establish global maximum throughput.",
+    "Crash handoff windows, storage write-failure injection, batch B/A comparisons and long-running soak remain future work.",
+    "Pool restoration gates and setup waiting times are recorded; unknown resource data is never filled with zero.",
+    "all_passed covers data integrity, accounting and cleanup; quality_target_met separately reports workload-target satisfaction."
+  ],
+  "make_check": {
+    "passed": true,
+    "path": "artifacts/boundary-validation-4f38598eef54/agentbox-boundary-final-check.log",
+    "sha256": "8e4f26556c07658c3368fc83e9897a8f9579a0ba59b205b65486c04daf28cc45"
+  },
+  "native_report": {
+    "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/report.json",
+    "sha256": "fff75f1fcfbb3a08f351a36b55246384ef3bf2ca55c65e220343c595fea769c2"
+  },
+  "native_result": {
+    "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/observability-test.json",
+    "sha256": "ae05cf54cf58f501a5e1762f96b7e88730ea86f48e76f72f4384bbf72ee57a95"
+  },
+  "negative_findings": [
+    "A post-exhaustion second Claim remained awaiting_pod for 180 seconds in an earlier run; root cause not established.",
+    "A short command took about 2.46 seconds; the next planned request at 1.2 seconds was correctly rejected with 409. Same quality target was unmet in the assessed run."
+  ],
+  "outcomes": {
+    "close_acknowledged": 1,
+    "correct": 9,
+    "rejected": 6,
+    "unknown": 2
+  },
+  "planned_operations": 18,
+  "pool_recovery_seconds": {
+    "close-race": 8.775501718977466,
+    "deadline": 14.665298313135281,
+    "mixed": 14.372922867070884,
+    "sequential": 0.274956805864349,
+    "step": 21.131798815215006
+  },
+  "prior_attempts": [
+    {
+      "path": "artifacts/platform-session-boundary-test-880c13df4146/report.json",
+      "sha256": "81aea9f4fd5799eaa2a0bc60f7d8f305210f7c754c046120e04dd1ad4fe850f8"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-be9d1f35512c/report.json",
+      "sha256": "ed48a860a40412f0f8782fe1350ad2b0d7a3c506fd45b32101506764e37afcfb"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-636fa055152a/report.json",
+      "sha256": "014e0897b30d5f6075ccc9a0ca998169ca14ff67ecc90868574b1a95816bc37b"
+    }
+  ],
+  "remaining_processes": {
+    "26678026ab65f65560f33e578fbced889bc8470844e2a1d2be98fc92f9982b56": [],
+    "362942880997673a5848a42e1f2fdeb3e3ea8f767abc0d148f9fbc252432bf5c": [],
+    "3655ff45c3dcb387a7db0dfb504f8be0f3f723bfc128a79d3c7f6cb1b655d9d0": [],
+    "3b4183a3fb7cd1b0c4bb81ef26b442b3e754165edca6235a33e1c8b311c87787": [],
+    "45f97cce75289d887763beecae160f6624230066bb3617ae24962ad203ec9690": [],
+    "61b2629f9138349bb4fca79519a5f52d03c07ba5eae280bea8baf5566acb870e": [],
+    "68b7e5fecdecd35b53ec89c0de0a5cd6778a15e53eebd86d746d840c167c7805": [],
+    "9820832fb38bd7ade660fbd5d0314626bd95b3761b1d81fd560fc786e5e87f1a": [],
+    "9a1cb4614e359bb38cd9dcbd19e134e6e94a82f9e733c4773282714a516e835d": [],
+    "a040cf415b2d0ebb80ff40682c6d65e184945943f8e7b4888ad6e19632ddb7fa": [],
+    "aed3307ff0e1d862e89da36f79ddc49192ba56e9fcae431f3fd123c848f36ba1": [],
+    "c85f3f9b0650bcfb05346c60e6be164b6f9905cbf750f0d1344316fd6e5f23ff": [],
+    "e887717315080f0ec11ca482399d5001c3d0ab6faf28bcd0ce293f5033116807": []
+  },
+  "resource_exports": [
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/prometheus-range.json",
+      "sha256": "2fd275cd8de78b5c2ebdbd49ec7a7e9fa2fc598ade6fb5bfe1dab04334f761ef"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-7fc3104a6f8e/prometheus-targets.json",
+      "sha256": "a6ca7f072e7b56a112621c7f2a8325b6fc9fa4f8622462959eb597d4571e7c22"
+    },
+    {
+      "path": "artifacts/boundary-validation-4f38598eef54/observer-events.jsonl",
+      "sha256": "780d97646efec6cefb81fbd04157b155b95f5293f5159b05872c891921838a59"
+    }
+  ],
+  "scenarios": {
+    "close-race": {
+      "assessment": {
+        "close_interrupted_execution": true
+      },
+      "quality_target_met": true,
+      "summary": {
+        "correct": 0,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 3752.8044720000003,
+        "measurement_valid": true,
+        "outcomes": {
+          "close_acknowledged": 1,
+          "unknown": 1
+        },
+        "p50_ms": 1855.970176,
+        "p95_ms": 3752.8044720000003,
+        "planned": 2,
+        "sent": 2,
+        "timely_correct": 0
+      }
+    },
+    "deadline": {
+      "assessment": {
+        "deadline_exercised": true
+      },
+      "quality_target_met": true,
+      "summary": {
+        "correct": 0,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 2399.035752,
+        "measurement_valid": true,
+        "outcomes": {
+          "unknown": 1
+        },
+        "p50_ms": 2399.035752,
+        "p95_ms": 2399.035752,
+        "planned": 1,
+        "sent": 1,
+        "timely_correct": 0
+      }
+    },
+    "mixed": {
+      "assessment": {
+        "conflict_exercised": true,
+        "independent_peer_succeeded": true,
+        "recovery_target_met": true
+      },
+      "quality_target_met": true,
+      "summary": {
+        "correct": 3,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 4388.256192999999,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 3,
+          "rejected": 1
+        },
+        "p50_ms": 1045.324343,
+        "p95_ms": 4388.256192999999,
+        "planned": 4,
+        "sent": 4,
+        "timely_correct": 3
+      }
+    },
+    "sequential": {
+      "assessment": {
+        "all_offered_commands_succeeded": false
+      },
+      "quality_target_met": false,
+      "summary": {
+        "correct": 2,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 2520.0270729999997,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 2,
+          "rejected": 1
+        },
+        "p50_ms": 1107.864953,
+        "p95_ms": 2520.0270729999997,
+        "planned": 3,
+        "sent": 3,
+        "timely_correct": 2
+      }
+    },
+    "step": {
+      "assessment": {
+        "conflict_exercised": true,
+        "independent_peer_succeeded": true,
+        "recovery_target_met": true
+      },
+      "quality_target_met": true,
+      "summary": {
+        "correct": 4,
+        "dropped": 0,
+        "late": 0,
+        "max_ms": 4107.04837,
+        "measurement_valid": true,
+        "outcomes": {
+          "correct": 4,
+          "rejected": 4
+        },
+        "p50_ms": 473.0764730000001,
+        "p95_ms": 4107.04837,
+        "planned": 8,
+        "sent": 8,
+        "timely_correct": 4
+      }
+    }
+  },
+  "schema_version": 1,
+  "scope": "Controlled R-group behavioral boundaries; valid negative quality findings retained"
+}

@@ -1,0 +1,39 @@
+schema_version: 1
+scope: controlled R-group behavior boundaries; diagnostic deadlines, no capacity/SLO claim
+pool_replicas: 2
+max_lag_ms: 1000
+deadline_ms: 10000
+scenarios:
+  sequential:
+    max_inflight: 2
+    requests:
+    - {id: first, at_ms: 0, target: 0, work: short}
+    - {id: next, at_ms: 1200, target: 0, work: short}
+    - {id: peer, at_ms: 2400, target: 1, work: short}
+  mixed:
+    max_inflight: 4
+    requests:
+    - {id: long, at_ms: 0, target: 0, work: long}
+    - {id: independent-short, at_ms: 200, target: 1, work: short}
+    - {id: conflicting, at_ms: 400, target: 0, work: short}
+    - {id: recovered, at_ms: 12000, target: 0, work: short}
+  step:
+    max_inflight: 16
+    requests:
+    - {id: low, at_ms: 0, target: 1, work: short}
+    - {id: high-0, at_ms: 1200, target: 0, work: long}
+    - {id: high-1, at_ms: 1400, target: 0, work: short}
+    - {id: high-2, at_ms: 1400, target: 0, work: short}
+    - {id: high-3, at_ms: 1400, target: 0, work: short}
+    - {id: high-4, at_ms: 1400, target: 0, work: short}
+    - {id: high-peer, at_ms: 1400, target: 1, work: short}
+    - {id: low-again, at_ms: 14000, target: 0, work: short}
+  deadline:
+    max_inflight: 2
+    requests:
+    - {id: deadline, at_ms: 0, target: 0, work: long, timeout_seconds: 1}
+  close-race:
+    max_inflight: 2
+    requests:
+    - {id: executing, at_ms: 0, target: 0, work: long}
+    - {id: close, at_ms: 400, target: 0, action: close}

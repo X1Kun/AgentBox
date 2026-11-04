@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/X1Kun/AgentBox/internal/requestid"
 	sessionprotocol "github.com/X1Kun/AgentBox/internal/session/protocol"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"log/slog"
 	"regexp"
 	ext "sigs.k8s.io/agent-sandbox/extensions/api/v1beta1"
 	"strings"
@@ -94,7 +96,7 @@ func (s *Service) load(ctx context.Context, principal, id string) (*unstructured
 	if !ValidPrincipal(principal) || parts == nil {
 		return nil, fail(sessionprotocol.CodeNotFound)
 	}
-	c, err := s.resource(Claims).Get(ctx, parts[1], metav1.GetOptions{})
+	c, err := s.getResource(ctx, Claims, parts[1])
 	if apierrors.IsNotFound(err) {
 		return nil, fail(sessionprotocol.CodeNotFound)
 	}
@@ -152,7 +154,13 @@ func revision(b *Binding) string {
 
 func ref(obj metav1.Object) Ref { return Ref{Name: obj.GetName(), UID: string(obj.GetUID())} }
 
-func (s *Service) list(ctx context.Context, g schema.GroupVersionResource) ([]unstructured.Unstructured, error) {
+func (s *Service) list(ctx context.Context, g schema.GroupVersionResource) (result []unstructured.Unstructured, err error) {
+	stage := "pods_list"
+	if g == Services {
+		stage = "services_list"
+	}
+	done := s.beginBackend(ctx, stage, "")
+	defer func() { done(err) }()
 	v, e := s.resource(g).List(ctx, metav1.ListOptions{})
 	if e != nil {
 		return nil, e
@@ -161,7 +169,9 @@ func (s *Service) list(ctx context.Context, g schema.GroupVersionResource) ([]un
 }
 
 // patch tests both UID and resourceVersion; conflicts cause a bounded re-read, never adoption.
-func (s *Service) patch(ctx context.Context, c *unstructured.Unstructured, fields map[string]string, deadline string) error {
+func (s *Service) patch(ctx context.Context, c *unstructured.Unstructured, fields map[string]string, deadline string) (err error) {
+	done := s.beginBackend(ctx, "claim_patch", c.GetName())
+	defer func() { done(err) }()
 	ops := []map[string]any{{"op": "test", "path": "/metadata/uid", "value": string(c.GetUID())}, {"op": "test", "path": "/metadata/resourceVersion", "value": c.GetResourceVersion()}}
 	for k, v := range fields {
 		ops = append(ops, map[string]any{"op": "add", "path": "/metadata/annotations/" + strings.ReplaceAll(strings.ReplaceAll(k, "~", "~0"), "/", "~1"), "value": v})
@@ -170,7 +180,7 @@ func (s *Service) patch(ctx context.Context, c *unstructured.Unstructured, field
 		ops = append(ops, map[string]any{"op": "replace", "path": "/spec/lifecycle/shutdownTime", "value": deadline})
 	}
 	raw, _ := json.Marshal(ops)
-	_, err := s.resource(Claims).Patch(ctx, c.GetName(), "application/json-patch+json", raw, metav1.PatchOptions{})
+	_, err = s.resource(Claims).Patch(ctx, c.GetName(), "application/json-patch+json", raw, metav1.PatchOptions{})
 	return err
 }
 
@@ -186,7 +196,7 @@ func (s *Service) backing(ctx context.Context, c *unstructured.Unstructured) (*b
 	if name == "" {
 		return nil, false, "awaiting_assignment", nil
 	}
-	box, err := s.resource(Sandboxes).Get(ctx, name, metav1.GetOptions{})
+	box, err := s.getResource(ctx, Sandboxes, name)
 	if apierrors.IsNotFound(err) {
 		return nil, false, "awaiting_sandbox", nil
 	}
@@ -210,6 +220,11 @@ func (s *Service) backing(ctx context.Context, c *unstructured.Unstructured) (*b
 		}
 	}
 	if pod == nil {
+		logger := s.logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.InfoContext(ctx, "session backing wait", "request_id", requestid.From(ctx), "session_id", sessionID(c), "claim_uid", string(c.GetUID()), "sandbox_name", box.GetName(), "sandbox_uid", string(box.GetUID()), "reason", "awaiting_pod")
 		return nil, false, "awaiting_pod", nil
 	}
 	services, err := s.list(ctx, Services)

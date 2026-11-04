@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -116,34 +117,38 @@ func run() error {
 	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{MaxRequestsInFlight: 2, Timeout: 2 * time.Second}))
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, MaxHeaderBytes: 4096}
 	defer server.Close()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for ctx.Err() == nil {
-			budget, stop := context.WithTimeout(ctx, 4*time.Second)
-			_ = inventory.Poll(budget)
-			stop()
-			if resources != nil {
-				budget, stop = context.WithTimeout(ctx, 4*time.Second)
-				_ = resources.Poll(budget)
-				stop()
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
+	var workers sync.WaitGroup
+	start := func(component string, poll func(context.Context) error) {
+		workers.Add(1)
+		go func() { defer workers.Done(); runPoller(ctx, interval, component, logger, poll) }()
+	}
+	start("inventory", inventory.Poll)
+	if resources != nil {
+		start("runtime", resources.Poll)
+	}
 	go func() { <-ctx.Done(); _ = server.Close() }()
 	logger.Info("observer listening", "address", listener.Addr().String())
 	err = server.Serve(listener)
 	cancel()
-	<-done
+	workers.Wait()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err
+}
+
+func runPoller(ctx context.Context, interval time.Duration, component string, logger *slog.Logger, poll func(context.Context) error) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for ctx.Err() == nil {
+		started := time.Now()
+		if err := poll(ctx); err != nil {
+			logger.Warn("observer poll incomplete", "component", component, "reason", "see_read_diagnostics", "duration_ms", time.Since(started).Milliseconds())
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"strings"
@@ -40,6 +41,9 @@ type Runtime struct {
 	values                         map[string]runtimeSample
 	previous                       map[string]map[string]counter
 	validDesc, timeDesc, valueDesc *prometheus.Desc
+	checks                         *prometheus.CounterVec
+	durations                      *prometheus.HistogramVec
+	budget                         time.Duration
 }
 
 func NewRuntime(targets []RuntimeTarget, namespaces map[string]string, maxAge time.Duration) (*Runtime, error) {
@@ -54,20 +58,27 @@ func NewRuntime(targets []RuntimeTarget, namespaces map[string]string, maxAge ti
 		seen[t.Role] = true
 	}
 	r := &Runtime{targets: targets, namespaces: map[string]string{}, maxAge: maxAge, now: time.Now, values: map[string]runtimeSample{}, previous: map[string]map[string]counter{}}
+	r.budget = pollBudget
 	for domain, namespace := range namespaces {
 		r.namespaces[namespace] = domain
 	}
 	r.validDesc = prometheus.NewDesc("agentbox_runtime_observation_valid", "Fresh complete kubelet response per source; unsupported resources remain absent.", []string{"node_role", "source"}, nil)
 	r.timeDesc = prometheus.NewDesc("agentbox_runtime_observation_timestamp_seconds", "Start time of last successful source response.", []string{"node_role", "source"}, nil)
 	r.valueDesc = prometheus.NewDesc("agentbox_runtime_resource", "Container resources by source; rates require two fresh samples. Excludes POD/parent cgroups and does not measure outside-Pod runtime cost.", []string{"node_role", "domain", "role", "resource", "source"}, nil)
+	r.checks = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agentbox_runtime_polls_total", Help: "Kubelet reads by finite source and reason."}, []string{"node_role", "source", "reason"})
+	r.durations = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "agentbox_runtime_poll_duration_seconds", Help: "Kubelet source read duration.", Buckets: prometheus.DefBuckets}, []string{"node_role", "source", "reason"})
 	return r, nil
 }
 func (r *Runtime) Describe(ch chan<- *prometheus.Desc) {
+	r.checks.Describe(ch)
+	r.durations.Describe(ch)
 	ch <- r.validDesc
 	ch <- r.timeDesc
 	ch <- r.valueDesc
 }
 func (r *Runtime) Collect(ch chan<- prometheus.Metric) {
+	r.checks.Collect(ch)
+	r.durations.Collect(ch)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	now := r.now()
@@ -97,25 +108,42 @@ func (r *Runtime) Collect(ch chan<- prometheus.Metric) {
 func (r *Runtime) Poll(ctx context.Context) error {
 	r.pollMu.Lock()
 	defer r.pollMu.Unlock()
-	var failures []error
+	failures := make(chan error, len(r.targets)*2)
+	var workers sync.WaitGroup
 	for _, target := range r.targets {
 		for _, source := range []string{"cri", "cadvisor"} {
-			started := r.now()
-			cache := target.Role + "/" + source
-			values, err := r.read(ctx, target, source, started)
-			r.mu.Lock()
-			if err != nil {
-				s := r.values[cache]
-				s.valid = false
-				r.values[cache] = s
-				failures = append(failures, fmt.Errorf("%s %s runtime: %w", target.Role, source, err))
-			} else {
-				r.values[cache] = runtimeSample{at: started, valid: true, values: values}
-			}
-			r.mu.Unlock()
+			workers.Add(1)
+			go func(target RuntimeTarget, source string) {
+				defer workers.Done()
+				call, cancel := context.WithTimeout(ctx, r.budget)
+				defer cancel()
+				started := r.now()
+				cache := target.Role + "/" + source
+				values, err := r.read(call, target, source, started)
+				reason, status := readReason(err)
+				r.checks.WithLabelValues(target.Role, source, reason).Inc()
+				r.durations.WithLabelValues(target.Role, source, reason).Observe(r.now().Sub(started).Seconds())
+				slog.InfoContext(call, "runtime observation", "node_role", target.Role, "source", source, "reason", reason, "http_status", status, "duration_ms", r.now().Sub(started).Milliseconds(), "remaining_budget_ms", remainingMS(call))
+				r.mu.Lock()
+				if err != nil {
+					s := r.values[cache]
+					s.valid = false
+					r.values[cache] = s
+					failures <- fmt.Errorf("%s %s runtime: %w", target.Role, source, err)
+				} else {
+					r.values[cache] = runtimeSample{at: started, valid: true, values: values}
+				}
+				r.mu.Unlock()
+			}(target, source)
 		}
 	}
-	return errors.Join(failures...)
+	workers.Wait()
+	close(failures)
+	var all []error
+	for err := range failures {
+		all = append(all, err)
+	}
+	return errors.Join(all...)
 }
 func (r *Runtime) read(ctx context.Context, target RuntimeTarget, source string, started time.Time) (map[resourceKey]float64, error) {
 	url := target.URL
@@ -132,7 +160,8 @@ func (r *Runtime) read(ctx context.Context, target RuntimeTarget, source string,
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 200 {
-		return nil, errors.New("kubelet metrics rejected")
+		reason, _ := readReason(&apiStatusError{code: response.StatusCode})
+		return nil, &observationError{reason: reason, status: response.StatusCode}
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, (16<<20)+1))
 	if err != nil || len(data) > 16<<20 {
@@ -153,6 +182,9 @@ func (r *Runtime) read(ctx context.Context, target RuntimeTarget, source string,
 	values := map[resourceKey]float64{}
 	unknown := map[resourceKey]bool{}
 	current := map[string]counter{}
+	r.mu.RLock()
+	previousValues := r.previous[target.Role+"/"+source]
+	r.mu.RUnlock()
 	// CRI container identity includes its start time so a same-named replacement
 	// cannot turn a counter increase into fictitious usage. cAdvisor's optional
 	// leaf stats are accepted only when its own CPU series exists for that leaf.
@@ -250,7 +282,7 @@ func (r *Runtime) read(ctx context.Context, target RuntimeTarget, source string,
 					}
 					identity += "\x00" + birth
 				}
-				previous, known := r.previous[target.Role+"/"+source][identity]
+				previous, known := previousValues[identity]
 				current[identity] = counter{value, at}
 				elapsed := at.Sub(previous.at).Seconds()
 				if !known || elapsed <= 0 || value < previous.value || at.Sub(previous.at) > r.maxAge {
@@ -268,6 +300,8 @@ func (r *Runtime) read(ctx context.Context, target RuntimeTarget, source string,
 	for key := range unknown {
 		delete(values, key)
 	}
+	r.mu.Lock()
 	r.previous[target.Role+"/"+source] = current
+	r.mu.Unlock()
 	return values, nil
 }

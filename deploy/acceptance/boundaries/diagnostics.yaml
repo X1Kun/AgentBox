@@ -1,0 +1,19 @@
+schema_version: 1
+scope: bounded diagnostic acceptance with intentional observer permission failure; no capacity claim
+repetitions: 1
+seed: 20261104
+window_ms: 10000
+drain_seconds: 20
+pool_replicas: 2
+session_count: 2
+session_pod_budget: 4
+deadline_ms: 3000
+minimum_timely_ratio: 0.95
+max_lag_ms: 1000
+max_inflight: 4
+work: short
+groups: {R: 0, B1: 1, B2: 2}
+profiles:
+  steady-low:
+    - {duration_ms: 10000, interval_ms: 3000}
+batch: {passes: 8, arrivals_ms: [0]}

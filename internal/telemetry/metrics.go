@@ -23,17 +23,19 @@ type readiness struct {
 	at      time.Time
 }
 type Metrics struct {
-	Registry          *prometheus.Registry
-	mode              string
-	requests          *prometheus.CounterVec
-	durations         *prometheus.HistogramVec
-	inflight          *prometheus.GaugeVec
-	operations        *prometheus.CounterVec
-	operationDuration *prometheus.HistogramVec
-	transitions       *prometheus.CounterVec
-	checks            *prometheus.CounterVec
-	last              atomic.Pointer[readiness]
-	now               func() time.Time
+	Registry           *prometheus.Registry
+	mode               string
+	diagnostics        *prometheus.CounterVec
+	diagnosticDuration *prometheus.HistogramVec
+	requests           *prometheus.CounterVec
+	durations          *prometheus.HistogramVec
+	inflight           *prometheus.GaugeVec
+	operations         *prometheus.CounterVec
+	operationDuration  *prometheus.HistogramVec
+	transitions        *prometheus.CounterVec
+	checks             *prometheus.CounterVec
+	last               atomic.Pointer[readiness]
+	now                func() time.Time
 }
 
 func New(mode string) *Metrics {
@@ -50,6 +52,9 @@ func New(mode string) *Metrics {
 	m.operationDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "agentbox_operation_duration_seconds", Help: "Operation observations, separated from HTTP transport and Kubernetes stage timings.", Buckets: buckets}, []string{"operation", "outcome"})
 	m.transitions = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agentbox_state_transitions_total", Help: "Committed application state observations; process-local, not unique workload throughput."}, []string{"from", "to"})
 	m.checks = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agentbox_readiness_checks_total", Help: "Completed backend readiness checks."}, []string{"outcome"})
+	m.diagnostics = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agentbox_diagnostics_total", Help: "Bounded backend stages, rejections and observation reasons; no identities."}, []string{"stage", "reason"})
+	m.diagnosticDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "agentbox_diagnostic_duration_seconds", Help: "Backend stage durations by bounded reason.", Buckets: buckets}, []string{"stage", "reason"})
+	register.MustRegister(m.diagnostics, m.diagnosticDuration)
 	register.MustRegister(m.requests, m.durations, m.inflight, m.operations, m.operationDuration, m.transitions, m.checks,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	register.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "agentbox_backend_observation_valid", Help: "One only when the latest completed readiness observation is fresh."}, func() float64 {
@@ -232,4 +237,14 @@ func (m *Metrics) Transition(from, to, id string, at time.Time) {
 	}
 	m.transitions.WithLabelValues(state(from), state(to)).Inc()
 	slog.Info("application state observation", "mode", m.mode, "from", state(from), "to", state(to), "object_id", id, "observed_at", at.UTC().Format(time.RFC3339Nano), "time_source", "api_observation")
+}
+
+func (m *Metrics) Diagnostic(stage, reason string, duration time.Duration) {
+	if m == nil {
+		return
+	}
+	stage = bounded(stage, "claim_get", "pool_get", "sandbox_get", "pods_list", "services_list", "claim_patch", "claim_create", "acquire", "http", "state_observe", "runtime_validate_before", "runtime_connect", "runtime_validate_after", "runtime_rpc_start", "runtime_wait_init", "runtime_first_output", "runtime_process", "runtime_stream_finish")
+	reason = bounded(reason, "ok", "timeout", "canceled", "forbidden", "not_found", "conflict", "throttled", "invalid", "unavailable", "session_busy", "state_conflict", "identity_changed", "session_not_ready", "backend_timeout", "backend_forbidden", "backend_throttled", "backend_conflict", "backend_unavailable", "awaiting_assignment", "awaiting_sandbox", "awaiting_pod", "awaiting_service", "backing_not_ready", "backing_terminating", "backing_failed", "creating", "ready", "closing", "closed", "invalidated", "api_capacity", "unauthorized", "invalid_request", "protocol_error", "output_limit")
+	m.diagnostics.WithLabelValues(stage, reason).Inc()
+	m.diagnosticDuration.WithLabelValues(stage, reason).Observe(max(0, duration.Seconds()))
 }

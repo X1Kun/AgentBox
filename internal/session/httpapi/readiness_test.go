@@ -3,6 +3,11 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/requestid"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -102,5 +107,38 @@ func TestReadinessMonitorSerialChecksAndShutdown(t *testing.T) {
 	}
 	if got := call(h, "GET", "/readyz", "", "").Code; got != 503 {
 		t.Fatal("stopped monitor looked ready")
+	}
+}
+
+func TestRequestCorrelationIsValidatedAndEchoed(t *testing.T) {
+	h := handler(t, &backend{}, 1)
+	for _, id := range []string{"experiment-0001", "invalid value"} {
+		req := httptest.NewRequest("GET", "/not-found", nil)
+		req.Header.Set("X-Request-ID", id)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		got := w.Header().Get("X-Request-ID")
+		if !requestid.Valid(got) || (id == "experiment-0001" && got != id) || (id == "invalid value" && got == id) {
+			t.Fatal(got)
+		}
+	}
+}
+
+func TestDependencyErrorResponsesAreClassifiedWithoutDetails(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{context.DeadlineExceeded, 504, "backend_timeout"},
+		{apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "private-object", errors.New("private-token")), 503, "backend_forbidden"},
+		{apierrors.NewConflict(schema.GroupResource{Resource: "claims"}, "private-object", errors.New("private-token")), 409, "backend_conflict"},
+		{apierrors.NewTooManyRequests("private-token", 1), 503, "backend_throttled"},
+	} {
+		h := handler(t, &backend{err: tc.err}, 1)
+		w := call(h, "GET", "/v2/sessions/id", aliceToken, "")
+		if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.code) || strings.Contains(w.Body.String(), "private-") {
+			t.Fatal(w.Code, w.Body.String())
+		}
 	}
 }

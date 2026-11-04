@@ -163,7 +163,7 @@ func TestLifecycleUsesLinkedUIDsAndDoesNotRecountPolling(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := text(t, r)
-	logSize := logs.Len()
+	logSize := strings.Count(logs.String(), `"msg":"kubernetes lifecycle observation"`)
 	if err := i.Poll(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestLifecycleUsesLinkedUIDsAndDoesNotRecountPolling(t *testing.T) {
 	if !strings.Contains(body, `agentbox_lifecycle_duration_seconds_sum{domain="batch",origin="live",stage="queue_wait"} 3`) {
 		t.Fatal(body)
 	}
-	if logs.Len() != logSize {
+	if strings.Count(logs.String(), `"msg":"kubernetes lifecycle observation"`) != logSize {
 		t.Fatal("polling recounted lifecycle events")
 	}
 	if !strings.Contains(logs.String(), "job-uid") {

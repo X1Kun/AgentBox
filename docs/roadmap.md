@@ -99,6 +99,12 @@ P3b 将固定图片数据集、独立产物契约和 Go 批任务接口合并交
 
 P3c 分三步交付：当前先实现 API 指标、只读 Kubernetes/运行时观察器、本地 Prometheus/Grafana 和缺失/重启验收；下一步冻结到达轨迹、逐请求事件与仅会话 R 容量基线；再扫描共享预算下的静态批配额 B。当前采集功能不构成 R/B 成绩，也不证明所有 gVisor 叶资源均可由 cAdvisor 测得，边界见[观测验收](validation.md#observability)。完成 P3 的全部门槛后再进入健康感知准入策略；P3b 的功能结果不作为性能收益或磁盘问题根治证据。
 
+已补充固定到达驱动、多 Pod/真实用户行为矩阵、请求链路日志与清理错误回归；这些准备不等于正式容量成绩。R/B 编排现提供 `make platform-static-baseline`：冻结 YAML 输入，从低到高逐档进行五轮 R 标定；达到预定质量目标的有效轨迹，才允许引用原报告进入 R/B1/B2 交错对照。每组保留逐请求账本、图片产物校验、积压与窗口外 drain，入口见[基线运维](operations.md#static-baseline)。重复测量的有效性和收益结论仍须以实际运行记录验收，P4 继续等待 P3 基线门槛。
+
+当前 R 实测尚未形成合格档位：最低档前三轮未达到 3s/95% 的预设实验目标，第四轮因 inventory 观测失效停止；本轮资源已回收，B 对照门槛保持关闭。下一步先定位执行链路与后端尾延迟、恢复连续观测稳定性，再重跑 R 标定；不能把该负向结果写成 P3/P4 已完成，详见[静态基线验收](validation.md#static-baseline)。
+
+已补充 domain/source 独立预算、逐读取原因/耗时、sandboxd 八阶段关联、宿主与控制面时序及失败归档，诊断入口为 `make platform-diagnostics-test`。真实权限故障验收独立于 R 容量资格；新日志不能倒推此前已回收轮次的细分根因，范围见[诊断细节验收](validation.md#diagnostic-details)。
+
 容量实验前先补齐维护与分层：后台 reconcile 独立于 readiness，统一快照新鲜度/退出失效，修正自然到期观测、提交锁范围及分页进度；抽离轻量 DTO/工具契约并拆分相关职责。验证入口为 `make platform-maintenance-test`，边界见[维护验收](validation.md#maintenance)。记录容量回收先按[后续契约](usage.md#batch-record-evolution)设计，当前 v2 不自动删记录；该有限容量平台不作为长期连续运行已经完成的证明。
 
 会话相关适配器已聚合到 `internal/session/` 的 protocol/httpapi/client/sandboxd 子包，业务主包按文件拆职责；单一 smoke 命令使用的验收场景回到命令目录。包边界和依赖方向继续由回归检查，已有运行时与当前验收客户端分别验证，见[目录整理验收](validation.md#session-layout)。

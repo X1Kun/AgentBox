@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-04T13:45:36.868815+00:00",
+  "diagnostic_acceptance": {
+    "cleanup_complete": true,
+    "cleanup_snapshots": 15,
+    "controlplane_components": [
+      "apiserver",
+      "etcd"
+    ],
+    "diagnostic_acceptance_passed": true,
+    "expected_baseline_failure": "baseline_observation_invalid",
+    "observer_forbidden_reads": 4,
+    "qualified_baseline": false,
+    "runtime_requests": [
+      {
+        "request_id": "729685982c77aa565580341b57492afd",
+        "stages": [
+          "runtime_connect",
+          "runtime_first_output",
+          "runtime_process",
+          "runtime_rpc_start",
+          "runtime_stream_finish",
+          "runtime_validate_after",
+          "runtime_validate_before",
+          "runtime_wait_init"
+        ]
+      },
+      {
+        "request_id": "06fe58880e4400a7d8baa56172b74845",
+        "stages": [
+          "runtime_connect",
+          "runtime_first_output",
+          "runtime_process",
+          "runtime_rpc_start",
+          "runtime_stream_finish",
+          "runtime_validate_after",
+          "runtime_validate_before",
+          "runtime_wait_init"
+        ]
+      },
+      {
+        "request_id": "610090dc0531f2843e809e11f4b08930",
+        "stages": [
+          "runtime_connect",
+          "runtime_first_output",
+          "runtime_process",
+          "runtime_rpc_start",
+          "runtime_stream_finish",
+          "runtime_validate_after",
+          "runtime_validate_before",
+          "runtime_wait_init"
+        ]
+      },
+      {
+        "request_id": "fb24562e106f47deff9cfca2604f068d",
+        "stages": [
+          "runtime_connect",
+          "runtime_first_output",
+          "runtime_process",
+          "runtime_rpc_start",
+          "runtime_stream_finish",
+          "runtime_validate_after",
+          "runtime_validate_before",
+          "runtime_wait_init"
+        ]
+      }
+    ],
+    "scope": "bounded diagnostic acceptance with intentional observer permission failure; no capacity claim"
+  },
+  "artifacts": {
+    "report.json": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/report.json",
+      "sha256": "e2d7c46c875dd26fbaf519fd73fe00b650b66ca9526abd1539c56b4169020aa8"
+    },
+    "diagnostics-acceptance.json": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/diagnostics-acceptance.json",
+      "sha256": "18bdef8deed8a32e110202b6fbe238c45ee1be3d7ac6dcd1ec2c905df90b716c"
+    },
+    "static-baseline.json": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/static-baseline.json",
+      "sha256": "4aa6d5ac4a2a8b3b97acca488c63ea9f763518087f7e8b51ea62ebcd26958f24"
+    },
+    "api-events.jsonl": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/api-events.jsonl",
+      "sha256": "4cd7163923e4c750aa427c84447ec4cf57e21feb6cbc5a1f4f66a16768e538f3"
+    },
+    "observer-events.jsonl": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/observer-events.jsonl",
+      "sha256": "4360f7cd9ecd2f4aade52e2d801451656ee1e16041cbe4f4049b084aa132fc3a"
+    },
+    "prometheus-final.json": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/prometheus-final.json",
+      "sha256": "262adae15b93037539a7b153a05edb82f5a35ff6b4884de9fee7971d1fcf4f93"
+    },
+    "host-diagnostics.jsonl": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/host-diagnostics.jsonl",
+      "sha256": "5f971b1e49c3ee4a8017d1106003d86b578443f2c1fec2d6ee248f7cb9e58308"
+    },
+    "controlplane-diagnostics.jsonl": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/controlplane-diagnostics.jsonl",
+      "sha256": "980cd241edb77e388e31b7e3a29d5c2371a741c93da427259d846c544d09568d"
+    },
+    "cleanup-resources.jsonl": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/cleanup-resources.jsonl",
+      "sha256": "cdc51202873c4712d2b25879f100eeac5d0bf0d6ba6b73ddbecb108395891d1b"
+    },
+    "r1-steady-low-R/session.jsonl": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/r1-steady-low-R/session.jsonl",
+      "sha256": "d1e08c2050c49c33823870852284c54781f6caaa60987773bf8102ed1e922ae0"
+    },
+    "r1-steady-low-R/prometheus-range.json": {
+      "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/r1-steady-low-R/prometheus-range.json",
+      "sha256": "96238a175110fd7fd33771e4854dde7ada07e2de4bcf7f9cb9a2ee6d4d7d67db"
+    }
+  },
+  "samples": {
+    "observer_lines": 301,
+    "host-diagnostics.jsonl": 30,
+    "controlplane-diagnostics.jsonl": 10,
+    "cleanup-resources.jsonl": 15
+  },
+  "request_examples": [
+    {
+      "request_id": "729685982c77aa565580341b57492afd",
+      "stage_duration_ms": {
+        "runtime_validate_before": 109,
+        "runtime_connect": 0,
+        "runtime_validate_after": 16,
+        "runtime_rpc_start": 126,
+        "runtime_wait_init": 2,
+        "runtime_first_output": 315,
+        "runtime_process": 320,
+        "runtime_stream_finish": 0
+      },
+      "note": "RPC start includes validation/connect; process includes first-output interval. Do not sum nested stages."
+    },
+    {
+      "request_id": "06fe58880e4400a7d8baa56172b74845",
+      "stage_duration_ms": {
+        "runtime_validate_before": 43,
+        "runtime_connect": 0,
+        "runtime_validate_after": 12,
+        "runtime_rpc_start": 56,
+        "runtime_wait_init": 2,
+        "runtime_first_output": 182,
+        "runtime_process": 242,
+        "runtime_stream_finish": 0
+      },
+      "note": "RPC start includes validation/connect; process includes first-output interval. Do not sum nested stages."
+    },
+    {
+      "request_id": "610090dc0531f2843e809e11f4b08930",
+      "stage_duration_ms": {
+        "runtime_validate_before": 88,
+        "runtime_connect": 0,
+        "runtime_validate_after": 14,
+        "runtime_rpc_start": 103,
+        "runtime_wait_init": 1,
+        "runtime_first_output": 229,
+        "runtime_process": 236,
+        "runtime_stream_finish": 0
+      },
+      "note": "RPC start includes validation/connect; process includes first-output interval. Do not sum nested stages."
+    },
+    {
+      "request_id": "fb24562e106f47deff9cfca2604f068d",
+      "stage_duration_ms": {
+        "runtime_validate_before": 60,
+        "runtime_connect": 0,
+        "runtime_validate_after": 15,
+        "runtime_rpc_start": 76,
+        "runtime_wait_init": 2,
+        "runtime_first_output": 246,
+        "runtime_process": 252,
+        "runtime_stream_finish": 0
+      },
+      "note": "RPC start includes validation/connect; process includes first-output interval. Do not sum nested stages."
+    }
+  ],
+  "previous_attempt": {
+    "report": {
+      "path": "artifacts/platform-diagnostics-test-344fab4c05ac/report.json",
+      "sha256": "74de35233ff8c34dfd3dc89738dfe8b3e1615b9124c37cba8bdbbd3effc6a812"
+    },
+    "cause": "Harness rejected null representation of empty RBAC rules; fixed with UID/resourceVersion guarded restoration and shape regressions. Original failure retained.",
+    "cleanup_complete": true
+  },
+  "checks": {
+    "make_check": {
+      "passed": true,
+      "log": {
+        "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/final-checks/agentbox-observation-final-check.log",
+        "sha256": "e37eeffc34a460c7ef6d88f2cc10946c37d6749545af31bc95859f5ba7c700a2"
+      }
+    },
+    "python": {
+      "passed": true,
+      "tests": 192,
+      "log": {
+        "path": "artifacts/platform-diagnostics-test-a50c9abdae2b/final-checks/agentbox-observation-final-python.log",
+        "sha256": "083f4cdd7fa87d9a55a9cdc28de5cd9afe89d3ae27103524e8bcb369a15022a4"
+      }
+    }
+  },
+  "cleanup": {
+    "checked_at": "2026-11-04T13:43:17.732643+00:00",
+    "remaining": {
+      "namespaces": [],
+      "clusterqueues": [],
+      "resourceflavors": [],
+      "pv": [],
+      "cri": [],
+      "gvisor_processes": []
+    },
+    "platform_identity_unchanged": true,
+    "all_reclaimed": true
+  },
+  "source_at_run": "artifacts/platform-diagnostics-test-a50c9abdae2b/source-at-run",
+  "supplemental_changes": {
+    "scripts/lib/experiment_diagnostics.py": {
+      "measured_sha256": "6450ab8a4ee492e7e31b054f89b223f0b065699b598e6936a5c9b74e00783e32",
+      "final_sha256": "956612a4eeb2a1ba0a20db0ed6b1684b2f3dfc577725e1da5d02d0e0c86b5ffa",
+      "change": "Preserve partial metrics on query failure with explicit error and bounded archive budget; supplemented by regression test."
+    }
+  },
+  "final_source_sha256": {
+    "cmd/agentbox-observer/main.go": "072161c6e401114627935bbf386f1c03f2d85314f5556ab403bbea8d13f8dc23",
+    "cmd/agentbox-api/main.go": "f8aa2be5508285b106fa3eb26b6b9e1b91aa516fdb80689a09485fd36524af1f",
+    "internal/observer/inventory.go": "bcd053db5735d8d05e334d51a6d4fdcfb059b1117fb5ac57d255b582351a3cf3",
+    "internal/observer/runtime.go": "a770758a92fa95de3dc300cbae8c2dacca0493abfa20b7afdb571d5cce3bb79d",
+    "internal/observer/diagnostics.go": "151a3808f9a2c009cdcc524d88c452c20b1ea37d5a5f5bc55874860369f3eb78",
+    "internal/observer/diagnostics_test.go": "a73f37605655a48a286599d89f08029b9109ca37d0167f4120773d14b328d256",
+    "internal/session/operations.go": "c8fbf5e4b2dca41022860e78e232b7c8b1cd41ec348e96ff14dfd2ab248aeb80",
+    "internal/session/sandboxd/runtime.go": "40ac8a4fbaf0dfe58e886131a66243f063ce806003982bced115a8f53aa8d5f0",
+    "internal/session/sandboxd/diagnostics.go": "4740635b634074ad5ebc3cd3d95c78782baca246e17169bc890b466a26fb87be",
+    "internal/session/sandboxd/diagnostics_test.go": "921745c4eb03b614cf8974f9987916431a3cbd5d8e293a2bf7a232acc248d7a2",
+    "internal/telemetry/metrics.go": "9802cd9c5dcaebe77a3ca034160934e0f0848bd43cc111fd84ccfbc3f245a341",
+    "scripts/lib/experiment_diagnostics.py": "956612a4eeb2a1ba0a20db0ed6b1684b2f3dfc577725e1da5d02d0e0c86b5ffa",
+    "scripts/lib/diagnostics_acceptance.py": "0fc0d1f056a03f4a694f66916e822e1cdee9329c31d52b594727422db8eca466",
+    "scripts/lib/session_boundaries.py": "30ded7d4d49dd958b859cdc94a8a5e6d71b6e456181b3dd7ba3bf8e581e552df",
+    "scripts/lib/static_baseline.py": "1878e93e7ac00b4c7913b83c4363951c6dca9bd46f73539ad0a3ee23361d8804",
+    "tests/scripts/experiment_diagnostics_test.py": "cb40c293f7b163962f90bde6abeacf9c35774f457967f5947065cfa20b3e2751",
+    "tests/scripts/session_boundary_cleanup_test.py": "12efcb591e99dc71c14ff3f077fee76332ba25d7ef32b2b6aff195e12a6bc581",
+    "deploy/acceptance/boundaries/diagnostics.yaml": "9e694770d093a6b4911d7219d8a2b501f97fae487e58a4026721b68f5526b241"
+  },
+  "limits": [
+    "This is deliberate diagnostic fault acceptance, not an R/B capacity or P4 strategy result.",
+    "Independent inventory domains and runtime sources keep their original four-second read budgets; business timeouts, identity checks and no-replay semantics remain unchanged.",
+    "A controlled 403 reproduction cannot establish the cause of the earlier generic read_failed events.",
+    "New per-stage measurements cannot reconstruct the old 4.22s runtime phase or prove a performance improvement across different host conditions.",
+    "Host process I/O may be unavailable without privileges; source data is explicit unknown. Control-plane histograms are aggregate evidence, not per-request traces."
+  ]
+}
