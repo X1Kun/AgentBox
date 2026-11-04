@@ -16,6 +16,10 @@ from lib.platform_network import Network, kubectl_objects, OWNER
 CONTROLLER_NS = 'agent-sandbox-system'
 RUN = 'agentbox.dev/session-run'
 ROLE = 'agentbox.dev/session-role'
+
+# Acceptance source changes do not change the installed upstream runtime.
+RUNTIME_BUILD_INPUTS = ('go.mod', 'go.sum', 'deploy/platform/session.lock.json',
+                        'deploy/platform/sandbox-runtime.Dockerfile')
 EXPECTED_CHECKS = {
     'client_rbac_scope', 'multi_call_file_persistence', 'cross_session_files_isolated',
     'program_failure_does_not_end_session', 'fresh_python_interpreter_per_command',
@@ -92,7 +96,7 @@ class Sessions:
 
     def build_inputs(self):
         files = [self.lab.root/'go.mod',self.lab.root/'go.sum']
-        for folder in ('cmd/agentbox-session-smoke','internal/sessionprobe'):
+        for folder in ('cmd/agentbox-session-smoke',):
             files += [p for p in (self.lab.root/folder).glob('*.go') if not p.name.endswith('_test.go')]
         result = {str(p.relative_to(self.lab.root)):digest(p) for p in sorted(files)}
         result['go.mod'] = build_input_identity(self.lab.config,'go.mod',result['go.mod'])
@@ -110,8 +114,7 @@ class Sessions:
         if not self.bundle_path.is_file():
             return None
         previous = json.loads(self.bundle_path.read_text())
-        runtime_inputs = ('go.mod', 'go.sum', 'deploy/platform/session.lock.json',
-                          'deploy/platform/sandbox-runtime.Dockerfile')
+        runtime_inputs = RUNTIME_BUILD_INPUTS
         if (previous.get('docker_id') != docker_id or previous.get('go_version') != go_version.strip() or
                 previous.get('sdk_version') != self.lock['version'] or previous.get('sdk_sum') != self.lock['module_sum'] or
                 any(previous.get('inputs', {}).get(k) != inputs.get(k) for k in runtime_inputs)):
@@ -189,9 +192,11 @@ class Sessions:
             self.save('session-build.json', result)
             return result
 
-    def bundle(self):
+    def bundle(self, require_client=True):
         value = json.loads(self.bundle_path.read_text())
-        if value['inputs'] != self.build_inputs():
+        current = self.build_inputs()
+        keys = set(current) | set(value['inputs']) if require_client else RUNTIME_BUILD_INPUTS
+        if any(value['inputs'].get(key) != current.get(key) for key in keys):
             raise SessionError('session_bundle_changed', 'run session-build for the current Go and image inputs')
         if value['docker_id'] != self.lab.docker_info()['ID']:
             raise SessionError('session_bundle_daemon_changed', 'bundle belongs to another Docker daemon')
@@ -199,6 +204,53 @@ class Sessions:
             if self.docker_image(image['name'])['Id'] != image['id']:
                 raise SessionError('session_image_changed', image['name'])
         return value
+
+    def current_client_bundle(self, installed):
+        """Build the current acceptance command without rebinding a live runtime.
+
+        The installation bundle stays immutable. Only this run's client image,
+        build directory and archive use the current source fingerprint.
+        """
+        inputs = self.build_inputs()
+        if inputs == installed['inputs']:
+            return installed
+        if any(inputs.get(key) != installed['inputs'].get(key) for key in RUNTIME_BUILD_INPUTS):
+            raise SessionError('session_bundle_changed', 'runtime inputs changed')
+        version = self.lab.runner.run(['go', 'version']).strip()
+        if version != installed['go_version'] or self.lock['go_toolchain'] not in version:
+            raise SessionError('go_toolchain_mismatch', 'use the installed pinned toolchain')
+        fingerprint = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+        directory = self.lab.state_dir / ('session-client-build-' + fingerprint[:16])
+        directory.mkdir(parents=True, exist_ok=True)
+        binary = directory / 'agentbox-session-smoke'
+        self.lab.runner.run(['env', 'CGO_ENABLED=0', 'GOOS=linux', 'GOARCH=amd64',
+                             'go', 'build', '-p=2', '-mod=readonly', '-trimpath', '-buildvcs=false',
+                             '-ldflags=-s -w', '-o', binary, './cmd/agentbox-session-smoke'], timeout=900)
+        base = checked_source(self.lab.lock['smoke']['image'], installed['python_source'])
+        if base not in self.docker_image(base).get('RepoDigests', []):
+            raise SessionError('session_base_image_changed', 'cached base digest differs')
+        image = 'agentbox/session-client:' + fingerprint[:16]
+        with tempfile.TemporaryDirectory(prefix='session-client-image-', dir=self.lab.state_dir) as temporary:
+            context = Path(temporary)
+            shutil.copyfile(self.lab.config / 'acceptance/sessions/client.Dockerfile', context / 'Dockerfile')
+            shutil.copy2(binary, context / 'agentbox-session-smoke')
+            self.lab.runner.run([self.lab.tools['docker'], 'build', '--pull=false', '--network=none',
+                                 '--platform=linux/amd64', '--build-arg', 'PYTHON_IMAGE=' + base,
+                                 '--label', 'agentbox.dev/build=' + fingerprint, '-t', image, context], timeout=300)
+        client = {'name': image, 'id': self.docker_image(image)['Id']}
+        checksum = digest(binary)
+        result = dict(installed, fingerprint=fingerprint, inputs=inputs,
+                      images=dict(installed['images'], client=client),
+                      binary_sha256=dict(installed.get('binary_sha256', {}),
+                                         **{'agentbox-session-smoke': checksum}))
+        self.save('session-client-build.json', {
+            'fingerprint': fingerprint, 'installed_fingerprint': installed['fingerprint'],
+            'inputs': inputs, 'image': client, 'binary_sha256': checksum,
+            'go_version': version, 'runtime_reused': installed['images']['runtime'],
+        })
+        # Import only the acceptance image; do not unpack unchanged runtime assets.
+        self.load_images(dict(result, images={'client': client}))
+        return result
 
     def attach(self):
         network = Network(self.lab)
@@ -308,7 +360,7 @@ class Sessions:
             raise SessionError('session_manifest_checksum_mismatch', 'upstream release YAML differs')
         with self.lab.operation_lock():
             self.attach()
-            bundle = self.bundle()
+            bundle = self.bundle(require_client=False)
             previous = self.state.get('sessions')
             if previous and (previous['definition'] != self.definition() or previous['bundle_fingerprint'] != bundle['fingerprint']):
                 raise SessionError('session_definition_changed', 'recreate instead of replacing a live controller/runtime profile')
@@ -559,8 +611,9 @@ class Sessions:
             raise SessionError('invalid_session_profile', profile)
         with self.lab.operation_lock():
             runtime = self.attach()
-            bundle = self.bundle()
+            bundle = self.bundle(require_client=False)
             self.verify(bundle)
+            bundle = self.current_client_bundle(bundle)
             run_id = uuid.uuid4().hex[:10]
             namespaces = {}
             record = {'profile': profile, 'run': run_id, 'owner': self.state['session'], 'namespaces': namespaces,

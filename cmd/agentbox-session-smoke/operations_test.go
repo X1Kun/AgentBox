@@ -1,4 +1,4 @@
-package sessionprobe
+package main
 
 import (
 	"context"

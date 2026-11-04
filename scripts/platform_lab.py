@@ -31,6 +31,7 @@ from lib.platform_api_execution import APIExecutionAcceptance
 from lib.platform_batch import Kueue, BatchAcceptance, BatchError, controller_source as kueue_image_source
 from lib.platform_batch_product import build_worker, ProductAcceptance, cleanup_product
 from lib.observability_acceptance import ObservationAcceptance
+from lib.maintenance_acceptance import MaintenanceAcceptance
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -610,7 +611,7 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-image-build", "batch-product-test", "batch-product-cleanup", "observability-test"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-image-build", "batch-product-test", "batch-product-cleanup", "observability-test", "maintenance-test"))
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
     parser.add_argument("--node-image-source", help="mirror repository with the SAME locked node digest (create)")
@@ -688,7 +689,7 @@ def main(argv=None):
                 sorted(set([Path(__file__).resolve(), source_root/'scripts/render_manifests.py',
                     source_root/'scripts/requirements-platform.txt', source_root/'scripts/retire_legacy.py',
                     source_root/'scripts/prepare_batch_images.py', source_root/'scripts/lib/image_worker.py',
-                    source_root/'scripts/observability.py', source_root/'scripts/lib/observability_acceptance.py',
+                    source_root/'scripts/observability.py', source_root/'scripts/lib/observability_acceptance.py', source_root/'scripts/lib/maintenance_acceptance.py',
                     source_root/'docs/data/legacy-source-retirement.json',
                     *list((source_root/'scripts/lib').glob('platform*.py')),
                     *list((source_root/'scripts/lib').glob('network_*.py')),
@@ -697,7 +698,7 @@ def main(argv=None):
                     source_root/'scripts/lib/gvisor_node_processes.sh',
                     *list((source_root/'deploy').rglob('*.yaml')),
                     *[p for p in (source_root/'deploy').rglob('*') if p.is_file() and (p.name=='Dockerfile' or p.suffix in ('.Dockerfile','.toml'))],
-                    *[p for folder in ('sessionruntime','session','sessionapi','sessionprobe','sessionclient','mcpserver','mcpclient','agent','deepseek','batch','batchapi','httpauth','observer','telemetry') for p in (source_root/'internal'/folder).glob('*.go')],
+                    *[p for folder in ('session/sandboxd','session','session/httpapi','session/client','mcpserver','mcpclient','agent','deepseek','batch','batchapi','httpauth','observer','telemetry','session/protocol','batchprotocol','toolcontract','readiness') for p in (source_root/'internal'/folder).glob('*.go')],
                     *[p for folder in ('agentbox-api','agentbox-cleanup','agentbox-agent','agentbox-mcp','agentbox-session-smoke','agentbox-observer') for p in (source_root/'cmd'/folder).glob('*.go')],
                     source_root/'go.mod', source_root/'go.sum'] ))}}
 
@@ -769,6 +770,9 @@ def main(argv=None):
             report["ok"] = True
         elif args.action == "batch-product-test":
             report["result"] = ProductAcceptance(lab).test()
+            report["ok"] = True
+        elif args.action == "maintenance-test":
+            report["result"] = MaintenanceAcceptance(lab).test()
             report["ok"] = True
         elif args.action == "observability-test":
             report["result"] = ObservationAcceptance(lab).test()

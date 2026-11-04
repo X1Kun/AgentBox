@@ -245,6 +245,32 @@ API 区分 HTTP 状态、程序非零退出、批任务发布/校验失败和持
 
 既有 Agent/MCP/API/gVisor 五项兼容性检查及三个环境回收也通过；最终观测与 Agent 报告使用相同的 168 项源码摘要，逐项匹配当前文件。原集群和会话镜像 bundle 字节仍保持不变。
 
+<a id="maintenance"></a>
+## 维护闭环、协议分层与分页修复
+
+本轮修复队列就绪状态阻断既有任务维护、批任务就绪快照无新鲜度、自然到期 Claim 回落 creating、提交持有全局目录锁覆盖 Kubernetes 请求、Workload 清理确认不翻页，以及 Claim 清理缺少继续扫描能力。入口独立管理 readiness 和维护循环；维护在原安装/Queue/PVC 身份校验后运行。两种 API 共用快照新鲜度和退出失效机制，HTTP 与 metrics 同步转为未知。期限届满或上游本代 ClaimExpired 只观察为 closing，不据此推断资源已回收。
+
+确定性回归覆盖队列失活后的产物发布、TTL、持久取消和过期数据清理；安装/PVC 替换或丢失时拒绝维护；阻塞单个 Kubernetes 创建时其他调用方可提交，同一记录仍串行；关联 Workload 出现在后续页、后续页读取失败与重复游标；保留的 Claim 前缀不消耗删除预算，扫描/删除预算和续扫游标分别生效，游标过期或读取失败不补删。原 UID/CAS、保留期、审计与未知结果不重放约束继续验证。
+
+`sessionprotocol`、`batchprotocol` 与 `toolcontract` 承接稳定 JSON 类型、业务状态、错误码和工具定义；生产客户端/Agent 依赖图回归禁止引入 Kubernetes 或业务服务实现。batch 按模板、安装、提交、查询、观察/发布和扫描分文件，HTTP 解析、派发与错误映射分开。Python 清单与清理流程的单行控制/分号书写展开，格式整理阶段核对 AST 相同且注释保留；清理验收新增真实分页行为后另行记录源码摘要。
+
+`make platform-maintenance-test` 复用真实会话、观测与七项图片产品验收，并增加只限本轮资源的 LocalQueue Hold/删除权限故障：不使用任务 GET 推进状态，直接检查持久记录和 Kubernetes，确认后台发布、TTL 与取消收敛；恢复原 Role/队列后继续原产品检查。另创建 32 条自然到期的 Retain Claim，在产品确认前观测 closing=32、creating=0、closed=0；以有限扫描/删除预算跨报告遍历全部 UID，再执行原保留与清理流程。
+
+开发期保留一次真实清理的中途读取失败：已完成的 closed_at 写入保有审计，后续操作停止，本轮 namespace 按原 UID/归属独立清理。没有放宽工作负载期限、清理总预算或单次请求期限；失败与修复阶段保留原源码摘要。Workload 超过 100 条及容量并发使用模拟 API 回归，真实开发配额仍限制 Workload 为 8。批任务 v2 记录不自动回收，长期记录容量仅明确[后续协议契约](usage.md#batch-record-evolution)，本轮不形成性能或长期连续运行结论。
+
+最终完整 `make check`、162 项 Python 回归及新增 12 组 Go 回归通过。真实维护入口的 11 项观测/故障检查、7 项图片产品检查、6 项 Claim 保留/分页检查通过；分页预览以 7、7、7、7、4 条完整覆盖 32 个 UID。既有 Agent/MCP/API/gVisor 五项检查及三个环境回收也通过。最终维护与 Agent 使用相同的 API 二进制和 160 项运行源码摘要，逐项匹配当前实现；维护运行启动后仅追加了一个测试文件中的容量并发与完整首分页覆盖，已纳入最终检查，不改写原运行摘要。
+
+Agent 曾在模型调用前遇到本地 port-forward 连接重置退出，未获清理确认；该轮原 sandbox 被独立捕获并确认回收，同配置/同期限重跑通过，未重放数据操作，也不宣称偶发通道问题已根治。各轮失败、独立清理、最终报告、源码差异与原始导出见[维护验收记录](data/platform-maintenance-validation.json)。临时资源均已清理，原集群状态、SDK bundle 和依赖文件字节不变，监控栈保留。
+
+<a id="session-layout"></a>
+## 会话功能包聚合
+
+会话 HTTP 服务端、客户端、轻量协议与上游执行适配分别位于 `internal/session/httpapi`、`client`、`protocol`、`sandboxd`。业务主包按构造、生命周期、身份、操作、保留与诊断拆文件；Ref/Binding 和仅服务端使用的常量归业务包，协议保留公共 DTO、状态和错误契约。SDK 验收场景回到 `cmd/agentbox-session-smoke/operations.go`，warm/fault 场景沿用同一命令。源码对照确认 42 个业务函数在常量归属与声明排版规范化后相同，Ref/Binding 的 JSON 定义完全相同。
+
+依赖约束同时检查 client/Agent/protocol 不引入 Kubernetes 业务实现，以及业务主包不反向依赖 client/httpapi/sandboxd。SDK 客户端源码收回命令目录后使用新的真实构建指纹；运行时校验不要求验收源码与旧安装 bundle 相同，但运行时依赖、镜像 ID、版本和安装身份仍需匹配。当前 smoke 客户端独立构建/导入，原 controller/runtime 与安装 bundle 保留。
+
+完整 `make check`、164 项 Python 回归及迁移后的 race/依赖约束检查通过。新构建客户端完成真实冷会话 13 项检查和三个 gVisor 环境回收，Agent/MCP/API/sandboxd 链路五项检查和三个环境回收也通过；两个原始报告使用相同的 189 项源码摘要，逐项匹配当前实现。原集群状态、安装 bundle 和依赖文件字节不变。新客户端指纹、原 runtime 身份、源码对照与原始报告见[会话目录验收记录](data/platform-session-layout-validation.json)。warm/fault 的场景与测试已随命令迁移，本轮未重新运行其真实 Kubernetes profile。
+
 <a id="runtime"></a>
 <a id="warm"></a>
 <a id="qos"></a>

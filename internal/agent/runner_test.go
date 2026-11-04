@@ -16,8 +16,8 @@ import (
 	"github.com/X1Kun/AgentBox/internal/deepseek"
 	"github.com/X1Kun/AgentBox/internal/mcpserver"
 	"github.com/X1Kun/AgentBox/internal/session"
-	"github.com/X1Kun/AgentBox/internal/sessionapi"
-	"github.com/X1Kun/AgentBox/internal/sessionclient"
+	sessionclient "github.com/X1Kun/AgentBox/internal/session/client"
+	sessionapi "github.com/X1Kun/AgentBox/internal/session/httpapi"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

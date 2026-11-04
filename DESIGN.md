@@ -1,6 +1,6 @@
 # AgentBox 系统设计
 
-版本：V3.4｜更新：2026-11-03｜增加会话/批任务指标、只读平台观察器与本地 Prometheus/Grafana；性能基线与资源策略仍为后续阶段。
+版本：V3.6｜更新：2026-11-04｜会话代码按功能聚合并保留协议/HTTP/客户端/sandboxd 边界；维护与分页修复已实现，性能基线与资源策略仍为后续阶段。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 
@@ -21,6 +21,12 @@ AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 
 静态平台清单使用 YAML＋Kustomize 按组件管理静态资源和实际环境覆盖，版本/摘要锁使用 YAML。Python 只承担非敏感动态参数、受校验上游资源适配、探针/故障编排及报告；不把实验资源定义和模板文本替换堆进常驻产品服务。历史 JSON 数据保留原口径。
 
 ## 2. 组件职责与所有权
+
+`session/protocol`、`batchprotocol` 只定义稳定 JSON DTO、业务状态和公共错误码，不依赖 Kubernetes 或存储；服务实现通过类型别名承接原适配器签名。会话的 Ref/Binding 属于业务主包，绑定 JSON 与身份修订保持兼容；管理员清理错误码和服务端观察细节也留在业务代码。`toolcontract` 统一工具名、schema 和参数验证，Agent 与 MCP server 分别依赖它，Agent 不依赖服务端工具实现。客户端与 Agent 的生产依赖图有独立回归检查。
+
+会话相关包聚合于 `internal/session/`：主包按 service、lifecycle、identity、operations、retention、diagnostics 分文件，子包 protocol、httpapi、client、sandboxd 分别承担契约、HTTP 服务端、HTTP 客户端和上游执行服务适配。client/httpapi 依赖轻量 protocol；sandboxd 实现主包定义的 Runtime 接口，由 `cmd/agentbox-api` 组装。主包不导入这些适配器，避免循环依赖。只供 SDK 验收使用的场景位于 `cmd/agentbox-session-smoke/operations.go`，与 warm/fault 场景一起维护。
+
+批任务入口分别管理 HTTP readiness 和后台维护的上下文、独立预算与退出等待。HTTP 探针只读共享的新鲜快照，停止监测会同时使 HTTP 和 metrics 失效。队列 Active 决定新任务提交资格；已有任务维护校验原 Queue/PVC UID、存储 Bound 状态和持久安装绑定后继续执行，不以队列停收为停止条件。维护失败只记录分类日志，不输出原生错误内容。
 
 | 职责/对象 | 主体 | AgentBox 开发边界 |
 | --- | --- | --- |
@@ -106,6 +112,10 @@ RuntimeClass 不自动保证完整隔离，需逐项验证：
 P3a 提供固定版本 Kueue、隔离静态队列及真实 gVisor CPU Job 的功能验收，关闭借用、抢占和健康 AdmissionCheck。P3b 合并交付四张固定公开图片、预装 Pillow 的受控镜像、独立产物 PVC 和 Go 提交/查询/取消/下载接口。批计算直接在 Job Pod 内运行；产品 API 与会话 API 是同一二进制的独立运行模式，使用不同权限和部署入口。操作见[运维指南](docs/operations.md#batch-images)。
 
 任务名由 instance/principal/request_id 确定，Job UID 绑定和请求摘要持久化在 PVC 的有限记录中，不自建队列账本或生命周期 CRD。未知创建只查询同名对象，已绑定 Job 消失不重建；明确拒绝与传输未知区分处理。记录通过文件锁与原子提交承接 API 重启，产物按 Job/Pod UID 分目录并由 API 对固定字节/像素契约验证后发布。发布与取消串行化，成功产物独立于 Job TTL；保留期到期拒绝下载，对象回收后尽力清理数据，元数据容量满时显式拒绝。该单 Worker/PVC 模式不承诺跨系统 exactly-once、分布式存储或生产 SLO。
+
+全局目录锁只用于容量检查和新记录持久预留，Kubernetes 调用与既有任务锁等待不持有它；正式记录不自动删除，因此既有记录可直接进入单记录锁。模板验证、安装身份、提交恢复、状态观察/发布、查询取消和后台扫描分别组织；未知结果不重放及原 UID 核对约束保持。清理确认在总预算内遍历 Workload 页，任何关联对象、读取失败或不完整遍历都不能确认回收。
+
+当前 v2 幂等记录永久保留，默认 128 个名额；产物到期不会释放记录。后续记录回收必须增加显式、不可复用的提交作用域和有效期，先持久拒绝已退役作用域，再回收其终态记录；旧 v2 请求没有这个作用域，不自动迁入有限保留契约。产品约束见[批任务记录演进](docs/usage.md#batch-record-evolution)。本轮只明确该契约，不实现记录自动回收。
 
 首个负载是固定图片数据集与处理库；冻结 manifest 哈希、数量、尺寸、编码/线程参数和输出校验。一个 Job 处理一份有界输入或一个分片，任务粒度由启动成本与失败代价测量决定，不默认每张图片创建 Pod。
 

@@ -1,4 +1,4 @@
-package sessionruntime
+package sandboxd
 
 import (
 	"context"

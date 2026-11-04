@@ -129,7 +129,7 @@ class APIAcceptance:
 
     def test(self):
         with self.lab.operation_lock():
-            sessions=Sessions(self.lab);runtime=sessions.attach();bundle=sessions.bundle();sessions.verify(bundle)
+            sessions=Sessions(self.lab);runtime=sessions.attach();bundle=sessions.bundle(require_client=False);sessions.verify(bundle)
             run_id=uuid.uuid4().hex[:10]
             namespaces={}
             self.record.update(run=run_id,owner=sessions.state['session'],namespaces=namespaces,runtime_evidence={})

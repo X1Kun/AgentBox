@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"k8s.io/apimachinery/pkg/labels"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -298,6 +301,7 @@ func TestCleanupRejectsInvalidTimestampsAndUnauditedApply(t *testing.T) {
 
 func TestCleanupHonorsRecordLimitAndCancellationBeforeDispatch(t *testing.T) {
 	h := setup(t)
+	paginateClaims(t, h)
 	for _, name := range []string{"one", "two", "three"} {
 		closedRecord(t, h, "alice", name, true)
 	}
@@ -321,4 +325,107 @@ func TestCleanupHonorsRecordLimitAndCancellationBeforeDispatch(t *testing.T) {
 		t.Fatalf("cancellation: %#v %v", r, err)
 	}
 	assertNoCleanupMutations(t, h)
+}
+
+// Model server pagination explicitly: the dynamic fake otherwise ignores Limit
+// and Continue, which cannot exercise progress through retained prefix records.
+func paginateClaims(t *testing.T, h *harness) {
+	t.Helper()
+	h.client.PrependReactor("list", "sandboxclaims", func(a kt.Action) (bool, runtime.Object, error) {
+		opts := a.(interface{ GetListOptions() metav1.ListOptions }).GetListOptions()
+		raw, err := h.client.Tracker().List(Claims, Claims.GroupVersion().WithKind("SandboxClaim"), h.service.cfg.Namespace)
+		if err != nil {
+			return true, nil, err
+		}
+		all := raw.(*unstructured.UnstructuredList)
+		sort.Slice(all.Items, func(i, j int) bool { return all.Items[i].GetName() < all.Items[j].GetName() })
+		selector, err := labels.Parse(opts.LabelSelector)
+		if err != nil {
+			return true, nil, err
+		}
+		out := &unstructured.UnstructuredList{}
+		after := strings.TrimPrefix(opts.Continue, "after:")
+		for _, item := range all.Items {
+			if item.GetName() <= after || !selector.Matches(labels.Set(item.GetLabels())) {
+				continue
+			}
+			if opts.Limit > 0 && int64(len(out.Items)) == opts.Limit {
+				out.SetContinue("after:" + out.Items[len(out.Items)-1].GetName())
+				break
+			}
+			out.Items = append(out.Items, item)
+		}
+		return true, out, nil
+	})
+}
+
+func TestSweepRetainedPrefixDoesNotStarveLaterPagesAndCanResume(t *testing.T) {
+	h := setup(t)
+	for _, name := range []string{"one", "two", "three", "four", "five"} {
+		closedRecord(t, h, "alice", name, true)
+	}
+	h.now = h.now.Add(2 * time.Hour)
+	raw, err := h.client.Tracker().List(Claims, Claims.GroupVersion().WithKind("SandboxClaim"), h.service.cfg.Namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := raw.(*unstructured.UnstructuredList).Items
+	sort.Slice(items, func(i, j int) bool { return items[i].GetName() < items[j].GetName() })
+	for i := 0; i < 2; i++ {
+		c := items[i].DeepCopy()
+		a := c.GetAnnotations()
+		a[closedAtKey] = h.now.Format(time.RFC3339Nano)
+		c.SetAnnotations(a)
+		_, _ = h.client.Resource(Claims).Namespace(h.service.cfg.Namespace).Update(testCtx, c, metav1.UpdateOptions{})
+	}
+	paginateClaims(t, h)
+	first, err := h.service.Sweep(testCtx, "alice", CleanupOptions{Apply: true, Retention: time.Hour, MaxRecords: 2, MaxDeletes: 1}, func(CleanupReport) error { return nil })
+	if err != nil || len(first.Entries) != 2 || first.DeleteCandidates != 0 || !first.Truncated || first.NextContinue == "" {
+		t.Fatal("scan progress was lost", first, err)
+	}
+	next, err := h.service.Sweep(testCtx, "alice", CleanupOptions{Apply: true, Retention: time.Hour, MaxRecords: 5, MaxDeletes: 1, Continue: first.NextContinue}, func(CleanupReport) error { return nil })
+	if err != nil || len(next.Entries) != 1 || next.Entries[0].Outcome != "deleted" || next.DeleteCandidates != 1 || !next.Truncated || next.NextContinue == "" {
+		t.Fatal("later eligible record starved", next, err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err = h.client.Resource(Claims).Namespace(h.service.cfg.Namespace).Get(testCtx, items[i].GetName(), metav1.GetOptions{}); err != nil {
+			t.Fatal("retained prefix was deleted", err)
+		}
+	}
+	// Within one invocation, retained pages consume the scan budget, not the
+	// deletion budget. The next eligible record is still reached automatically.
+	last, err := h.service.Sweep(testCtx, "alice", CleanupOptions{Retention: time.Hour, MaxRecords: 5, MaxDeletes: 1}, nil)
+	if err != nil || len(last.Entries) != 3 || last.DeleteCandidates != 1 || last.Entries[2].Outcome != "would_delete" {
+		t.Fatal(last, err)
+	}
+}
+
+func TestSweepExpiredContinuationFailsWithoutRestartingOrMutating(t *testing.T) {
+	h := setup(t)
+	closedRecord(t, h, "alice", "old", true)
+	h.now = h.now.Add(2 * time.Hour)
+	h.client.ClearActions()
+	h.client.PrependReactor("list", "sandboxclaims", func(a kt.Action) (bool, runtime.Object, error) {
+		opts := a.(interface{ GetListOptions() metav1.ListOptions }).GetListOptions()
+		if opts.Continue != "expired" {
+			t.Error("cursor was silently reset")
+		}
+		return true, nil, apierrors.NewResourceExpired("expired list snapshot")
+	})
+	r, err := h.service.Sweep(testCtx, "alice", CleanupOptions{Apply: true, Retention: time.Hour, Continue: "expired"}, func(CleanupReport) error { return nil })
+	if Code(err) != "cleanup_list_failed" || len(r.Entries) != 0 || r.NextContinue != "expired" {
+		t.Fatal(r, err)
+	}
+	assertNoCleanupMutations(t, h)
+}
+
+func TestSweepListFailureIsExplicitlyIncomplete(t *testing.T) {
+	h := setup(t)
+	h.client.PrependReactor("list", "sandboxclaims", func(kt.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(Claims.GroupResource(), "", errors.New("denied"))
+	})
+	r, err := h.service.Sweep(testCtx, "alice", CleanupOptions{}, nil)
+	if Code(err) != "cleanup_list_failed" || !r.Truncated || len(r.Entries) != 0 {
+		t.Fatal("failed list looked complete", r, err)
+	}
 }

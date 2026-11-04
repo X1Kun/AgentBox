@@ -208,3 +208,47 @@ func TestRecoveredEventsAreSeparatedFromLiveThroughput(t *testing.T) {
 		t.Fatal("restart invented live arrivals")
 	}
 }
+
+func TestClaimNaturalExpirationIsClosingWithoutProductConfirmation(t *testing.T) {
+	for _, tc := range []struct {
+		name, deadline, condition, phase string
+		generation                       int64
+	}{
+		{"elapsed", "past", "", "closing", 1},
+		{"upstream-expired", "future", "False", "closing", 1},
+		{"stale-expiry-condition", "future", "False", "creating", 0},
+		{"ready", "future", "True", "ready", 1},
+		{"unreadable-deadline", "invalid", "", "unknown", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i, c, r, logs := observerSetup(t, "session")
+			now := time.Now()
+			i.now = func() time.Time { return now }
+			claim := object("extensions.agents.x-k8s.io/v1beta1", "SandboxClaim", "claim", "claim-uid", "private-namespace")
+			deadline := now.Add(time.Hour).Format(time.RFC3339Nano)
+			if tc.deadline == "past" {
+				deadline = now.Add(-time.Hour).Format(time.RFC3339Nano)
+			}
+			if tc.deadline == "invalid" {
+				deadline = "invalid"
+			}
+			_ = unstructured.SetNestedField(claim.Object, deadline, "spec", "lifecycle", "shutdownTime")
+			if tc.condition != "" {
+				_ = unstructured.SetNestedSlice(claim.Object, []interface{}{map[string]interface{}{"type": "Ready", "status": tc.condition, "reason": "ClaimExpired", "observedGeneration": tc.generation, "lastTransitionTime": now.Add(-time.Minute).Format(time.RFC3339Nano)}}, "status", "conditions")
+			}
+			add(t, c, claims, claim)
+			if err := i.Poll(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			body := text(t, r)
+			if !strings.Contains(body, `kind="claim",state="`+tc.phase+`"} 1`) || strings.Contains(body, `kind="claim",state="closed"} 1`) || strings.Contains(logs.String(), `"stage":"closed"`) {
+				t.Fatal(body, logs.String())
+			}
+			for _, action := range c.Actions() {
+				if action.GetVerb() != "get" && action.GetVerb() != "list" && action.GetVerb() != "create" {
+					t.Fatal("observer wrote lifecycle state")
+				}
+			}
+		})
+	}
+}

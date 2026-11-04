@@ -1,5 +1,5 @@
-// Package sessionclient provides bounded, non-replaying access to the v2 API.
-package sessionclient
+// Package client provides bounded, non-replaying access to the v2 API.
+package client
 
 import (
 	"bytes"
@@ -13,37 +13,20 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/X1Kun/AgentBox/internal/session"
+	session "github.com/X1Kun/AgentBox/internal/session/protocol"
 )
 
-const MaxBodyBytes = 512 << 10
-const MaxResponseBytes = 1 << 20
+const MaxBodyBytes = session.MaxBodyBytes
+const MaxResponseBytes = session.MaxResponseBytes
 
-var identifier = regexp.MustCompile(`^[A-Za-z0-9._-]{1,160}$`)
-
-func ValidID(id string) bool { return id != "." && id != ".." && identifier.MatchString(id) }
-
-var requestIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
-
-func ValidRequestID(id string) bool { return requestIdentifier.MatchString(id) }
-func ValidPath(p string) bool {
-	if p == "" || len(p) > 512 || !utf8.ValidString(p) || strings.HasPrefix(p, "/") || strings.ContainsAny(p, "\\\x00") || path.Clean(p) != p {
-		return false
-	}
-	for _, part := range strings.Split(p, "/") {
-		if part == "." || part == ".." || part == "" {
-			return false
-		}
-	}
-	return true
-}
+func ValidID(id string) bool        { return session.ValidID(id) }
+func ValidRequestID(id string) bool { return session.ValidRequestID(id) }
+func ValidPath(p string) bool       { return session.ValidPath(p) }
 
 type Reply struct {
 	HTTPStatus int             `json:"http_status"`

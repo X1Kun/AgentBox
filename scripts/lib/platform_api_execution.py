@@ -40,7 +40,7 @@ class APIExecutionAcceptance(APIAcceptance):
         binary=directory/'agentbox-api'
         self.lab.runner.run(['env','CGO_ENABLED=0','go','build','-p=2','-mod=readonly','-trimpath',
             '-buildvcs=false','-ldflags=-s -w','-o',binary,'./cmd/agentbox-api'],timeout=900)
-        base=checked_source(self.lab.lock['smoke']['image'],sessions.bundle()['python_source'])
+        base=checked_source(self.lab.lock['smoke']['image'],sessions.bundle(require_client=False)['python_source'])
         base_image=sessions.docker_image(base)  # Require the verified cached source; no implicit pull.
         self.require(base in base_image.get('RepoDigests',[]),'cached API base digest not confirmed')
         inputs={'binary':hashlib.sha256(binary.read_bytes()).hexdigest(),
@@ -143,7 +143,7 @@ class APIExecutionAcceptance(APIAcceptance):
 
     def test(self):
         with self.lab.operation_lock():
-            sessions=Sessions(self.lab);runtime=sessions.attach();bundle=sessions.bundle();sessions.verify(bundle)
+            sessions=Sessions(self.lab);runtime=sessions.attach();bundle=sessions.bundle(require_client=False);sessions.verify(bundle)
             namespaces={};run=uuid.uuid4().hex[:10]
             self.record.update(run=run,owner=sessions.state['session'],namespaces=namespaces,runtime_evidence={})
             try:

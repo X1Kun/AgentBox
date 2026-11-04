@@ -1,0 +1,440 @@
+{
+  "baseline_commit": "ee87fae",
+  "checks": {
+    "additional_capacity_and_pagination": {
+      "path": "artifacts/maintenance-validation-18ee447ca969/agentbox-maintenance-capacity.log",
+      "sha256": "02eeda40b3bc43f477e2960f5ad2924272515ee0974bf5a15c64ab2df7720611"
+    },
+    "additional_readiness_and_retention": {
+      "path": "artifacts/maintenance-validation-18ee447ca969/agentbox-maintenance-final-targeted.log",
+      "sha256": "e3fd9b72c460bc89ca86bf6c9a9a9732709e61c501118e79af9dbd5a1fcebdfb"
+    },
+    "go_mod_tidy_diff_empty": true,
+    "make_check": {
+      "passed": true,
+      "path": "artifacts/maintenance-validation-18ee447ca969/agentbox-maintenance-check.log",
+      "sha256": "0807f8a246d05ae81bd14a6f83980fc35e32b311be5ee67349703ba4676d21e8"
+    },
+    "new_go_regression_groups": 12,
+    "python_tests": {
+      "count": 162,
+      "passed": true,
+      "path": "artifacts/maintenance-validation-18ee447ca969/agentbox-maintenance-python.log",
+      "sha256": "fd7a5f476fe037f2cc80ef7caefd5a7083e74f14204a49e44fb54c361ab469a0"
+    },
+    "unit_sources_at_final_check": {
+      "internal/batch/maintenance_test.go": "6d03d07c6d9eb463d149a76d7f73bc275dd5118fccd98eb097a0d6de047fd556",
+      "internal/batchapi/readiness_test.go": "cf1b3ef58cbb323fe20d2098225e60e445c10ebd75a01c8baae31a233187a1ca",
+      "internal/observer/inventory_test.go": "4622babf44eb9d28099f7f2372b1392549eb7df2da7a6801d151f9525f22d232",
+      "internal/session/retention_test.go": "0a6a8e37208a82cc89ebefd4c6a7c470de054d182852310f29e1e2c5a18b49ed",
+      "tests/architecture/dependencies_test.go": "3d6c870926f023e4a7aa784def6738a5b397deb23ecb4ac39a480340829a4745"
+    }
+  },
+  "date": "2026-11-04",
+  "development_attempts": {
+    "agent_local_tunnel_reset": {
+      "detail": "Agent did not confirm API object cleanup",
+      "finished_at": "2026-11-03T17:38:30.452526+00:00",
+      "ok": false,
+      "path": "artifacts/platform-agent-test-e3b345745ad1/report.json",
+      "reason": "api_acceptance_failed",
+      "runtime_source_map_sha256": "756398da800b8b0cc1ea39ee6efd43c5cc0f50225ce6adfb629952765f141bab",
+      "runtime_sources_match_current": true,
+      "sha256": "f094343433446457f4c7b770d90f8a0a776c764bfe2c209f7e37c5a5739f3b85",
+      "source_differences_since_run": {},
+      "source_file_count": 186,
+      "source_map_sha256": "bd85d2e1b29e82a27b9afb952c3d43e5c8819a98147dbe330d3ccb2e86591693",
+      "started_at": "2026-11-03T17:33:30.685161+00:00"
+    },
+    "agent_recovery": {
+      "path": "artifacts/maintenance-agent-recovery-83cd2778bf3f/report.json",
+      "sha256": "68c5e01def3843f68a20ce85ea454d211500d5bb5b8371efbea06fc73fc934bf"
+    },
+    "agent_tunnel_log": {
+      "path": "artifacts/platform-agent-test-e3b345745ad1/api-port-forward.log",
+      "sha256": "e72829ff71d718c474932ff5c6ecf23b0e9f1edf1aef50f907f567f5cad0c13b"
+    },
+    "retention_read_failure": {
+      "detail": "agentbox-cleanup exited 1: record quota pressure: exhausted\ncleanup_read_failed",
+      "finished_at": "2026-11-03T17:12:41.122242+00:00",
+      "ok": false,
+      "path": "artifacts/platform-maintenance-test-f84969ec68aa/report.json",
+      "reason": "command_failed",
+      "runtime_source_map_sha256": "4f64e461da25549b0e1c78edc7bc17b309714f592cd96b491204d3445ba5c71c",
+      "runtime_sources_match_current": false,
+      "sha256": "077941aca61628453d43b0e388d5bb6080e39c187983830eba31a8ffa6771f77",
+      "source_differences_since_run": {
+        "internal/batch/maintenance.go": {
+          "at_run": "4d920b4817f1a3982238ff52544b37535d4794df6da7e0c2177a638fda6c8372",
+          "current": "e560bcc400f9af0c16964c9b78ccdb1b5c9d87f289c4d6c619aa1d0b8cf7a139"
+        },
+        "internal/batch/maintenance_test.go": {
+          "at_run": "d51dad2e205420004e2e2e9c953f3aa42c963ce226421ac3b56d0a7b8cacd701",
+          "current": "6d03d07c6d9eb463d149a76d7f73bc275dd5118fccd98eb097a0d6de047fd556"
+        },
+        "internal/batch/reconcile.go": {
+          "at_run": "17660d561498f7d4e125d85805970737f24e46ede19de4bb211378c6ff80e3c2",
+          "current": "81d3f74091ac319d4c400d1374799d47355cd05b07c885d1eca146049b40d385"
+        },
+        "internal/batch/recovery_test.go": {
+          "at_run": "f0d9050373206f0b37f4dba8037f8c3260cf831342e94d00ceca9c0a6f54c942",
+          "current": "d26e8870903d1e0a5bbd4fc05b339789574d212e0e914182e0412748ed2fd65b"
+        },
+        "internal/batchapi/readiness.go": {
+          "at_run": "b9f68adb7d4f4fc817eda1ec834b7123230798f67ef333740858aeba90ff56f5",
+          "current": "b6601b0f0925176d12c7c939ff44748f70acb5323929f03292b3506a6a70f825"
+        },
+        "internal/batchapi/readiness_test.go": {
+          "at_run": "9fa6d10385f994e1ef1b34d30379e907ffe603a27ea7ff0f0c60955c28b494c1",
+          "current": "cf1b3ef58cbb323fe20d2098225e60e445c10ebd75a01c8baae31a233187a1ca"
+        },
+        "internal/readiness/snapshot.go": {
+          "at_run": "0eb9d2b8fb303b4b03c19c2f1363541e6e69c6eb7431fd566274a7edd637513b",
+          "current": "64506e0cb106bdc394735fe2ee20e5c5727e81e21c15d97c599bf15911fc5dc1"
+        },
+        "internal/session/retention.go": {
+          "at_run": "8840a51c24d3ba044e04249f8d91252f157f7a11fbe5c3dba176fe112d751cd3",
+          "current": "d0af3d1830f03dc7df58d88b8a1a5df138eaae5369a235fda6a46677bde34f2a"
+        },
+        "internal/session/retention_test.go": {
+          "at_run": "6f62058f5e0f609f38d50ca99a0ce26106b7c676c5ae1dd4044a986c00d97c64",
+          "current": "0a6a8e37208a82cc89ebefd4c6a7c470de054d182852310f29e1e2c5a18b49ed"
+        },
+        "internal/session/service.go": {
+          "at_run": "97543a5d67f31f8bc880c71a543c5d01a224dc94d0888574e539636618f5bdef",
+          "current": "b5bd33c8146e2dc9de668060353df9ce2f3a5a954a840df9ca8db523752f549e"
+        },
+        "internal/sessionapi/readiness.go": {
+          "at_run": "e3bbe204452bb7b5c6b2428491259fa7d5241376a8afebce11d1deeba46837cf",
+          "current": "9bab1c7dc0a4a6f93af6c31a25365058dbd0c44a3472fa3301c20ef224e6255e"
+        },
+        "internal/telemetry/metrics.go": {
+          "at_run": "3032036453132641e69d7803a6fa47836b67c8c7690cde7ed3fc8c5d0123d13e",
+          "current": "7de8fda8cf920b4a7154ed26b2e4c1bf5d71650117b60897f4a7ec0833e46eb9"
+        },
+        "scripts/lib/maintenance_acceptance.py": {
+          "at_run": "3aa2796084a7fd768efdbe3f6455ebecf6be49f511d5944b7af7ea5e58703f50",
+          "current": "44ed89ae7f8055e52212aa8ae46c4b1a870f943007f2c6bda24110365cb27ade"
+        },
+        "scripts/lib/platform_manifests.py": {
+          "at_run": "71e9e2084eb816272cccc5b8f0ba36d4760b33cf020d5d2809d6aa798dcfb11a",
+          "current": "eb267fc5d3f3751936658e9081ccb73e0480f11b79857d879b7c1518acd2a5ca"
+        },
+        "scripts/lib/platform_retention.py": {
+          "at_run": "e35e3da2456a50951691458389230ce7fa9c342e5b30c166b98f6aae22c3054a",
+          "current": "e11816fb3c31621a4805d94911c130045998079d8f2da4058b6aac70eaee623a"
+        }
+      },
+      "source_file_count": 186,
+      "source_map_sha256": "63f7ae784ce0b04b6bf3d745d0e21581990cfda14500c6b2186287c31fbadf83",
+      "started_at": "2026-11-03T16:59:16.626526+00:00"
+    },
+    "retention_recovery": {
+      "path": "artifacts/maintenance-recovery-4237747f1dc8/report.json",
+      "sha256": "2a839e5386402a344d863c6cf18fb8225d2599f3765854d73cbc2b6a830162b0"
+    }
+  },
+  "fixes": [
+    "Separate admission readiness from guarded existing-task maintenance and log classified failures",
+    "Share fresh readiness snapshots and invalidate both HTTP and metrics on monitor shutdown",
+    "Observe natural Claim expiry as closing until product cleanup confirmation",
+    "Limit catalog locking to durable capacity reservation; keep per-record serialization",
+    "Confirm Workload absence only after all pages finish within budget",
+    "Separate Claim scan/deletion budgets and expose safe continuation, failing closed on expired or failed list snapshots"
+  ],
+  "identity_preservation": {
+    "after_sha256": {
+      ".local/platform/cluster.json": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      ".local/platform/session-bundle.json": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e"
+    },
+    "api_binary_sha256": "e8c260b5f4cf59b6075955da4d9304d6da04deae348a4224bfb476f72524bfea",
+    "before_sha256": {
+      ".local/platform/cluster.json": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      ".local/platform/session-bundle.json": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e"
+    },
+    "go_dependency_files": {
+      "go.mod": {
+        "baseline_sha256": "6e516060243812545aaffaf658e843c2954a4f7b079d51e2566ec0a799e53d4f",
+        "current_sha256": "6e516060243812545aaffaf658e843c2954a4f7b079d51e2566ec0a799e53d4f"
+      },
+      "go.sum": {
+        "baseline_sha256": "a7c5debcb697cf21973d6cfe8cbabcc047da7c4543ba01b0080b001fe15eedb1",
+        "current_sha256": "a7c5debcb697cf21973d6cfe8cbabcc047da7c4543ba01b0080b001fe15eedb1"
+      }
+    },
+    "late_native_source_change": "Only internal/batch/maintenance_test.go was updated after the native snapshot to add atomic-capacity and full-first-page regression coverage; it was included in final make check and Agent source snapshot. No runtime source changed.",
+    "native_and_agent_runtime_source_maps_equal": true,
+    "original_cluster_and_sdk_bundle_bytes_unchanged": true,
+    "same_api_binary_across_native_session_batch_and_agent": true,
+    "sdk_build_inputs_match_existing_bundle": true
+  },
+  "limits": [
+    "Controlled single-worker lab only; current Workload quota remains 8, >100 Workload behavior is covered by deterministic fake API pagination tests.",
+    "No R/B capacity baseline, performance/SLO claim, production availability claim, or long-running soak test.",
+    "Batch v2 idempotency records remain retained permanently with the existing finite capacity; bounded record GC requires the documented future epoch/expiry contract.",
+    "The failed native cleanup stopped on a read error and was independently cleaned by original namespace UID; budgets were unchanged.",
+    "The failed Agent port-forward was not retried at the data-operation layer; its original sandbox was independently verified gone before a same-configuration rerun. An intermittent local tunnel failure is not claimed fixed.",
+    "Go/client/tool wire values are unchanged; Kubernetes implementations are absent from production client and Agent dependency graphs.",
+    "Owned monitoring stack, volumes and base read-only RBAC remain; temporary workloads, forwards, observer and dynamic scrape targets are cleared.",
+    "Historical validation JSON and original failed reports are preserved; raw exports remain local ignored artifacts."
+  ],
+  "native_agent": {
+    "checks": [
+      {
+        "name": "namespace_scoped_credentials_and_no_secret_or_pod_mutation",
+        "passed": true
+      },
+      {
+        "name": "agent_flow_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "agent_timeout_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "agent_lost_reply_and_confirmed_closure",
+        "passed": true
+      },
+      {
+        "name": "native_api_execution_counts_confirm_no_replay",
+        "passed": true
+      }
+    ],
+    "cleanup_complete": true,
+    "gvisor_environments": 3,
+    "report": {
+      "detail": null,
+      "finished_at": "2026-11-03T17:45:38.427673+00:00",
+      "ok": true,
+      "path": "artifacts/platform-agent-test-a46d7e7bff9a/report.json",
+      "reason": null,
+      "runtime_source_map_sha256": "756398da800b8b0cc1ea39ee6efd43c5cc0f50225ce6adfb629952765f141bab",
+      "runtime_sources_match_current": true,
+      "sha256": "707421cc14c96c96818e01c9aac2f2fba70cfc85a3db2dd4673ed61024c0c0d0",
+      "source_differences_since_run": {},
+      "source_file_count": 186,
+      "source_map_sha256": "bd85d2e1b29e82a27b9afb952c3d43e5c8819a98147dbe330d3ccb2e86591693",
+      "started_at": "2026-11-03T17:42:48.267765+00:00"
+    },
+    "result": {
+      "path": "artifacts/platform-agent-test-a46d7e7bff9a/agent-test.json",
+      "sha256": "c9195185352e4360cc302126f202cced51616e9a4ca403d53cb7dc9a5f1a1f2b"
+    }
+  },
+  "native_maintenance": {
+    "batch_gvisor_environments": 4,
+    "batch_product_checks": [
+      {
+        "name": "bounded_api_role_and_no_worker_credentials",
+        "passed": true
+      },
+      {
+        "name": "idempotent_submit_lost_body_conflict_and_principal_isolation",
+        "passed": true
+      },
+      {
+        "name": "real_image_pixels_and_download_checksums",
+        "passed": true
+      },
+      {
+        "name": "artifacts_and_idempotency_survive_job_deletion_and_api_restart",
+        "passed": true
+      },
+      {
+        "name": "corrupted_published_artifact_is_rejected",
+        "passed": true
+      },
+      {
+        "name": "queued_and_running_cancel_do_not_publish_partial_output",
+        "passed": true
+      },
+      {
+        "name": "retry_attempts_are_isolated_and_publish_one_valid_result",
+        "passed": true
+      }
+    ],
+    "cleanup_complete": true,
+    "exports": [
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/observability-test.json",
+        "sha256": "d520bf8fa7eea0990a19e4d941409999cb7197b52feef424f7461273ce65fd79"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/batch-product-test.json",
+        "sha256": "fb5a26cf06bc7d086d3dd010eb5170ad584c6d34784283f4159425f8dc79bfb2"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/api-retention-test.json",
+        "sha256": "3dea0d1a3c0aae166e5c6b07630f2d9c5212ea6d66b21cd2075880ce8e46bf10"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/prometheus-range.json",
+        "sha256": "9f1534b78ac413ba7cd2b90ccaf2757bdadd3964830f2889be2a3992045633b0"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/prometheus-targets.json",
+        "sha256": "d5eea6f224b1364b5c9b3605236583dbd7000160f75c8288ea03ed35f691c923"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/grafana-dashboard.json",
+        "sha256": "87acd6f4f7702fc49a95eaaae415d5a8c139c6c0ab94caa9028213099cdb66b7"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/observer-events.jsonl",
+        "sha256": "7277d5c2a4ef3f56d7dc74558493a52930842e4a84d86e7c43d06d8b4f70ad1b"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/retention-observer-events.jsonl",
+        "sha256": "39421ea181af84190c16de5cfa6424173d30df41dbb541add52a67615fb5a94a"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/preview-page-0.json",
+        "sha256": "dc9d133621568c0b5fa6abcc9a96f2024e3a1d2606126275d51b40b0e95f9611"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/preview-page-1.json",
+        "sha256": "a015dc23cfdd4a1fc07c408f657dbd75bbf37c331dd7d053d7a97b1006648def"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/preview-page-2.json",
+        "sha256": "196552fd545bbe3decf01f9ec73a2373353d4ff30bc26a05be06e1e939bae0c7"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/preview-page-3.json",
+        "sha256": "83410567e21c1834970e8e13181ef6e5d436507ca19c26d7b5dd045af384b6da"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/preview-page-4.json",
+        "sha256": "c751e99b978f5a44d5bccf05c1ae8bb2fefb4e629871598dfe227283d27df1b0"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/apply-delete.json",
+        "sha256": "d4bef5aee57dc572a4a4934432c00b0649c41dbbf30d6fa1d77ceb1640253608"
+      },
+      {
+        "path": "artifacts/platform-maintenance-test-1845ede2e257/apply-finalize.json",
+        "sha256": "d4ca54301d9e830938a22b62c914d9bff0c953de3b57e9a24a1cffc64adaa62a"
+      }
+    ],
+    "inactive_queue": {
+      "cancelled_task": "bat-c7d456fc3279a0ef54ca18957bd338e6c101ad4b.29088428-3f41-48a3-8e34-d482ba525f61",
+      "client_task_polling": false,
+      "healthz": 200,
+      "job_ttl_verified": true,
+      "persisted_cancel_recovered": true,
+      "publication_verified": true,
+      "queue_uid": "bb693c49-746b-4549-89fd-d20e4484a311",
+      "readyz": 503,
+      "running_task": "bat-0fa63ba680da6f2897f8e8238cbc1e67fc4f5c7f.47a39f9c-ea47-4a66-8b62-0860e8565628"
+    },
+    "observation_and_fault_checks": [
+      {
+        "name": "loopback_stack_and_separate_api_metrics_targets_ready",
+        "passed": true
+      },
+      {
+        "name": "real_session_runtime_resources_and_program_outcomes",
+        "passed": true
+      },
+      {
+        "name": "inactive_queue_background_publication_ttl_and_cancel_recovery",
+        "passed": true
+      },
+      {
+        "name": "batch_publication_and_kubernetes_stage_observations",
+        "passed": true
+      },
+      {
+        "name": "metrics_target_loss_is_unknown_while_business_remains_alive",
+        "passed": true
+      },
+      {
+        "name": "read_permission_loss_omits_inventory_instead_of_zero_fill",
+        "passed": true
+      },
+      {
+        "name": "observer_restart_recovers_initial_events_separately",
+        "passed": true
+      },
+      {
+        "name": "post_restart_cancel_publication_and_artifact_failure_metrics",
+        "passed": true
+      },
+      {
+        "name": "retry_cancel_and_published_artifact_metrics_exercised",
+        "passed": true
+      },
+      {
+        "name": "provisioned_dashboard_and_raw_observations_exported",
+        "passed": true
+      },
+      {
+        "name": "natural_claim_expiry_is_closing_before_product_confirmation",
+        "passed": true
+      }
+    ],
+    "pagination_page_sizes": [
+      7,
+      7,
+      7,
+      7,
+      4
+    ],
+    "report": {
+      "detail": null,
+      "finished_at": "2026-11-03T17:30:04.413048+00:00",
+      "ok": true,
+      "path": "artifacts/platform-maintenance-test-1845ede2e257/report.json",
+      "reason": null,
+      "runtime_source_map_sha256": "756398da800b8b0cc1ea39ee6efd43c5cc0f50225ce6adfb629952765f141bab",
+      "runtime_sources_match_current": true,
+      "sha256": "9033872be71129dd87c7a53c9e00ae29fba54d89d3a028fbf3d68f431835157f",
+      "source_differences_since_run": {
+        "internal/batch/maintenance_test.go": {
+          "at_run": "7bc81917e181b657c65ce92532062ffee709a31f8800c185c153800662dcef31",
+          "current": "6d03d07c6d9eb463d149a76d7f73bc275dd5118fccd98eb097a0d6de047fd556"
+        }
+      },
+      "source_file_count": 186,
+      "source_map_sha256": "d300eabc7df70223e8d7a02f8b97335e7112db5583a3848ff234ad0e713993ad",
+      "started_at": "2026-11-03T17:16:46.469471+00:00"
+    },
+    "retention_checks": [
+      {
+        "name": "record_quota_exhaustion_rejects_33rd_claim",
+        "passed": true
+      },
+      {
+        "name": "independent_cleanup_role_and_unchanged_product_role",
+        "passed": true
+      },
+      {
+        "name": "bounded_preview_cursor_visits_every_retained_record",
+        "passed": true
+      },
+      {
+        "name": "default_preview_is_read_only_and_reports_quota_pressure",
+        "passed": true
+      },
+      {
+        "name": "legacy_records_start_new_retention_window",
+        "passed": true
+      },
+      {
+        "name": "quota_recovers_and_same_name_gets_new_claim_uid",
+        "passed": true
+      }
+    ],
+    "session_gvisor_environments": 1
+  },
+  "python_readability_step": {
+    "proof": {
+      "path": "artifacts/maintenance-validation-18ee447ca969/agentbox-maintenance-python-format.json",
+      "sha256": "8728907c90abfd4ab5f28a6fc1657d6e03aacccdb824f8f08e3d22de32a0dc22"
+    },
+    "scope": "AST equality and preserved comments apply to the formatting step. Retention acceptance subsequently added native pagination checks and has a separate final source hash."
+  },
+  "schema_version": 1,
+  "scope": "Maintenance correctness, protocol layering, bounded pagination, controlled native fault acceptance; no R/B performance experiment"
+}

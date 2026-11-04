@@ -3,7 +3,7 @@
 .PHONY: platform-batch-install platform-batch-test
 .PHONY: platform-batch-image-build
 .PHONY: platform-batch-product-test
-.PHONY: observability-up observability-down observability-render platform-observability-test
+.PHONY: observability-up observability-down observability-render platform-observability-test platform-maintenance-test
 
 build:
 	mkdir -p bin
@@ -58,6 +58,9 @@ observability-down:
 
 observability-render:
 	python3 -c 'import sys,pathlib; sys.path.insert(0,"scripts"); from lib.platform_manifests import read_yaml; [read_yaml(p) for p in pathlib.Path("deploy/components/observability").glob("*.yaml")]'
+
+platform-maintenance-test:
+	python3 scripts/platform_lab.py maintenance-test
 
 platform-observability-test:
 	python3 scripts/platform_lab.py observability-test

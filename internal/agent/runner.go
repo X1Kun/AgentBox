@@ -12,9 +12,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/X1Kun/AgentBox/internal/deepseek"
-	"github.com/X1Kun/AgentBox/internal/mcpserver"
-	"github.com/X1Kun/AgentBox/internal/session"
-	"github.com/X1Kun/AgentBox/internal/sessionclient"
+	sessionclient "github.com/X1Kun/AgentBox/internal/session/client"
+	session "github.com/X1Kun/AgentBox/internal/session/protocol"
+	"github.com/X1Kun/AgentBox/internal/toolcontract"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -86,7 +86,7 @@ func pause(ctx context.Context) error {
 }
 func (r Runner) ready(ctx context.Context, id string) (session.View, error) {
 	for ctx.Err() == nil {
-		reply, err := toolReply(ctx, r.Tools, mcpserver.GetTool, map[string]any{"session_id": id})
+		reply, err := toolReply(ctx, r.Tools, toolcontract.GetTool, map[string]any{"session_id": id})
 		if err == nil && reply.HTTPStatus == 200 {
 			view, e := decodeView(reply, id)
 			if e != nil {
@@ -114,9 +114,9 @@ func (r Runner) ready(ctx context.Context, id string) (session.View, error) {
 func (r Runner) cleanup(ctx context.Context, id string) (bool, string) {
 	needClose := true
 	for ctx.Err() == nil {
-		name := mcpserver.GetTool
+		name := toolcontract.GetTool
 		if needClose {
-			name = mcpserver.CloseTool
+			name = toolcontract.CloseTool
 		}
 		reply, err := toolReply(ctx, r.Tools, name, map[string]any{"session_id": id})
 		if err == nil && reply.HTTPStatus >= 200 && reply.HTTPStatus < 300 {
@@ -172,7 +172,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (result Result, err erro
 			return result, errors.New("invalid MCP tool set")
 		}
 		known := false
-		for _, name := range mcpserver.ToolNames {
+		for _, name := range toolcontract.Names() {
 			if tool.Name == name {
 				known = true
 			}
@@ -182,7 +182,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (result Result, err erro
 		}
 		discovered[tool.Name] = tool
 	}
-	if len(discovered) != len(mcpserver.ToolNames) {
+	if len(discovered) != len(toolcontract.Names()) {
 		return result, errors.New("incomplete v2 MCP tool set")
 	}
 	var nonce [16]byte
@@ -195,7 +195,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (result Result, err erro
 	createCtx, cancelCreate := context.WithTimeout(ctx, 15*time.Second)
 	var created session.View
 	for attempt := 0; attempt < 2; attempt++ {
-		reply, callErr := toolReply(createCtx, r.Tools, mcpserver.CreateTool, createArgs)
+		reply, callErr := toolReply(createCtx, r.Tools, toolcontract.CreateTool, createArgs)
 		if callErr == nil {
 			created, e = decodeView(reply, "")
 			if e == nil {
@@ -231,9 +231,9 @@ func (r Runner) Run(ctx context.Context, prompt string) (result Result, err erro
 		return result, e
 	}
 	result.IdentityRevision = view.IdentityRevision
-	allowed := map[string]bool{mcpserver.GetTool: true, mcpserver.ExecuteTool: true, mcpserver.WriteTool: true, mcpserver.ReadTool: true}
+	allowed := map[string]bool{toolcontract.GetTool: true, toolcontract.ExecuteTool: true, toolcontract.WriteTool: true, toolcontract.ReadTool: true}
 	var tools []deepseek.Tool
-	for _, name := range []string{mcpserver.GetTool, mcpserver.ExecuteTool, mcpserver.WriteTool, mcpserver.ReadTool} {
+	for _, name := range []string{toolcontract.GetTool, toolcontract.ExecuteTool, toolcontract.WriteTool, toolcontract.ReadTool} {
 		tool := discovered[name]
 		tools = append(tools, deepseek.Tool{Type: "function", Function: deepseek.Function{Name: name, Description: tool.Description, Parameters: tool.InputSchema}})
 	}
@@ -271,8 +271,8 @@ func (r Runner) Run(ctx context.Context, prompt string) (result Result, err erro
 			if call.Type != "function" || !allowed[call.Function.Name] || call.ID == "" || len(call.ID) > 256 || seen[call.ID] {
 				return result, errors.New("invalid or duplicate model tool call")
 			}
-			input, e := mcpserver.ValidateArguments(call.Function.Name, json.RawMessage(call.Function.Arguments))
-			if e != nil || input.SessionID != result.SessionID || (call.Function.Name != mcpserver.GetTool && input.IdentityRevision != result.IdentityRevision) {
+			input, e := toolcontract.ValidateArguments(call.Function.Name, json.RawMessage(call.Function.Arguments))
+			if e != nil || input.SessionID != result.SessionID || (call.Function.Name != toolcontract.GetTool && input.IdentityRevision != result.IdentityRevision) {
 				return result, errors.New("invalid arguments or foreign session identity")
 			}
 			seen[call.ID] = true
@@ -281,7 +281,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (result Result, err erro
 		for _, call := range message.ToolCalls {
 			result.ToolCalls++
 			reply, e := toolReply(ctx, r.Tools, call.Function.Name, json.RawMessage(call.Function.Arguments))
-			mutating := call.Function.Name == mcpserver.ExecuteTool || call.Function.Name == mcpserver.WriteTool
+			mutating := call.Function.Name == toolcontract.ExecuteTool || call.Function.Name == toolcontract.WriteTool
 			if e != nil {
 				result.OutcomeUnknown = mutating
 				return result, e
@@ -291,7 +291,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (result Result, err erro
 				result.OutcomeUnknown = mutating && (e != nil || mutationUncertain(reply))
 				return result, errors.New("Agent stopped on uncertain or rejected tool result; no replay")
 			}
-			if call.Function.Name == mcpserver.ReadTool && reply.HTTPStatus == 200 {
+			if call.Function.Name == toolcontract.ReadTool && reply.HTTPStatus == 200 {
 				var file session.FileView
 				_ = json.Unmarshal(reply.Response, &file)
 				total := len(file.Content)
@@ -325,21 +325,21 @@ func modelView(reply sessionclient.Reply, name, id, revision string) (string, bo
 	}
 	unknown, _ := body["outcome_unknown"].(bool)
 	stop := unknown || reply.HTTPStatus != 200
-	if name == mcpserver.ReadTool && reply.HTTPStatus == 404 && !unknown {
+	if name == toolcontract.ReadTool && reply.HTTPStatus == 404 && !unknown {
 		stop = false
 	}
 	if !stop && reply.HTTPStatus == 200 {
 		if body["session_id"] != id {
 			return "", true, errors.New("tool changed session identity")
 		}
-		if name == mcpserver.GetTool {
+		if name == toolcontract.GetTool {
 			if body["state"] != "ready" || body["identity_revision"] != revision {
 				stop = true
 			}
 		} else if body["identity_revision"] != revision || body["session_id"] != id {
 			stop = true
 		}
-		if name == mcpserver.ExecuteTool {
+		if name == toolcontract.ExecuteTool {
 			for _, key := range []string{"stdout", "stderr"} {
 				if _, ok := body[key].(string); !ok {
 					stop = true

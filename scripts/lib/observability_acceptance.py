@@ -85,6 +85,8 @@ class ObservedProduct(ProductAcceptance):
 
 
 class ObservationAcceptance:
+    product_class = ObservedProduct
+
     def __init__(self, lab):
         self.lab = lab
         self.output = lab.runner.output
@@ -165,7 +167,7 @@ class ObservationAcceptance:
 
     def test(self):
         with self.lab.operation_lock():
-            sessions = Sessions(self.lab); runtime = sessions.attach(); bundle = sessions.bundle(); sessions.verify(bundle)
+            sessions = Sessions(self.lab); runtime = sessions.attach(); bundle = sessions.bundle(require_client=False); sessions.verify(bundle)
             run = uuid.uuid4().hex[:10]
             self.record.update(run=run, owner=sessions.state['session'], started_at=time.time())
             self.save()
@@ -206,7 +208,7 @@ class ObservationAcceptance:
                     self.mark('real_session_runtime_resources_and_program_outcomes')
                     api.close(view, alice)
                     api.stop()
-                product = ObservedProduct(self)
+                product = self.product_class(self)
                 self.record['product_report'] = 'batch-product-test.json'; self.save()
                 product.test()
                 self.record['product_checks'] = product.record['checks']

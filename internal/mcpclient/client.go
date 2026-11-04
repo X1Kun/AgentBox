@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/X1Kun/AgentBox/internal/sessionclient"
+	sessionclient "github.com/X1Kun/AgentBox/internal/session/client"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

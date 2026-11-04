@@ -1,21 +1,21 @@
-// Package sessionapi exposes versioned Kubernetes-backed session operations.
-package sessionapi
+// Package httpapi exposes versioned Kubernetes-backed session operations.
+package httpapi
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/readiness"
 	"io"
 	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
 	"github.com/X1Kun/AgentBox/internal/httpauth"
-	"github.com/X1Kun/AgentBox/internal/session"
+	session "github.com/X1Kun/AgentBox/internal/session/protocol"
 	"github.com/X1Kun/AgentBox/internal/telemetry"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -33,15 +33,14 @@ type Operations interface {
 }
 type Principal = httpauth.Principal
 type Server struct {
-	backend          Backend
-	auth             *httpauth.Authenticator
-	timeout          time.Duration
-	permits          chan struct{}
-	operations       chan struct{}
-	readinessStarted atomic.Bool
-	readiness        atomic.Pointer[readinessResult]
-	now              func() time.Time
-	metrics          *telemetry.Metrics
+	backend    Backend
+	auth       *httpauth.Authenticator
+	timeout    time.Duration
+	permits    chan struct{}
+	operations chan struct{}
+	readiness  readiness.Snapshot
+	now        func() time.Time
+	metrics    *telemetry.Metrics
 }
 
 func (s *Server) SetTelemetry(metrics *telemetry.Metrics) { s.metrics = metrics }
@@ -73,7 +72,7 @@ func problem(w http.ResponseWriter, status int, code string) {
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" || r.URL.RawPath != "" {
-		problem(w, 400, "invalid_request")
+		problem(w, 400, session.CodeInvalidRequest)
 		return
 	}
 	if r.URL.Path == "/healthz" {
@@ -92,7 +91,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !s.isReady() {
-			problem(w, 503, "backend_unavailable")
+			problem(w, 503, session.CodeBackendUnavailable)
 			return
 		}
 		write(w, 200, map[string]bool{"ready": true})
@@ -109,7 +108,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	dataOperation := action == "execute" || action == "files/write" || action == "files/read"
 	if !collection && (id == "" || (action != "" && !dataOperation)) {
-		problem(w, 404, "not_found")
+		problem(w, 404, session.CodeNotFound)
 		return
 	}
 	allowed := "POST"
@@ -172,14 +171,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if errors.As(e, &large) {
 				problem(w, 413, "request_too_large")
 			} else {
-				problem(w, 400, "invalid_request")
+				problem(w, 400, session.CodeInvalidRequest)
 			}
 			return
 		}
 		if dataOperation {
 			backend, ok := s.backend.(Operations)
 			if !ok {
-				problem(w, 503, "execution_unavailable")
+				problem(w, 503, session.CodeExecutionUnavailable)
 				return
 			}
 			switch action {
@@ -207,13 +206,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if e != nil {
-				problem(w, 400, "invalid_request")
+				problem(w, 400, session.CodeInvalidRequest)
 				return
 			}
 		} else {
 			request, e := decodeCreate(data)
 			if e != nil {
-				problem(w, 400, "invalid_request")
+				problem(w, 400, session.CodeInvalidRequest)
 				return
 			}
 			var replay bool
@@ -224,14 +223,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if r.ContentLength > 0 || len(r.TransferEncoding) > 0 {
-			problem(w, 400, "invalid_request")
+			problem(w, 400, session.CodeInvalidRequest)
 			return
 		}
 		if r.Method == "GET" {
 			view, err = s.backend.Get(ctx, principal, id)
 		} else {
 			view, err = s.backend.Close(ctx, principal, id)
-			if view.State != "closed" {
+			if view.State != session.StateClosed {
 				status = 202
 			}
 		}
@@ -245,17 +244,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("lifecycle request failed", "code", code, "reason", reason)
 		status = 503
 		switch code {
-		case "invalid_request", "invalid_path":
+		case session.CodeInvalidRequest, "invalid_path":
 			status = 400
-		case "not_found", "file_not_found":
+		case session.CodeNotFound, "file_not_found":
 			status = 404
-		case "request_conflict", "identity_changed", "integrity_error", "state_conflict", "session_busy", "session_not_ready":
+		case session.CodeRequestConflict, session.CodeIdentityChanged, session.CodeIntegrityError, session.CodeStateConflict, session.CodeSessionBusy, session.CodeSessionNotReady:
 			status = 409
 		case "file_access_denied":
 			status = 403
-		case "file_too_large", "execution_output_limit":
+		case "file_too_large", session.CodeExecutionOutputLimit:
 			status = 413
-		case "execution_timeout":
+		case session.CodeExecutionTimeout:
 			status = 504
 		}
 		problem(w, status, code)

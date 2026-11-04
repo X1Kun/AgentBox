@@ -1,4 +1,4 @@
-package sessionapi
+package httpapi
 
 import (
 	"context"

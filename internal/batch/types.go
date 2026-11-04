@@ -2,10 +2,9 @@
 package batch
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
+	"github.com/X1Kun/AgentBox/internal/batchprotocol"
 	"github.com/X1Kun/AgentBox/internal/telemetry"
 	"regexp"
 	"sync"
@@ -26,8 +25,8 @@ const InstanceKey = "agentbox.dev/batch-instance"
 const PrincipalKey = "agentbox.dev/batch-principal"
 const RequestKey = "agentbox.dev/batch-request-sha256"
 const TemplateKey = "agentbox.dev/batch-template-sha256"
-const MaxFileBytes = 256 << 10
-const MaxOutputBytes = 2 << 20
+const MaxFileBytes = batchprotocol.MaxFileBytes
+const MaxOutputBytes = batchprotocol.MaxOutputBytes
 
 var dns = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 var uid = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
@@ -35,47 +34,19 @@ var requestID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 var taskID = regexp.MustCompile(`^(bat-[a-f0-9]{40})\.([a-z0-9-]{1,64})$`)
 var shaPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
-type Error struct{ Code string }
+type State = batchprotocol.State
 
-func (e *Error) Error() string { return e.Code }
-func fail(code string) error   { return &Error{code} }
-func Code(err error) string {
-	var e *Error
-	if errors.As(err, &e) {
-		return e.Code
-	}
-	return "backend_unavailable"
-}
+type Error = batchprotocol.Error
+
+func fail(code string) error                { return &Error{Code: code} }
+func Code(err error) string                 { return batchprotocol.Code(err) }
 func hash(data []byte) string               { v := sha256.Sum256(data); return hex.EncodeToString(v[:]) }
 func principalHash(principal string) string { return hash([]byte(principal))[:32] }
 
-type Request struct {
-	RequestID string `json:"request_id"`
-	DatasetID string `json:"dataset_id"`
-	Passes    int    `json:"passes,omitempty"`
-}
-type File struct {
-	Name        string `json:"name"`
-	Size        int64  `json:"bytes"`
-	SHA256      string `json:"sha256"`
-	PixelSHA256 string `json:"pixel_sha256"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
-}
-type Contract struct {
-	Version       int    `json:"schema_version"`
-	DatasetID     string `json:"dataset_id"`
-	DatasetSHA256 string `json:"dataset_sha256"`
-	Outputs       []File `json:"outputs"`
-}
-type View struct {
-	ID                string `json:"batch_id"`
-	State             string `json:"state"`
-	Reason            string `json:"reason,omitempty"`
-	CleanupComplete   bool   `json:"cleanup_complete"`
-	ArtifactExpiresAt string `json:"artifact_expires_at,omitempty"`
-	Artifacts         []File `json:"artifacts,omitempty"`
-}
+type Request = batchprotocol.Request
+type File = batchprotocol.File
+type Contract = batchprotocol.Contract
+type View = batchprotocol.View
 type Record struct {
 	Version   int     `json:"schema_version"`
 	Name      string  `json:"name"`
@@ -85,7 +56,7 @@ type Record struct {
 	Template  string  `json:"template_sha256"`
 	JobUID    string  `json:"job_uid"`
 	Attempted bool    `json:"create_attempted"`
-	State     string  `json:"state"`
+	State     State   `json:"state"`
 	Reason    string  `json:"reason,omitempty"`
 	Cancel    bool    `json:"cancel_requested"`
 	Release   bool    `json:"release_requested"`
@@ -109,12 +80,4 @@ type Service struct {
 	reconcileMu    sync.Mutex
 	reconcileAfter string
 	metrics        *telemetry.Metrics
-}
-type Backend interface {
-	Submit(context.Context, string, Request) (View, bool, error)
-	Get(context.Context, string, string) (View, error)
-	Cancel(context.Context, string, string) (View, error)
-	Download(context.Context, string, string, string) ([]byte, error)
-	Ready(context.Context) error
-	Reconcile(context.Context) error
 }

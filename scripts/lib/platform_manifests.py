@@ -30,10 +30,12 @@ class UniqueLoader(yaml.SafeLoader):
 
 
 def unique_mapping(loader,node,deep=False):
-    loader.flatten_mapping(node);result={}
+    loader.flatten_mapping(node)
+    result = {}
     for key_node,value_node in node.value:
         key=loader.construct_object(key_node,deep=deep)
-        if key in result:raise ManifestError('duplicate YAML key: '+str(key))
+        if key in result:
+            raise ManifestError('duplicate YAML key: ' + str(key))
         result[key]=loader.construct_object(value_node,deep=deep)
     return result
 
@@ -43,18 +45,21 @@ UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,uniq
 
 def read_yaml(path, mapping=True):
     path=Path(path)
-    if path.stat().st_size>4<<20:raise ManifestError('YAML configuration is too large')
+    if path.stat().st_size > 4 << 20:
+        raise ManifestError('YAML configuration is too large')
     try:
         value=yaml.load(path.read_text(),Loader=UniqueLoader)
         json.dumps(value,allow_nan=False)
     except ManifestError:raise
     except (yaml.YAMLError,TypeError,ValueError) as error:
         raise ManifestError('invalid YAML/JSON-compatible configuration: '+str(path)) from error
-    if mapping and not isinstance(value,dict):raise ManifestError('YAML must be an object: '+str(path))
+    if mapping and (not isinstance(value, dict)):
+        raise ManifestError('YAML must be an object: ' + str(path))
     return value
 
 
-def load_lock(config,name):return read_yaml(Path(config)/LOCK_PATHS[name])
+def load_lock(config, name):
+    return read_yaml(Path(config) / LOCK_PATHS[name])
 
 
 def build_input_identity(config, name, digest):
@@ -79,14 +84,19 @@ def python_image_source(config):
     return repository_image_source(config, 'python', load_lock(config, 'versions')['smoke']['image'])
 
 
-def canonical(value):return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
-def objects(value):return value['items'] if value.get('kind')=='List' else [value]
-def bundle(values):return values[0] if len(values)==1 else {'apiVersion':'v1','kind':'List','items':values}
-def normalized(value):return sorted(copy.deepcopy(objects(value)),key=lambda v:(v['apiVersion'],v['kind'],v['metadata'].get('namespace',''),v['metadata']['name']))
+def canonical(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
+def objects(value):
+    return value['items'] if value.get('kind') == 'List' else [value]
+def bundle(values):
+    return values[0] if len(values) == 1 else {'apiVersion': 'v1', 'kind': 'List', 'items': values}
+def normalized(value):
+    return sorted(copy.deepcopy(objects(value)), key=lambda v: (v['apiVersion'], v['kind'], v['metadata'].get('namespace', ''), v['metadata']['name']))
 
 
 def executable():
-    if os.environ.get('AGENTBOX_KUBECTL'):return os.environ['AGENTBOX_KUBECTL']
+    if os.environ.get('AGENTBOX_KUBECTL'):
+        return os.environ['AGENTBOX_KUBECTL']
     local=ROOT/'.local/platform-tools/kubectl'
     return str(local) if local.is_file() else shutil.which('kubectl') or 'kubectl'
 
@@ -148,7 +158,8 @@ REQUIRED={
 PARAMETERS={'OWNER','RUN','RUN_ID','WORK_NS','CLIENT_NS','NAMESPACE','NAME','ROLE','RUNTIME_IMAGE','CLIENT_IMAGE','API_IMAGE','IMAGE','SMOKE_IMAGE','RUNTIME_NAME','HANDLER','API_INSTANCE','QUEUE_NAME','FLAVOR_NAME','WORKER_IMAGE','WORKER_IMAGE_ID','WORKER_IMAGE_DIGEST'}
 
 
-def profiles(config):return sorted(RECIPES)
+def profiles(config):
+    return sorted(RECIPES)
 
 
 def _validate_tree(directory):
@@ -165,53 +176,72 @@ def _validate_tree(directory):
 @contextmanager
 def _stage(config):
     config=Path(config)
-    if any(p.is_symlink() for p in config.rglob('*')):raise ManifestError('symlinked manifest inputs are forbidden')
+    if any((p.is_symlink() for p in config.rglob('*'))):
+        raise ManifestError('symlinked manifest inputs are forbidden')
     with tempfile.TemporaryDirectory(prefix='agentbox-kustomize-') as tmp:
-        root=Path(tmp);shutil.copytree(config,root/'source');_validate_tree(root)
+        root = Path(tmp)
+        shutil.copytree(config, root / 'source')
+        _validate_tree(root)
         yield root
 
 
 def _build(root,entry,patches=(),images=None,configmaps=None):
     k={'apiVersion':'kustomize.config.k8s.io/v1beta1','kind':'Kustomization','resources':['source/'+entry]}
-    if patches:k['patches']=[{'target':{'kind':kind},'path':'source/'+path} for kind,path in patches]
-    if images:k['images']=images
+    if patches:
+        k['patches'] = [{'target': {'kind': kind}, 'path': 'source/' + path} for (kind, path) in patches]
+    if images:
+        k['images'] = images
     if configmaps:
         k['configMapGenerator']=configmaps
         k['generatorOptions']={'disableNameSuffixHash':True}
     (root/'kustomization.yaml').write_text(yaml.safe_dump(k,sort_keys=False))
     try:result=subprocess.run([executable(),'kustomize',str(root)],capture_output=True,text=True,timeout=30,env=dict(os.environ,KUBECONFIG=os.devnull))
     except (OSError,subprocess.TimeoutExpired) as error:raise ManifestError('local Kustomize could not start or timed out') from error
-    if result.returncode:raise ManifestError('Kustomize build failed: '+result.stderr[-2000:].strip())
+    if result.returncode:
+        raise ManifestError('Kustomize build failed: ' + result.stderr[-2000:].strip())
     values=[v for v in yaml.load_all(result.stdout,Loader=UniqueLoader) if v is not None]
-    if not values or any(not isinstance(v,dict) or 'apiVersion' not in v for v in values):raise ManifestError('Kustomize returned invalid resources')
+    if not values or any((not isinstance(v, dict) or 'apiVersion' not in v for v in values)):
+        raise ManifestError('Kustomize returned invalid resources')
     return values
 
 
 def _parameters(profile,params,strict):
     p=dict(params or {})
-    if p.keys()-PARAMETERS:raise ManifestError('unknown runtime parameter')
-    if params is not None and strict and not REQUIRED[profile].issubset(p):raise ManifestError('missing runtime parameters for '+profile)
+    if p.keys() - PARAMETERS:
+        raise ManifestError('unknown runtime parameter')
+    if params is not None and strict and (not REQUIRED[profile].issubset(p)):
+        raise ManifestError('missing runtime parameters for ' + profile)
     for key,value in p.items():
-        if not isinstance(value,str) or not value or len(value)>1024 or any(ord(c)<32 for c in value):raise ManifestError('invalid scalar parameter: '+key)
-        if key in {'OWNER','RUN','RUN_ID','ROLE'} and not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?',value):raise ManifestError('invalid label parameter: '+key)
-        if key in {'WORK_NS','CLIENT_NS','NAMESPACE','NAME','RUNTIME_NAME','HANDLER','API_INSTANCE','QUEUE_NAME','FLAVOR_NAME'} and not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?',value):raise ManifestError('invalid DNS parameter: '+key)
-        if key in ('WORKER_IMAGE_ID','WORKER_IMAGE_DIGEST') and not re.fullmatch(r'sha256:[a-f0-9]{64}',value):raise ManifestError('invalid worker image ID/digest')
-    if 'RUN' in p:p.setdefault('API_INSTANCE','api-'+p['RUN'])
+        if not isinstance(value, str) or not value or len(value) > 1024 or any((ord(c) < 32 for c in value)):
+            raise ManifestError('invalid scalar parameter: ' + key)
+        if key in {'OWNER', 'RUN', 'RUN_ID', 'ROLE'} and (not re.fullmatch('[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?', value)):
+            raise ManifestError('invalid label parameter: ' + key)
+        if key in {'WORK_NS', 'CLIENT_NS', 'NAMESPACE', 'NAME', 'RUNTIME_NAME', 'HANDLER', 'API_INSTANCE', 'QUEUE_NAME', 'FLAVOR_NAME'} and (not re.fullmatch('[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', value)):
+            raise ManifestError('invalid DNS parameter: ' + key)
+        if key in ('WORKER_IMAGE_ID', 'WORKER_IMAGE_DIGEST') and (not re.fullmatch('sha256:[a-f0-9]{64}', value)):
+            raise ManifestError('invalid worker image ID/digest')
+    if 'RUN' in p:
+        p.setdefault('API_INSTANCE', 'api-' + p['RUN'])
     return p
 
 
 def _labels(value,p,role=False):
     for key in ('agentbox.dev/session-run','agentbox.dev/net-run','agentbox.dev/batch-run'):
-        if key in value and 'RUN' in p:value[key]=p['RUN']
-    if 'agentbox.dev/session' in value and 'OWNER' in p:value['agentbox.dev/session']=p['OWNER']
+        if key in value and 'RUN' in p:
+            value[key] = p['RUN']
+    if 'agentbox.dev/session' in value and 'OWNER' in p:
+        value['agentbox.dev/session'] = p['OWNER']
     if role:
         for key in ('agentbox.dev/session-role','agentbox.dev/net-role'):
-            if key in value and 'ROLE' in p:value[key]=p['ROLE']
+            if key in value and 'ROLE' in p:
+                value[key] = p['ROLE']
 
 
 def _namespace(value,p):
-    if value=='agentbox-work':return p.get('WORK_NS',value)
-    if value=='agentbox-client':return p.get('CLIENT_NS',value)
+    if value == 'agentbox-work':
+        return p.get('WORK_NS', value)
+    if value == 'agentbox-client':
+        return p.get('CLIENT_NS', value)
     return p.get('NAMESPACE',value) if value in ('agentbox-platform','agentbox-batch') else value
 
 
@@ -219,92 +249,127 @@ def _pod(pod,metadata,p,profile):
     _labels(metadata.get('labels',{}),p)
     for c in pod.get('initContainers',[])+pod.get('containers',[]):
         key={'sandboxd':'RUNTIME_IMAGE','api':'API_IMAGE','client':'CLIENT_IMAGE','image-worker':'WORKER_IMAGE','prepare':'WORKER_IMAGE'}.get(c['name'],'SMOKE_IMAGE' if profile=='smoke' else 'IMAGE')
-        if key in p:c['image']=p[key]
+        if key in p:
+            c['image'] = p[key]
         for e in c.get('env',[]):
             source={'NET_RUN':'RUN','BATCH_RUN':'RUN','SESSION_NAMESPACE':'WORK_NS','SESSION_OWNER':'OWNER','SESSION_RUN':'RUN'}.get(e['name'])
-            if source in p:e['value']=p[source]
+            if source in p:
+                e['value'] = p[source]
         for i,arg in enumerate(c.get('args',[])):
             key=arg.partition('=')[0]
-            if key=='--namespace' and 'WORK_NS' in p:c['args'][i]='--namespace='+p['WORK_NS']
-            if key=='--namespace' and profile.startswith('batch-') and 'NAMESPACE' in p:c['args'][i]='--namespace='+p['NAMESPACE']
-            if key=='--instance' and 'API_INSTANCE' in p:c['args'][i]='--instance='+p['API_INSTANCE']
-            if key=='--batch-image-id' and 'WORKER_IMAGE_ID' in p:c['args'][i]='--batch-image-id='+p['WORKER_IMAGE_ID']
-            if key=='--batch-image-digest' and 'WORKER_IMAGE_DIGEST' in p:c['args'][i]='--batch-image-digest='+p['WORKER_IMAGE_DIGEST']
+            if key == '--namespace' and 'WORK_NS' in p:
+                c['args'][i] = '--namespace=' + p['WORK_NS']
+            if key == '--namespace' and profile.startswith('batch-') and ('NAMESPACE' in p):
+                c['args'][i] = '--namespace=' + p['NAMESPACE']
+            if key == '--instance' and 'API_INSTANCE' in p:
+                c['args'][i] = '--instance=' + p['API_INSTANCE']
+            if key == '--batch-image-id' and 'WORKER_IMAGE_ID' in p:
+                c['args'][i] = '--batch-image-id=' + p['WORKER_IMAGE_ID']
+            if key == '--batch-image-digest' and 'WORKER_IMAGE_DIGEST' in p:
+                c['args'][i] = '--batch-image-digest=' + p['WORKER_IMAGE_DIGEST']
 
 
 def _selectors(value,p):
     if isinstance(value,list):
-        for child in value:_selectors(child,p)
+        for child in value:
+            _selectors(child, p)
     elif isinstance(value,dict):
         for key,child in value.items():
             if key=='matchLabels' and isinstance(child,dict):
                 _labels(child,{k:v for k,v in p.items() if k=='RUN'})
-                if 'kubernetes.io/metadata.name' in child:child['kubernetes.io/metadata.name']=_namespace(child['kubernetes.io/metadata.name'],p)
+                if 'kubernetes.io/metadata.name' in child:
+                    child['kubernetes.io/metadata.name'] = _namespace(child['kubernetes.io/metadata.name'], p)
             else:_selectors(child,p)
 
 
 def _inject(values,p,profile):
     for obj in values:
-        kind=obj['kind'];meta=obj['metadata'];_labels(meta.get('labels',{}),p,True)
-        if 'namespace' in meta:meta['namespace']=_namespace(meta['namespace'],p)
-        if kind in ('Namespace','Pod','Job') and 'NAME' in p:meta['name']=p['NAME']
-        if profile=='smoke' and 'RUN_ID' in p:meta['name']='agentbox-smoke-'+p['RUN_ID']
-        if profile=='observer' and 'RUN' in p:meta.setdefault('labels',{})['agentbox.dev/session-run']=p['RUN']
-        if kind=='RuntimeClass':meta['name']=p.get('RUNTIME_NAME',meta['name']);obj['handler']=p.get('HANDLER',obj['handler'])
-        if kind=='Pod':_pod(obj['spec'],meta,p,profile)
-        if kind in ('Job','Deployment'):_pod(obj['spec']['template']['spec'],obj['spec']['template'].get('metadata',{}),p,profile)
+        kind = obj['kind']
+        meta = obj['metadata']
+        _labels(meta.get('labels', {}), p, True)
+        if 'namespace' in meta:
+            meta['namespace'] = _namespace(meta['namespace'], p)
+        if kind in ('Namespace', 'Pod', 'Job') and 'NAME' in p:
+            meta['name'] = p['NAME']
+        if profile == 'smoke' and 'RUN_ID' in p:
+            meta['name'] = 'agentbox-smoke-' + p['RUN_ID']
+        if profile == 'observer' and 'RUN' in p:
+            meta.setdefault('labels', {})['agentbox.dev/session-run'] = p['RUN']
+        if kind == 'RuntimeClass':
+            meta['name'] = p.get('RUNTIME_NAME', meta['name'])
+            obj['handler'] = p.get('HANDLER', obj['handler'])
+        if kind == 'Pod':
+            _pod(obj['spec'], meta, p, profile)
+        if kind in ('Job', 'Deployment'):
+            _pod(obj['spec']['template']['spec'], obj['spec']['template'].get('metadata', {}), p, profile)
         if kind=='SandboxTemplate':
-            template=obj['spec']['podTemplate'];_pod(template['spec'],template.get('metadata',{}),p,profile);_selectors(obj['spec']['networkPolicy'],p)
-        if kind=='NetworkPolicy':_selectors(obj['spec'],p)
+            template = obj['spec']['podTemplate']
+            _pod(template['spec'], template.get('metadata', {}), p, profile)
+            _selectors(obj['spec']['networkPolicy'], p)
+        if kind == 'NetworkPolicy':
+            _selectors(obj['spec'], p)
         if kind=='ConfigMap' and meta['name']=='batch-template':
             job=yaml.load(obj['data']['job.yaml'],Loader=UniqueLoader)
             nested={k:v for k,v in p.items() if k!='NAME'}
             obj['data']['job.yaml']=yaml.safe_dump(_inject([job],nested,'image-job')[0],sort_keys=False)
         if kind=='ClusterQueue':
-            meta['name']=p.get('QUEUE_NAME',meta['name']);_selectors(obj['spec'],p)
-            if 'FLAVOR_NAME' in p:obj['spec']['resourceGroups'][0]['flavors'][0]['name']=p['FLAVOR_NAME']
-        if kind=='ResourceFlavor':meta['name']=p.get('FLAVOR_NAME',meta['name'])
-        if kind=='LocalQueue' and 'QUEUE_NAME' in p:obj['spec']['clusterQueue']=p['QUEUE_NAME']
+            meta['name'] = p.get('QUEUE_NAME', meta['name'])
+            _selectors(obj['spec'], p)
+            if 'FLAVOR_NAME' in p:
+                obj['spec']['resourceGroups'][0]['flavors'][0]['name'] = p['FLAVOR_NAME']
+        if kind == 'ResourceFlavor':
+            meta['name'] = p.get('FLAVOR_NAME', meta['name'])
+        if kind == 'LocalQueue' and 'QUEUE_NAME' in p:
+            obj['spec']['clusterQueue'] = p['QUEUE_NAME']
         if kind=='RoleBinding':
             for subject in obj['subjects']:
-                if 'namespace' in subject:subject['namespace']=_namespace(subject['namespace'],p)
+                if 'namespace' in subject:
+                    subject['namespace'] = _namespace(subject['namespace'], p)
     return values
 
 
 def render(config,profile,params=None,strict=True):
-    if profile not in RECIPES:raise ManifestError('unknown experiment resource selection: '+profile)
+    if profile not in RECIPES:
+        raise ManifestError('unknown experiment resource selection: ' + profile)
     p=_parameters(profile,params,strict)
     optional={'runtime':{'RUNTIME_NAME','HANDLER'},'api':{'API_INSTANCE'},'batch-api-resources':{'API_INSTANCE'}}.get(profile,set())
     p={k:v for k,v in p.items() if k in REQUIRED[profile] | optional}
     entry,patches,selected=RECIPES[profile]
     with _stage(config) as root:
         values=[o for o in _build(root,entry,patches) if (o['kind'],o['metadata']['name']) in selected]
-    if len(values)!=len(selected):raise ManifestError('component resource selection is incomplete: '+profile)
+    if len(values) != len(selected):
+        raise ManifestError('component resource selection is incomplete: ' + profile)
     return bundle(_inject(values,p,profile))
 
 
 def render_component(config,name,params=None,environment='lab'):
     entries={'api':'agentbox/api','cleanup':'agentbox/cleanup','agent-sandbox':'components/agent-sandbox','gvisor':'components/gvisor','batch':'agentbox/batch','batch-api':'agentbox/batch-api'}
-    if name not in entries:raise ManifestError('unknown component')
+    if name not in entries:
+        raise ManifestError('unknown component')
     if environment=='lab' and name in ('api','cleanup','agent-sandbox','batch'):
         entry=APP_LAB
         names={'api':{'agentbox-api','agentbox-api-budget'},'cleanup':{'agentbox-cleanup'},'agent-sandbox':{'python','python-cold'},
                'batch':{'agentbox-batch','agentbox-batch-worker','batch','batch-budget','batch-default-deny'}}[name]
     else:entry=entries[name];names=None
     patches=[('RuntimeClass','lab/gvisor-patch.yaml')] if name=='gvisor' and environment=='lab' else []
-    with _stage(config) as root:values=_build(root,entry,patches)
-    if names:values=[o for o in values if o['metadata']['name'] in names]
+    with _stage(config) as root:
+        values = _build(root, entry, patches)
+    if names:
+        values = [o for o in values if o['metadata']['name'] in names]
     return bundle(_inject(values,_parameters('runtime',params,False),name))
 
 
 def render_fixture(config,name,params=None):
-    if name not in ('smoke','gvisor','network','sessions','batch'):raise ManifestError('unknown acceptance fixture')
-    with _stage(config) as root:values=_build(root,'acceptance/'+name)
+    if name not in ('smoke', 'gvisor', 'network', 'sessions', 'batch'):
+        raise ManifestError('unknown acceptance fixture')
+    with _stage(config) as root:
+        values = _build(root, 'acceptance/' + name)
     return bundle(_inject(values,_parameters('runtime',params,False),name))
 
 
 def lock_identity(config,name):
-    value=load_lock(config,name);identity=canonical(value)
+    value = load_lock(config, name)
+    identity = canonical(value)
     bridge=read_yaml(Path(config)/'lab/format-compatibility.yaml')['locks'].get(name,{})
     return bridge['legacy_sha256'] if identity==bridge.get('semantic_sha256') else identity
 
@@ -338,10 +403,12 @@ def render_upstream(config,component,resources,params,images=None):
         values=_build(root,'upstream.yaml',patches,images,configmaps)
     for obj in values:
         obj['metadata'].setdefault('labels',{}).update({'agentbox.dev/session':params['OWNER'],'app.kubernetes.io/managed-by':'agentbox-platform'})
-        if component=='controller-lab' and obj['kind']=='Deployment':obj['spec']['template']['spec']['containers'][0]['image']=params['CONTROLLER_IMAGE']
+        if component == 'controller-lab' and obj['kind'] == 'Deployment':
+            obj['spec']['template']['spec']['containers'][0]['image'] = params['CONTROLLER_IMAGE']
         if component=='calico-lab' and obj['kind']=='DaemonSet':
             for c in obj['spec']['template']['spec']['containers']:
                 if c['name']=='calico-node':
                     for e in c['env']:
-                        if e['name']=='CALICO_IPV4POOL_CIDR':e['value']=params['POD_CIDR']
+                        if e['name'] == 'CALICO_IPV4POOL_CIDR':
+                            e['value'] = params['POD_CIDR']
     return bundle(values)

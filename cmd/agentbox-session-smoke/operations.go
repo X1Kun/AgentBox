@@ -1,5 +1,5 @@
-// Package sessionprobe implements trusted acceptance scenarios, not a public executor.
-package sessionprobe
+// Trusted SDK acceptance scenarios for this command.
+package main
 
 import (
 	"context"

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/batchprotocol"
 	"github.com/X1Kun/AgentBox/internal/telemetry"
 	"io"
 	"os"
@@ -40,7 +41,7 @@ func NewStore(path string) (*Store, error) {
 func (s *Store) Close() error { return s.root.Close() }
 func (s *Store) lock(ctx context.Context, name string) (func(), error) {
 	if !dns.MatchString(name) {
-		return nil, fail("invalid_request")
+		return nil, fail(batchprotocol.CodeInvalidRequest)
 	}
 	f, err := s.root.OpenFile("locks/"+name, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -69,7 +70,7 @@ func boundedFile(root *os.Root, name string, max int64) ([]byte, error) {
 		return nil, err
 	}
 	if !st.Mode().IsRegular() || st.Size() > max {
-		return nil, fail("artifact_invalid")
+		return nil, fail(batchprotocol.CodeArtifactInvalid)
 	}
 	f, err := root.Open(name)
 	if err != nil {
@@ -81,7 +82,7 @@ func boundedFile(root *os.Root, name string, max int64) ([]byte, error) {
 		return nil, err
 	}
 	if int64(len(data)) > max {
-		return nil, fail("artifact_invalid")
+		return nil, fail(batchprotocol.CodeArtifactInvalid)
 	}
 	return data, nil
 }
@@ -92,7 +93,7 @@ func (s *Store) read(name string) (*Record, error) {
 	}
 	var r Record
 	if json.Unmarshal(data, &r) != nil || r.Version != 1 || r.Name != name || !strings.HasPrefix(name, "bat-") {
-		return nil, fail("record_invalid")
+		return nil, fail(batchprotocol.CodeRecordInvalid)
 	}
 	return &r, nil
 }
@@ -148,10 +149,10 @@ func (s *Store) write(r *Record) error {
 		if readErr == nil {
 			var previous Record
 			if json.Unmarshal(old, &previous) == nil {
-				from = previous.State
+				from = string(previous.State)
 			}
 		}
-		s.metrics.Transition(from, r.State, r.Name+"."+r.JobUID, time.Now())
+		s.metrics.Transition(from, string(r.State), r.Name+"."+r.JobUID, time.Now())
 	}
 	return nil
 }
@@ -186,10 +187,10 @@ func (s *Store) names() ([]string, error) {
 			if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".json") && dns.MatchString(n) && strings.HasPrefix(n, "bat-") {
 				names = append(names, n)
 				if len(names) > 1024 {
-					return nil, fail("record_capacity")
+					return nil, fail(batchprotocol.CodeRecordCapacity)
 				}
 			} else {
-				return nil, fail("record_invalid")
+				return nil, fail(batchprotocol.CodeRecordInvalid)
 			}
 		}
 		if errors.Is(readErr, io.EOF) {

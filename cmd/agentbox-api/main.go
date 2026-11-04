@@ -17,8 +17,8 @@ import (
 	"github.com/X1Kun/AgentBox/internal/batch"
 	"github.com/X1Kun/AgentBox/internal/batchapi"
 	"github.com/X1Kun/AgentBox/internal/session"
-	"github.com/X1Kun/AgentBox/internal/sessionapi"
-	"github.com/X1Kun/AgentBox/internal/sessionruntime"
+	"github.com/X1Kun/AgentBox/internal/session/httpapi"
+	"github.com/X1Kun/AgentBox/internal/session/sandboxd"
 	"github.com/X1Kun/AgentBox/internal/telemetry"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -93,7 +93,7 @@ func run() error {
 	if err != nil || len(data) > 300000 {
 		return errors.New("unable to read bounded principals configuration")
 	}
-	var principals []sessionapi.Principal
+	var principals []httpapi.Principal
 	if json.Unmarshal(data, &principals) != nil {
 		return errors.New("invalid principals configuration")
 	}
@@ -117,6 +117,7 @@ func run() error {
 		RunReadiness(context.Context)
 		SetTelemetry(*telemetry.Metrics)
 	}
+	var maintenance func(context.Context, time.Duration)
 	var metrics *telemetry.Metrics
 	if metricsListen != "" {
 		host, _, e := net.SplitHostPort(metricsListen)
@@ -132,6 +133,7 @@ func run() error {
 			return e
 		}
 		defer backend.Close()
+		maintenance = backend.RunMaintenance
 		backend.SetTelemetry(metrics)
 		handler, err = batchapi.New(backend, principals, timeout, maxInflight)
 	} else {
@@ -140,10 +142,10 @@ func run() error {
 			return e
 		}
 		if execution {
-			backend.SetRuntime(sessionruntime.New())
+			backend.SetRuntime(sandboxd.New())
 		}
 		backend.SetTelemetry(metrics)
-		handler, err = sessionapi.New(backend, principals, timeout, maxInflight)
+		handler, err = httpapi.New(backend, principals, timeout, maxInflight)
 	}
 	if err != nil {
 		return err
@@ -183,7 +185,14 @@ func run() error {
 	monitorDone := make(chan struct{})
 	go func() {
 		defer close(monitorDone)
+		if maintenance == nil {
+			handler.RunReadiness(monitorCtx)
+			return
+		}
+		maintenanceDone := make(chan struct{})
+		go func() { defer close(maintenanceDone); maintenance(monitorCtx, timeout) }()
 		handler.RunReadiness(monitorCtx)
+		<-maintenanceDone
 	}()
 	defer func() {
 		cancelMonitor()

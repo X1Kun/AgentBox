@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/X1Kun/AgentBox/internal/sessionprobe"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -145,7 +144,7 @@ func freshSupply(supply []supplyIdentity, used []identity) error {
 	return nil
 }
 func (p *probe) warmCheck(name string) {
-	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: name, Passed: true})
+	p.result.Checks = append(p.result.Checks, Check{Name: name, Passed: true})
 }
 
 func (p *probe) runWarm(ctx context.Context, config *rest.Config) (result report, retErr error) {
@@ -269,7 +268,7 @@ func (p *probe) runWarm(ctx context.Context, config *rest.Config) (result report
 	if !errors.Is(err, sdk.ErrTimeout) {
 		return result, fmt.Errorf("expected a bounded exhausted-pool timeout, got %v", err)
 	}
-	p.result.Warm.ExhaustionError = sessionprobe.ShortError(err)
+	p.result.Warm.ExhaustionError = ShortError(err)
 	p.warmCheck("exhaustion_is_bounded_without_creation_replay")
 	p.emit("warm-exhausted")
 	if err := waitMarker(ctx, "warm-release"); err != nil {
