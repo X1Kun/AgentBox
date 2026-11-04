@@ -59,7 +59,7 @@ class DiagnosticsAcceptance(StaticBaseline):
     def test(self):
         expected = None
         try:
-            super().test(self.lab.config/'acceptance/boundaries/diagnostics.yaml')
+            super().test(self.lab.root/'experiments/configs/session/diagnostics.yaml')
         except BatchError as error:
             expected = error.reason
         require(expected == 'baseline_observation_invalid', 'unexpected_diagnostic_outcome', str(expected))

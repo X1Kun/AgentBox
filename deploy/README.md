@@ -1,57 +1,73 @@
 # 部署资源
 
-这里按组件职责组织静态 YAML、原生配置和版本锁。Kustomize 负责组合和固定环境差异；Python 负责每轮实验的资源选择、namespace/归属、镜像、命令、运行时发现、验证和清理。
+静态资源按组件组织，Kustomize 组合实际环境；Python 编排实验，并验证、补齐必须显式提供的部署输入。
 
 ```text
 deploy/
-├── lab/                         # kind 配置、镜像源、工具版本锁、格式迁移身份表
-├── components/
-│   ├── gvisor/                  # RuntimeClass、runsc.toml、版本/归档锁
-│   ├── calico/                  # 上游版本/镜像锁、lab 覆盖补丁
-│   ├── agent-sandbox/           # Template、WarmPool、控制器补丁、runtime 镜像
-│   ├── kueue/                   # 发布锁、控制器配置、batch/job webhook 补丁
-│   └── observability/           # 本地 Compose、Prometheus、Grafana、只读 Role 和镜像锁
-├── agentbox/
-│   ├── api/                     # Deployment、RBAC、Dockerfile
-│   ├── cleanup/                 # 独立管理员 RBAC
-│   ├── batch/                   # 隔离队列、Worker flavor、namespace 与网络边界
-│   ├── batch-api/               # 独立批任务 API、权限、PVC 与预算
-│   ├── batch-images/            # 原图清单、库锁、像素契约、工作镜像与 Job 模板
-│   └── overlays/lab/            # 应用环境的节点约束、拉取策略、配额
-└── acceptance/
-    ├── smoke/
-    ├── gvisor/
-    ├── network/
-    ├── sessions/                # SDK 客户端、网络策略、预热/配额夹具
-    └── batch/                   # 计算、超配额和 deadline Job 夹具
+├── lab/                         # kind、工具锁、镜像源和兼容身份表
+├── components/                  # gVisor、Calico、Agent Sandbox、Kueue、观测组件
+└── agentbox/
+    ├── api/                     # 会话 API、Namespace、RBAC、共享网络与 Service
+    ├── cleanup/                 # 独立管理员权限，产品入口不包含它
+    ├── batch/                   # 队列、flavor、Namespace、计算网络边界
+    ├── batch-api/               # 图片 API、PVC、权限、产品预算与 Service
+    ├── batch-images/            # 固定数据集、工作镜像、Job 模板及像素契约
+    └── overlays/lab/
+        ├── session/             # 独立会话产品组合和输入样例
+        └── batch/               # 独立图片批任务产品组合和输入样例
+
+tests/fixtures/platform/         # smoke、gVisor、网络、SDK、批 Job 验收夹具
+experiments/configs/session/     # 行为、用户矩阵、R/B、诊断实验参数
 ```
 
-`agentbox/api/`、`agentbox/cleanup/`、`components/gvisor/`、`components/agent-sandbox/` 是组件组合入口；`agentbox/overlays/lab/` 是应用的实际环境覆盖。验收夹具各有一个组合入口，不为每种 Python 调用再建立 overlay。Calico 和上游控制器的发行清单按锁文件校验后，由 Python 使用本地 Kustomize 补丁适配，不在构建时抓取远端资源。
+lab 根目录没有总 Kustomization。`session/` 不创建批任务队列或管理员清理权限；`batch/` 只使用 `batch-product-budget`，不包含单 Job 验收的 `batch-budget`。共享 API 网络策略位于 `agentbox/api/network/`，固定预热补丁位于 `components/agent-sandbox/warm-pool-patch.yaml`。部署资源不能反向引用测试夹具。
+
+## 两层部署关系
+
+先用 `make platform-up` 准备或复用本项目的 kind、Calico、gVisor/RuntimeClass、Agent Sandbox CRD/控制器；批任务另用 `make platform-batch-install` 准备 Kueue。这些是共享平台前置，应用清单不能替代 containerd handler 的宿主安装。
+
+再分别生成并应用会话或图片产品清单。静态 Kustomization 是组合源，完整清单还必须包含实际镜像、API Server 出口和私有凭据。预览只用于审阅：
 
 ```bash
-python3 -m pip install -r scripts/requirements-platform.txt
 make k8s-render
-python3 scripts/render_manifests.py --component api --environment base
-python3 scripts/render_manifests.py --component api --environment lab \
-  --set WORK_NS=agentbox-work --set CLIENT_NS=agentbox-client --set RUN=preview
+kubectl kustomize deploy/agentbox/overlays/lab/session
+kubectl kustomize deploy/agentbox/overlays/lab/batch
 python3 scripts/render_manifests.py --fixture sessions
-kubectl kustomize deploy/agentbox/overlays/lab
 ```
 
-以上只渲染，不联系 Kubernetes 或 Docker。默认值是审阅样例；实验实际创建由 `scripts/platform_lab.py` 的现有入口执行，保留专用 kubeconfig、版本、UID/归属和回收检查。Python 只更新明确的动态叶子字段，不替换整段 YAML、不生成静态权限/预算，也不引入参数 ConfigMap 转发层或全局 namespace/selector 变换。实验命令与动态 API CIDR 仍由编排层注入。
+默认会话入口使用冷池。图片产品为一个 API 加一个 500m/256Mi 计算名额，预算为 2 Pod、600m/384Mi requests；单 Job 的 1 Pod、500m/256Mi 配额只属于 `tests/fixtures/platform/batch/resources/`。
 
-版本锁位于 `lab/versions.lock.yaml` 和各组件的 `versions.lock.yaml`；原有版本、镜像 digest、下载摘要不因迁移改变，Kueue 在 P3a 独立锁定。版本/摘要应保留为字符串。YAML 采用安全加载器并拒绝重复键和可执行标签；普通检查要求可用 kubectl/Kustomize 和 PyYAML，当前固定 kubectl v1.35.8 内置 Kustomize v5.7.1。
+## 显式镜像与部署输入
 
-P3b 的第六份库/ABI/wheel 锁、四张公开图片及其许可/摘要、预期像素契约集中在 `agentbox/batch-images/`。二进制图片和 wheel 进入忽略的本地准备缓存，运行时输入预装进固定镜像，不在任务中随机取图。`batch-api/` 是独立应用入口，复用静态队列但使用自己的 API/PVC 配额，与 P3a 的单 Pod 验收预算分别渲染，不能把两个配额混用于同一 namespace。
+已有平台和 worker 构建缓存后，运行：
 
-Python 镜像的默认下载仓库集中在 `lab/image-sources.yaml`，使用本实验已验证的 `docker.m.daocloud.io/library/python`；实际引用的 digest 取自版本锁。smoke、gVisor/network 验收和 session-build 共用该配置，API 基镜像沿用 session bundle 已校验的来源。版本锁中的官方仓库地址保留为内容基线，不是这些入口的默认下载地址。命令行 `--smoke-image-source` / `--session-python-source` 可显式覆盖，但必须保留相同 digest。镜像源变更进入源码报告，不修改集群版本身份；更改 digest 仍使旧版本身份失效。当前官方 Python 源的一次拉取失败不代表其他仓库不可用。
+```bash
+make platform-batch-image-build
+python3 scripts/platform_lab.py product-images --with-batch --output .local/products/prepared-1
+```
 
-`lab/format-compatibility.yaml` 承接 8958f50 的精确等价配置：解析后的锁值及资源/补丁指纹都相同，才沿用旧集群状态与镜像缓存身份。P3c 另记录 e8fa761 的 go.mod 精确字节桥接：仅将已选中的 Prometheus 依赖提升为 direct，所选模块图及 go.sum 不变，才能复用旧 SDK bundle；任意其他依赖输入变更使缓存失效。实际源文件仍逐一记录当前字节哈希；权限或版本改变不会被桥接许可。镜像 bundle 的 v1 输入 ID 保留历史名称，不表示继续读取旧 JSON/Dockerfile 路径。
+该入口独立构建产品 API，并核对既有 runtime/worker 的 OCI 描述符及 config ID，在原节点缓存中补齐 digest 引用。它不更新组件版本或覆盖既有镜像别名。输出目录的 `session-inputs.yaml`、`batch-inputs.yaml` 是非秘密部署输入，明确列出归属、实例、namespace、镜像及 API Server 的 Service/EndpointSlice 地址；可先审阅再使用。也可从各入口的 `inputs.example.yaml` 手动填写，REQUIRED 占位值不能通过最终渲染。
 
-运行报告、缓存元数据、私有 principals 以及历史验收 JSON 保留原格式，不与静态资源混放；原始证据位于忽略的 artifacts 中。凭据和 Secret 内容不进入这里的清单或渲染参数。等价检查和真实集群复核见[迁移验收](../docs/validation.md#manifests)。
+准备私有目录中的 `tls.crt`、`tls.key`、`principals.json`，后两份文件权限必须为 0600。证书与私钥须匹配、证书未过期，SAN 应覆盖实际访问地址；本地 port-forward 使用 127.0.0.1 时也需要对应 SAN。principals 沿用产品 API 的 JSON 契约，不进入静态源码。
 
-批任务资源可通过 `python3 scripts/render_manifests.py --component batch --environment lab` 审阅，计算夹具使用 `--fixture batch`。Kueue 的上游发行清单校验后离线组合，不在 Kustomize 构建中读取远端 URL。安装、固定配额与失败夹具清理见[批任务运维](../docs/operations.md#batch)。
+```bash
+python3 scripts/render_product.py \
+  --config .local/products/prepared-1/session-inputs.yaml \
+  --credentials-dir .local/products/session-credentials \
+  --kubeconfig .local/platform/kubeconfig --context kind-agentbox-platform-lab \
+  --output .local/products/session.yaml
+kubectl --kubeconfig .local/platform/kubeconfig --context kind-agentbox-platform-lab \
+  apply -f .local/products/session.yaml
+```
 
-图片产品入口使用 `--component batch-api`，实际实例须注入经过构建/CRI 验证的 API 镜像、工作镜像、配置 ID 与 manifest digest。Job YAML 与像素契约通过本地 ConfigMap 文件生成器组合，Python 仅对解析后的 namespace/归属、镜像和明确参数更新动态字段；不做模板文本替换。API 凭据单独提供，计算容器只挂载本次尝试的产物子目录。使用与清理见[图片产品运维](../docs/operations.md#batch-images)。
+批任务使用 `batch-inputs.yaml`、相应凭据目录和新的输出文件。渲染器校验实际控制器、CRD、RuntimeClass、Calico、namespace 归属和声明的 API 出口；镜像与 digest 必须非占位且相互匹配。未指定 kubeconfig/context 时只离线渲染，不声称已验证集群。完整输出含 Secret，只写入新建的 0600 文件，不打印到 stdout。
 
-观测组件使用第七份镜像锁。`components/observability/` 的仪表盘源为 YAML，运行时生成 Grafana 所需 JSON；Compose 的凭据和生成配置保存在忽略的 `.local/observability/`。`agentbox/overlays/lab/api-metrics-patch.yaml` 是显式选择的 metrics 端口补丁，观测验收调用，普通部署入口继续由管理员决定是否开启。命令与范围见[观测运维](../docs/operations.md#observability)。
+应用后资源长期保留；实验验收的自动清理不会管理这些实例。lab 默认拒绝 API 入站，可通过 `service/agentbox-api` 或 `service/agentbox-batch-api` 做管理员 port-forward；开放其他调用来源需另行声明网络入口。批任务仍受有限记录容量约束，长期运行及归档边界见使用契约。删除产品 namespace 会删除其会话或 PVC 数据，应作为独立的卸载操作处理。
+
+## 验收与身份
+
+`make platform-product-entry-test` 在临时 namespace 直接使用同一完整清单渲染器，验证会话执行/文件和图片产物，随后按原 UID 清理。其他验收脚本继续使用小资源组，不再从混合 lab 总集合挑选对象。
+
+七份版本锁保持原值。`lab/format-compatibility.yaml` 继续支持精确的旧锁、缓存和安装身份映射；v1 bundle 中旧路径字符串是协议键，不是物理文件读取路径。平台 session 指纹只包含上游锁和控制器运行补丁；SDK Job/RBAC/客户端 Dockerfile 单独计算验收指纹，应用模板按产品组合记录。SDK 或实验配置修改不会要求重建健康平台；平台运行配置变更仍使旧身份校验失败。
+
+历史运行报告、缓存元数据和原始验收 JSON 不回写。Python 固定依赖见 `scripts/requirements-platform.txt`，产品使用及验证范围见[运维指南](../docs/operations.md)与[验收记录](../docs/validation.md)。

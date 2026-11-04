@@ -1,5 +1,6 @@
 """Install the upstream controller and validate cold sessions with its Go SDK."""
-from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, definition as manifest_definition, lock_identity, render_upstream, python_image_source, build_input_identity
+from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, definition as manifest_definition, lock_identity, render_upstream, python_image_source, build_input_identity, FIXTURES, session_definition_matches, acceptance_definition
+from lib.api_network import add_api_egress, discover_api_endpoints
 import hashlib
 import ipaddress
 import json
@@ -94,9 +95,12 @@ class Sessions:
     def definition(self):
         return manifest_definition(self.lab.config, 'session')
 
-    def build_inputs(self):
+    def definition_matches(self, recorded):
+        return recorded == self.definition() or session_definition_matches(self.lab.config, recorded)
+
+    def build_inputs(self, runtime_only=False):
         files = [self.lab.root/'go.mod',self.lab.root/'go.sum']
-        for folder in ('cmd/agentbox-session-smoke',):
+        for folder in (() if runtime_only else ('cmd/agentbox-session-smoke',)):
             files += [p for p in (self.lab.root/folder).glob('*.go') if not p.name.endswith('_test.go')]
         result = {str(p.relative_to(self.lab.root)):digest(p) for p in sorted(files)}
         result['go.mod'] = build_input_identity(self.lab.config,'go.mod',result['go.mod'])
@@ -104,7 +108,8 @@ class Sessions:
         # New component paths preserve cache identity only with equal lock/payload values.
         result['deploy/platform/session.lock.json'] = lock_identity(self.lab.config,'session')
         result['deploy/platform/sandbox-runtime.Dockerfile'] = digest(self.lab.config/'components/agent-sandbox/runtime.Dockerfile')
-        result['deploy/platform/session-client.Dockerfile'] = digest(self.lab.config/'acceptance/sessions/client.Dockerfile')
+        if not runtime_only:
+            result['deploy/platform/session-client.Dockerfile'] = digest(FIXTURES/'sessions/client.Dockerfile')
         return result
 
     def docker_image(self, name):
@@ -173,7 +178,7 @@ class Sessions:
                 binary_hashes[name] = digest(path)
             # A minimal build context avoids sending repository credentials/cache to Docker.
             for kind, dockerfile, binary in [('runtime', 'components/agent-sandbox/runtime.Dockerfile', 'sandboxd'),
-                                             ('client', 'acceptance/sessions/client.Dockerfile', 'agentbox-session-smoke')]:
+                                             ('client', '../tests/fixtures/platform/sessions/client.Dockerfile', 'agentbox-session-smoke')]:
                 with tempfile.TemporaryDirectory(prefix='session-image-', dir=self.lab.state_dir) as temporary:
                     context = Path(temporary)
                     shutil.copyfile(self.lab.config / dockerfile, context / 'Dockerfile')
@@ -194,13 +199,15 @@ class Sessions:
 
     def bundle(self, require_client=True):
         value = json.loads(self.bundle_path.read_text())
-        current = self.build_inputs()
+        current = self.build_inputs(runtime_only=not require_client)
         keys = set(current) | set(value['inputs']) if require_client else RUNTIME_BUILD_INPUTS
         if any(value['inputs'].get(key) != current.get(key) for key in keys):
             raise SessionError('session_bundle_changed', 'run session-build for the current Go and image inputs')
         if value['docker_id'] != self.lab.docker_info()['ID']:
             raise SessionError('session_bundle_daemon_changed', 'bundle belongs to another Docker daemon')
-        for image in value['images'].values():
+        for role, image in value['images'].items():
+            if role == 'client' and not require_client:
+                continue
             if self.docker_image(image['name'])['Id'] != image['id']:
                 raise SessionError('session_image_changed', image['name'])
         return value
@@ -232,7 +239,7 @@ class Sessions:
         image = 'agentbox/session-client:' + fingerprint[:16]
         with tempfile.TemporaryDirectory(prefix='session-client-image-', dir=self.lab.state_dir) as temporary:
             context = Path(temporary)
-            shutil.copyfile(self.lab.config / 'acceptance/sessions/client.Dockerfile', context / 'Dockerfile')
+            shutil.copyfile(FIXTURES / 'sessions/client.Dockerfile', context / 'Dockerfile')
             shutil.copy2(binary, context / 'agentbox-session-smoke')
             self.lab.runner.run([self.lab.tools['docker'], 'build', '--pull=false', '--network=none',
                                  '--platform=linux/amd64', '--build-arg', 'PYTHON_IMAGE=' + base,
@@ -340,7 +347,7 @@ class Sessions:
 
     def verify(self, bundle):
         installed = self.state.get('sessions', {})
-        if installed.get('phase') != 'ready' or installed.get('definition') != self.definition() or installed.get('bundle_fingerprint') != bundle['fingerprint']:
+        if installed.get('phase') != 'ready' or not self.definition_matches(installed.get('definition')) or installed.get('bundle_fingerprint') != bundle['fingerprint']:
             raise SessionError('sessions_not_ready', 'install the current upstream session definition first')
         controller = json.loads(self.lab.kubectl('-n', CONTROLLER_NS, 'get', 'deployment', 'agent-sandbox-controller', '-o', 'json'))
         if (controller['metadata']['uid'] != installed['controller_uid'] or
@@ -362,7 +369,7 @@ class Sessions:
             self.attach()
             bundle = self.bundle(require_client=False)
             previous = self.state.get('sessions')
-            if previous and (previous['definition'] != self.definition() or previous['bundle_fingerprint'] != bundle['fingerprint']):
+            if previous and (not self.definition_matches(previous['definition']) or previous['bundle_fingerprint'] != bundle['fingerprint']):
                 raise SessionError('session_definition_changed', 'recreate instead of replacing a live controller/runtime profile')
             if previous and previous.get('phase') == 'ready':
                 return dict(already_installed=True, **self.verify(bundle))
@@ -416,22 +423,8 @@ class Sessions:
         return kubectl_objects(self.lab.kubectl('create', '-f', '-', '-o', 'json', input_text=json.dumps(obj)))
 
     def client_policy(self, client_ns, work_ns, run_id):
-        api = json.loads(self.lab.kubectl('-n', 'default', 'get', 'service', 'kubernetes', '-o', 'json'))
-        slices = json.loads(self.lab.kubectl('-n', 'default', 'get', 'endpointslices', '-l',
-                                           'kubernetes.io/service-name=kubernetes', '-o', 'json'))['items']
         policy = self.render('client-policy', {'CLIENT_NS': client_ns, 'WORK_NS': work_ns, 'RUN': run_id})
-        rules = policy['spec']['egress']
-        api_ip = api['spec']['clusterIP']
-        ipaddress.IPv4Address(api_ip)
-        rules.append({'to': [{'ipBlock': {'cidr': api_ip + '/32'}}], 'ports': [{'protocol': 'TCP', 'port': 443}]})
-        # Different CNIs may evaluate service traffic before or after DNAT.
-        for item in slices:
-            for endpoint in item['endpoints']:
-                for address in endpoint['addresses']:
-                    ipaddress.IPv4Address(address)
-                    rules.append({'to': [{'ipBlock': {'cidr': address + '/32'}}],
-                                  'ports': [{'protocol': 'TCP', 'port': p['port']} for p in item['ports']]})
-        return policy
+        return add_api_egress(policy, discover_api_endpoints(self.lab.kubectl))
 
     def observer(self, namespace, run_id, image):
         params = {'NAME': 'observer', 'NAMESPACE': namespace, 'OWNER': self.state['session'],
@@ -621,6 +614,7 @@ class Sessions:
             namespaces = {}
             record = {'profile': profile, 'run': run_id, 'owner': self.state['session'], 'namespaces': namespaces,
                       'runtime_evidence': {}, 'go_events': [], 'cleanup_complete': False}
+            record['acceptance_definition'] = acceptance_definition(self.lab.config)
             try:
                 roles = [('work', 'agentbox-session-' + run_id), ('client', 'agentbox-session-client-' + run_id)]
                 if profile == 'cold':

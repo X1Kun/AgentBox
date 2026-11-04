@@ -1,0 +1,13 @@
+schema_version: 1
+product: batch
+owner: REQUIRED_PLATFORM_OWNER
+instance: batch-lab
+namespaces: {work: agentbox-batch-product}
+images:
+  api: docker.io/agentbox/api@sha256:REQUIRED_API_MANIFEST_DIGEST
+  worker: docker.io/agentbox/image-worker@sha256:REQUIRED_WORKER_MANIFEST_DIGEST
+worker_config_id: sha256:REQUIRED_WORKER_CONFIG_ID
+worker_manifest_digest: sha256:REQUIRED_WORKER_MANIFEST_DIGEST
+api_server_endpoints:
+- {address: 10.96.0.1, port: 443}
+- {address: REQUIRED_CONTROL_PLANE_IP, port: 6443}

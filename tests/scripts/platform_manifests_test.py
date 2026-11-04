@@ -12,6 +12,7 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
 from lib.platform_manifests import ManifestError,canonical,definition,lock_identity,normalized,objects,read_yaml,load_lock,LOCK_PATHS,render,render_component,profiles,python_image_source,build_input_identity
+from lib.platform_manifests import acceptance_definition, session_definition_matches, render_product_template, FIXTURES
 import yaml
 
 
@@ -111,21 +112,29 @@ class ManifestTests(unittest.TestCase):
     def test_logical_definition_bridge_rejects_security_or_placement_changes(self):
         config=ROOT/'deploy'
         bridge=read_yaml(config/'lab/format-compatibility.yaml')
-        for name,value in bridge['definitions'].items():self.assertEqual(definition(config,name),value['legacy'])
+        for name,value in bridge['definitions'].items():
+            if name != 'session':self.assertEqual(definition(config,name),value['legacy'])
+        self.assertTrue(session_definition_matches(config, bridge['definitions']['session']['legacy']))
+        self.assertTrue(session_definition_matches(config, bridge['definitions']['session']['current']))
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/'config';shutil.copytree(config,root)
             p=root/'components/agent-sandbox/template.yaml'
             value=read_yaml(p)
             value['spec']['podTemplate']['spec']['automountServiceAccountToken']=True
             p.write_text(yaml.safe_dump(value,sort_keys=False))
-            self.assertNotEqual(definition(root,'session'),bridge['definitions']['session']['legacy'])
+            self.assertEqual(definition(root,'session'),definition(config,'session'))
+            self.assertNotEqual(canonical(normalized(render_product_template(root,'session'))),canonical(normalized(render_product_template(config,'session'))))
+            p=root/'components/agent-sandbox/controller-lab-patch.yaml'
+            value=read_yaml(p,mapping=False);value[0]['value']='changed-controller-profile'
+            p.write_text(yaml.safe_dump(value,sort_keys=False))
+            self.assertFalse(session_definition_matches(root,bridge['definitions']['session']['legacy']))
             p=root/'lab/kind-calico.yaml';p.write_text(p.read_text()+'# changed\n')
             self.assertNotEqual(definition(root,'network'),bridge['definitions']['network']['legacy'])
 
     def test_component_layout_and_actual_environment_overlay(self):
         config=ROOT/'deploy'
         overlays=[p.relative_to(config).as_posix() for p in config.rglob('kustomization.yaml') if 'overlays' in p.parts]
-        self.assertEqual(overlays,['agentbox/overlays/lab/kustomization.yaml'])
+        self.assertEqual(sorted(overlays),['agentbox/overlays/lab/batch/kustomization.yaml','agentbox/overlays/lab/session/kustomization.yaml'])
         self.assertFalse((config/'platform').exists())
         base=render_component(config,'api',environment='base')
         lab=render_component(config,'api',environment='lab')
@@ -134,6 +143,27 @@ class ManifestTests(unittest.TestCase):
         self.assertNotIn('nodeSelector',before['spec']['template']['spec'])
         self.assertIn('nodeSelector',after['spec']['template']['spec'])
         self.assertEqual(before['spec']['selector'],after['spec']['selector'])
+
+    def test_acceptance_edits_do_not_change_platform_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures=Path(tmp)/'fixtures';shutil.copytree(FIXTURES,fixtures)
+            platform=definition(ROOT/'deploy','session')
+            before=acceptance_definition(ROOT/'deploy',fixtures)
+            p=fixtures/'sessions/client-job.yaml'
+            value=read_yaml(p);value['spec']['backoffLimit']=1
+            p.write_text(yaml.safe_dump(value,sort_keys=False))
+            self.assertNotEqual(acceptance_definition(ROOT/'deploy',fixtures),before)
+            self.assertEqual(definition(ROOT/'deploy','session'),platform)
+
+    def test_product_entries_are_independent_and_have_no_acceptance_dependencies(self):
+        session=objects(render_product_template(ROOT/'deploy','session'))
+        batch=objects(render_product_template(ROOT/'deploy','batch'))
+        self.assertEqual({o['metadata']['name'] for o in session if o['kind']=='Namespace'},{'agentbox-work','agentbox-client'})
+        self.assertFalse(any(o['kind'] in ('ClusterQueue','ResourceFlavor') or o['metadata']['name']=='agentbox-cleanup' for o in session))
+        quotas=[o for o in batch if o['kind']=='ResourceQuota']
+        self.assertEqual([o['metadata']['name'] for o in quotas],['batch-product-budget'])
+        self.assertEqual(quotas[0]['spec']['hard']['requests.cpu'],'600m')
+        self.assertFalse((ROOT/'deploy/agentbox/overlays/lab/kustomization.yaml').exists())
 
     def test_duplicate_keys_and_executable_yaml_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

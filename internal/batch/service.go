@@ -39,7 +39,7 @@ func New(client dynamic.Interface, cfg Config) (*Service, error) {
 	if d.Decode(&job) != nil {
 		return nil, errors.New("invalid batch Job schema")
 	}
-	if err = validateTemplate(&job, cfg.Namespace); err != nil {
+	if err = validateTemplate(&job, cfg.Namespace, cfg.WorkerImageDigest); err != nil {
 		return nil, err
 	}
 	contractData, err := os.ReadFile(cfg.ContractFile)

@@ -5,4 +5,4 @@ metadata:
     agentbox.dev/session: development
     agentbox.dev/session-role: sandbox
     agentbox.dev/session-run: preview
-  name: agentbox-platform
+  name: agentbox-work

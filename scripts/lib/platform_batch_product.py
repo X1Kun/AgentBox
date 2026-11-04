@@ -26,6 +26,8 @@ from lib.platform_batch import BatchError, BatchAcceptance, Kueue, require, iden
 from lib.platform_api_execution import APIExecutionAcceptance
 from lib.platform_sessions import Sessions
 from lib.platform_manifests import canonical, objects, render, read_yaml
+from lib.api_network import add_api_egress, discover_api_endpoints
+from lib.product_images import bind_digest
 from prepare_batch_images import prepare
 
 
@@ -102,11 +104,9 @@ def build_worker(lab):
             'crictl', 'images', '-o', 'json'], announce=False))['images']
         matches = [v for v in inventory if v['id'] == image_id and 'docker.io/' + image in v.get('repoTags', [])]
         require(len(matches) == 1, 'batch_image_identity_missing', 'CRI tag/config identity differs')
-        digests = {v.rsplit('@', 1)[-1] for v in matches[0].get('repoDigests', [])}
-        require(len(digests) == 1 and all(re.fullmatch('sha256:[a-f0-9]{64}', v) for v in digests),
-                'batch_image_identity_missing', 'expected one immutable CRI manifest digest for the verified image')
+        descriptor = bind_digest(lab,state['cluster']+'-worker',image,image_id,create_alias=False)
         result = {'schema_version': 1, 'inputs': inputs, 'fingerprint': fingerprint, 'image': image,
-                  'image_id': image_id, 'image_digest': next(iter(digests)), 'dataset': contract['dataset_id'], 'dataset_sha256': contract['dataset_sha256'],
+                  'image_id': image_id, 'image_digest': descriptor['manifest_digest'], 'dataset': contract['dataset_id'], 'dataset_sha256': contract['dataset_sha256'],
                   'docker_id': state['docker_id'], 'reused': reused, 'node_cache_reused': imported}
         lab.write_json(path, result)
         lab.write_json(lab.runner.output / 'batch-image-build.json', result)
@@ -122,6 +122,11 @@ def worker_bundle(lab):
     require(docker_image(lab, value['image'])['Id'] == value['image_id'], 'batch_image_changed', 'worker image was replaced')
     require(re.fullmatch('sha256:[a-f0-9]{64}', value.get('image_digest', '')) is not None,
             'batch_image_identity_missing', 'rerun batch-image-build to bind the CRI manifest digest')
+    state, _ = lab.owned(complete=True)
+    descriptor = bind_digest(lab,state['cluster']+'-worker',value['image'],value['image_id'],create_alias=False)
+    if descriptor['manifest_digest'] != value['image_digest']:
+        value['recorded_manifest_digest'] = value['image_digest']
+        value['image_digest'] = descriptor['manifest_digest']
     return value
 
 
@@ -222,23 +227,14 @@ class ProductAcceptance(APIExecutionAcceptance):
         raise BatchError('batch_api_connect_timeout', 'batch API was not ready')
 
     def policies(self, obj):
-        api = json.loads(self.lab.kubectl('-n', 'default', 'get', 'service', 'kubernetes', '-o', 'json'))
-        slices = json.loads(self.lab.kubectl('-n', 'default', 'get', 'endpointslices', '-l',
-            'kubernetes.io/service-name=kubernetes', '-o', 'json'))['items']
-        addresses = [(api['spec']['clusterIP'], [443])]
-        for item in slices:
-            addresses += [(address, [p['port'] for p in item['ports']]) for ep in item['endpoints'] for address in ep['addresses']]
-        for address, ports in addresses:
-            ipaddress.IPv4Address(address)
-            obj['spec']['egress'].append({'to': [{'ipBlock': {'cidr': address + '/32'}}],
-                'ports': [{'protocol': 'TCP', 'port': p} for p in ports]})
+        add_api_egress(obj, discover_api_endpoints(self.lab.kubectl))
 
     def budget(self, values):
         deployment = next(v for v in values if v['kind'] == 'Deployment')
         api = deployment['spec']['template']['spec']['containers'][0]['resources']['limits']
         contract = yaml.safe_load(next(v for v in values if v['kind'] == 'ConfigMap')['data']['job.yaml'])
         worker = contract['spec']['template']['spec']['containers'][0]['resources']['limits']
-        session = read_yaml(self.lab.config / 'agentbox/overlays/lab/quota.yaml')['spec']['hard']
+        session = read_yaml(self.lab.config / 'agentbox/overlays/lab/session/quota.yaml')['spec']['hard']
         nodes = json.loads(self.lab.kubectl('get', 'nodes', '-o', 'json', announce=False))['items']
         node = next(n for n in nodes if n['metadata']['name'] == self.runtime.worker_name)
         pods = json.loads(self.lab.kubectl('get', 'pods', '-A', '--field-selector=spec.nodeName=' + self.runtime.worker_name,

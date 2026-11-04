@@ -15,7 +15,7 @@ make check
 
 Agent 自动创建并绑定一个会话，仅向模型开放查询/执行/文件工具；结束或异常退出时在独立预算内请求关闭并确认。创建恢复使用相同 request_id；未知执行/写入不重放。MCP 子进程只获得 API token，模型和集群凭据不进入 MCP 或执行 Pod。
 
-静态部署资源使用 [YAML＋Kustomize](docs/operations.md#manifests)：配置按组件集中，agentbox/overlays/lab/ 表达环境差异，验收夹具单独归档；七份版本锁使用 YAML。Python 保留实验编排和验证，JSON 用于运行报告、缓存元数据及历史证据。普通检查的 Python 依赖包含固定 Pillow，见 scripts/requirements-platform.txt。
+静态部署资源使用 [YAML＋Kustomize](docs/operations.md#manifests)：配置按组件集中，独立的 lab/session、lab/batch 组合环境，验收夹具位于 tests/fixtures/platform，实验参数位于 experiments/configs/session；七份版本锁使用 YAML。Python 保留实验编排和验证，JSON 用于运行报告、缓存元数据及历史证据。普通检查的 Python 依赖包含固定 Pillow，见 scripts/requirements-platform.txt。
 
 ## 开发平台与真实验收
 

@@ -7,7 +7,7 @@
 <a id="manifests"></a>
 ## YAML 与 Kustomize 资源组织
 
-资源按组件职责归集，完整布局见[部署资源说明](../deploy/README.md)。`deploy/lab/` 保存 kind 与工具锁；`components/gvisor/`、`components/calico/`、`components/agent-sandbox/`、`components/kueue/` 保存各自配置、镜像文件和版本锁；`agentbox/api/` 与 `agentbox/cleanup/` 保存应用及独立管理员权限。只有 `agentbox/overlays/lab/` 表达应用环境差异，smoke/gVisor/network/sessions 夹具集中在 acceptance 下。
+资源按组件职责归集，完整布局见[部署资源说明](../deploy/README.md)。`deploy/lab/` 保存 kind 与工具锁；`components/gvisor/`、`components/calico/`、`components/agent-sandbox/`、`components/kueue/` 保存各自配置、镜像文件和版本锁；`agentbox/api/` 与 `agentbox/cleanup/` 保存应用及独立管理员权限。`agentbox/overlays/lab/session/` 与 `batch/` 分别组合产品环境；smoke/gVisor/network/sessions 夹具位于 `tests/fixtures/platform/`。
 
 ```bash
 python3 -m pip install -r scripts/requirements-platform.txt
@@ -270,7 +270,7 @@ make platform-batch-test
 
 控制器镜像默认从 `lab/image-sources.yaml` 的 `kueue_repository` 获取，保留官方 digest；可通过 `batch-install --kueue-image-source REPOSITORY@sha256:DIGEST` 显式覆盖相同 digest 的来源，`--kueue-manifest PATH` 指定同内容文件。重复安装只验证原资源 UID、实际配置和 Ready 状态，不 rollout；已有定义/镜像源不符时拒绝替换。失败安装保留阶段和已记录对象身份，再次执行同配置继续核对；升级与移除另行制定，不通过覆盖本地状态接管。
 
-批任务资源位于 `agentbox/batch/`，lab 的 ResourceQuota 位于唯一环境 overlay，计算夹具位于 `acceptance/batch/`。每轮验收创建独立 namespace、ResourceFlavor、ClusterQueue、LocalQueue 与预算，队列无 cohort、借用、抢占或健康 AdmissionCheck。500m CPU/256Mi 内存的队列、namespace 配额和 Job 请求/上限一致，最多一个计算 Pod。会话预算继续使用独立 namespace/固定池声明，运行前检查已有 Worker Pod 请求、完整会话上限与批预算之和不超过节点 allocatable；该保守检查不代表物理资源预留，kind 的两个节点仍共享宿主机。
+批任务资源位于 `agentbox/batch/`，单 Job 的 ResourceQuota 和计算夹具位于 `tests/fixtures/platform/batch/`，图片产品使用独立 lab/batch 入口。每轮验收创建独立 namespace、ResourceFlavor、ClusterQueue、LocalQueue 与预算，队列无 cohort、借用、抢占或健康 AdmissionCheck。500m CPU/256Mi 内存的队列、namespace 配额和 Job 请求/上限一致，最多一个计算 Pod。会话预算继续使用独立 namespace/固定池声明，运行前检查已有 Worker Pod 请求、完整会话上限与批预算之和不超过节点 allocatable；该保守检查不代表物理资源预留，kind 的两个节点仍共享宿主机。
 
 Job 初始 suspend=true，仅由 Kueue 准入后启动。批计算在 Worker 的 gVisor Pod 内直接执行，不调用远端沙箱；非 root、只读根、无 SA token、内存临时卷、默认拒绝网络，backoffLimit=0，明确观察单次尝试。CPU 计算期间验证 Pod UID → CRI handler/sandbox → runsc 进程与 cgroup 的 500m/256Mi、零 swap 边界。Job Complete 后仍核对实际退出码、固定结果 333833500 和 run/Pod 身份。
 
@@ -323,13 +323,13 @@ bin/agentbox-api --listen 127.0.0.1:8090 \
 
 namespace、pool、instance 在安装时固定，重启保持一致；改变 Pool/实例标识需要明确迁移，不能把旧记录当成新配置资源。token 至少 32 个可见 ASCII 字符，启动日志不包含 token 或 kubeconfig 内容。HTTP 有独立头/体/写入期限、4KiB 创建 body 上限及有限在途请求数，满载直接拒绝，不建立等待队列。
 
-[API RBAC](../deploy/agentbox/api/rbac.yaml) 提供独立 ServiceAccount 和工作 namespace Role：Claim create/get/patch、Pool get，以及关联 Sandbox/Pod/Service 只读。没有 Secret 读取、Pod 创建/删除、模板更改或控制器管理权限。[API quota](../deploy/agentbox/overlays/lab/quota.yaml) 是实验预算示例，约束计算 Pod、声明资源和保留 Claim 数；实际部署须按资源域配置，API readiness 不是容量许可。
+[API RBAC](../deploy/agentbox/api/rbac.yaml) 提供独立 ServiceAccount 和工作 namespace Role：Claim create/get/patch、Pool get，以及关联 Sandbox/Pod/Service 只读。没有 Secret 读取、Pod 创建/删除、模板更改或控制器管理权限。[API quota](../deploy/agentbox/overlays/lab/session/quota.yaml) 是实验预算示例，约束计算 Pod、声明资源和保留 Claim 数；实际部署须按资源域配置，API readiness 不是容量许可。
 
 生命周期持久状态复用 Claim：request 摘要、归属、首次 UID 绑定、失效和关闭意图使用 API 专属注解，修改携带 UID/resourceVersion 条件；上游控制器仍管理 Sandbox/Pod/Service。关闭使用 Retain，记录不会随服务进程退出丢失。管理员清理元数据前必须确认终止和依赖回收；记录配额耗尽会拒绝新 Claim，不能把保留记录当作无成本。
 
 在完成现有 Calico/gVisor/session 安装后运行 `make platform-api-test`。该验收构建普通 Go API 进程，临时签发仅限工作 namespace 的凭据，并配置两个不同调用身份。验证异步幂等创建、参数冲突、跨身份拒绝、服务重启、Pod 替换后的持久失效、关闭收敛和创建记录保留；host 独立验证实际 gVisor 与运行时回收。凭据只放私有临时目录，不进入镜像、请求日志、报告或执行 Pod，失败保留的测试 namespace 由 platform-delete 限定清理。
 
-执行/文件需显式 `--enable-execution` 并让 API 运行在可达 Pod 网络的可信环境；普通宿主进程默认只提供生命周期。`agentbox/api/Dockerfile` 与 `agentbox/overlays/lab/` 提供实验集群的原生部署模板：普通 API Pod 访问受限的上游端口，实际代码仍在 Worker gVisor Pod 中执行。API Pod 独有 ServiceAccount 和 TLS/调用方 Secret，执行 Pod 不挂载这些凭据。模板固定实验控制面节点、imagePullPolicy=Never、单副本，生产部署须适配镜像分发、节点选择、证书和 Secret 管理。Secret 的 principal 文件只允许 owner 或同进程组读取，不允许其他用户访问或组写入。
+执行/文件需显式 `--enable-execution` 并让 API 运行在可达 Pod 网络的可信环境；普通宿主进程默认只提供生命周期。`agentbox/api/Dockerfile` 与 `agentbox/overlays/lab/session/` 提供实验集群的原生部署模板：普通 API Pod 访问受限的上游端口，实际代码仍在 Worker gVisor Pod 中执行。API Pod 独有 ServiceAccount 和 TLS/调用方 Secret，执行 Pod 不挂载这些凭据。模板固定实验控制面节点、imagePullPolicy=Never、单副本，生产部署须适配镜像分发、节点选择、证书和 Secret 管理。Secret 的 principal 文件只允许 owner 或同进程组读取，不允许其他用户访问或组写入。
 
 `make platform-api-exec-test` 构建 Go API 镜像并在原有健康实验集群验证一条 CSV/脚本/产物/后续执行闭环，以及隔离、非零退出、路径边界、并发冲突、运行中关闭、命令超时和输出上限。宿主仅向普通 API Pod 建立 TLS port-forward，不向 gVisor Pod port-forward；执行连接由 API 在集群内建立。临时 TLS/调用身份不进入镜像或报告。成功后清理本次 namespace/运行时，保留开发集群、上游组件和镜像缓存供下次复用，最终释放仍使用 platform-delete。
 
@@ -481,7 +481,7 @@ API 日志不输出代码、文件内容、原始传输错误或凭据。运行�
 <a id="session-boundaries"></a>
 ## 固定轨迹的会话边界实验
 
-`make platform-session-boundary-test` 在已有 Calico/gVisor/Agent Sandbox 安装上创建临时固定池、API 和观察范围。配置位于 `deploy/acceptance/boundaries/session.yaml`，Go 驱动复用真实 `session/client`，Python 负责准备、编排、对账和清理。首批包含顺序结果校准、长短任务与同会话冲突、低高低恢复、命令期限、关闭竞争、突发领取耗尽和观察器失联恢复。
+`make platform-session-boundary-test` 在已有 Calico/gVisor/Agent Sandbox 安装上创建临时固定池、API 和观察范围。配置位于 `experiments/configs/session/session.yaml`，Go 驱动复用真实 `session/client`，Python 负责准备、编排、对账和清理。首批包含顺序结果校准、长短任务与同会话冲突、低高低恢复、命令期限、关闭竞争、突发领取耗尽和观察器失联恢复。
 
 每个计划请求写一条 JSONL 终态记录：计划/发送/完成相对时间、原会话身份、HTTP 状态、correct/wrong/rejected/error/unknown/dropped、输出 SHA-256 和是否在诊断期限内正确完成。请求不会因为服务变慢而重新排队或自动重试；生成器超出 `max_lag_ms` 或自身并发名额不足时记录 dropped，本轮 measurement_valid=false。HTTP 200 仍需退出码和完整预期 stdout 匹配才算 correct。场景之间逐个关闭会话并确认 API 回收；最终核对捕获的 runtime 进程。关闭确认与 close_acknowledged 分别解释。
 
@@ -505,7 +505,7 @@ API 日志包含 HTTP start/completed/rejected、acquire/execute/validate/releas
 <a id="session-matrix"></a>
 ## 多 Pod、负载与用户行为矩阵
 
-`make platform-session-matrix-test` 使用 `deploy/acceptance/boundaries/matrix.yaml`，对照 2/4 个执行会话，固定每 Pod 规格与总 namespace 上限 7 Pod（含固定池目标 2 和回收余量）。CPU/内存 requests/limits 随该总上限显式配置，原开发集群与产品默认配额不变；这个上限不代表物理独占，也不是可扩展吞吐量结论。
+`make platform-session-matrix-test` 使用 `experiments/configs/session/matrix.yaml`，对照 2/4 个执行会话，固定每 Pod 规格与总 namespace 上限 7 Pod（含固定池目标 2 和回收余量）。CPU/内存 requests/limits 随该总上限显式配置，原开发集群与产品默认配额不变；这个上限不代表物理独占，也不是可扩展吞吐量结论。
 
 场景包含同构短任务并发、Alice 长计算与 Bob 多会话短任务、32MiB 有界内存、128KiB 文件读写/摘要、8KiB 输出、预期非零退出、占用但不发命令的会话、主动关闭、突发领取，以及 800ms 客户端截止。文件位于会话内存卷，本场景不测物理磁盘性能。每条代码先验证独立会话 marker，完整 stdout 与预期退出码共同决定正确性。
 
@@ -521,7 +521,7 @@ Go 驱动按 target.user 或显式 request.user 选择真实配置的 HTTP 客�
 
 在已归属、健康的 Calico/gVisor 会话集群上准备 Kueue、图片 worker bundle 和观测镜像；沿用前文已有安装命令，不重建健康集群。运行 `make platform-static-baseline`，默认只进行 R 标定；离线查看计划用 `python3 scripts/platform_lab.py static-baseline --dry-run`。另存冻结配置后可通过 `--baseline-config PATH` 运行，实际配置和内容摘要进入证据。
 
-默认 [baseline.yaml](../deploy/acceptance/boundaries/baseline.yaml) 使用固定预热目标 2、已领取会话 2、会话 namespace 总 Pod 预算 4。R 不提交批任务，B1/B2 分别提供 500m/256Mi、1000m/512Mi 的 Kueue 配额，对应固定 500m/256Mi Job 的一/两个并发名额。所有组保持相同 namespace 总预算、镜像、API、观察器和 Pod 规格；R 也部署空闲批 API，控制测量设施差异。Job 使用真实锁定图片及同一 passes；不通过 sleep 填充计算。
+默认 [baseline.yaml](../experiments/configs/session/baseline.yaml) 使用固定预热目标 2、已领取会话 2、会话 namespace 总 Pod 预算 4。R 不提交批任务，B1/B2 分别提供 500m/256Mi、1000m/512Mi 的 Kueue 配额，对应固定 500m/256Mi Job 的一/两个并发名额。所有组保持相同 namespace 总预算、镜像、API、观察器和 Pod 规格；R 也部署空闲批 API，控制测量设施差异。Job 使用真实锁定图片及同一 passes；不通过 sleep 填充计算。
 
 30s 测量窗口覆盖低频稳态、高频稳态和低→高→低轨迹。R 标定先运行低峰值负载，每档五轮；业务质量未达标仍继续记录，生成器或观测失效则停止。本次配置的及时成功目标为 3s 内正确完成至少 95% 的全部计划请求，是实验目标，不是已证明的生产 SLO。进入对照时运行 `python3 scripts/platform_lab.py static-baseline --baseline-stage comparison --reference-report PATH/static-baseline.json`：报告须来自相同冻结配置、原平台及镜像且已完成回收。只有已有五轮有效且达到目标的轨迹才进入 R/B1/B2 对照，未达标的档位不静默带入；高档标定中断时，已独立完成的低档证据可以引用，报告同时保留标定不完整的事实。
 
@@ -538,7 +538,7 @@ Go 驱动按 target.user 或显式 request.user 选择真实配置的 HTTP 客�
 <a id="diagnostic-details"></a>
 ## 观测细节与故障归档
 
-`make platform-diagnostics-test` 使用[诊断场景](../deploy/acceptance/boundaries/diagnostics.yaml)，在独立 namespace 临时撤销本轮 batch 观察器 Role 的读取权限，确认 `403/forbidden`、session 观测与执行不受该故障影响，并在 UID/resourceVersion 保护下恢复原规则。它有意触发 `baseline_observation_invalid`：`static-baseline.json` 保留负向状态，独立 `diagnostics-acceptance.json` 表示诊断、恢复与回收检查是否通过，不产生合格容量基线。
+`make platform-diagnostics-test` 使用[诊断场景](../experiments/configs/session/diagnostics.yaml)，在独立 namespace 临时撤销本轮 batch 观察器 Role 的读取权限，确认 `403/forbidden`、session 观测与执行不受该故障影响，并在 UID/resourceVersion 保护下恢复原规则。它有意触发 `baseline_observation_invalid`：`static-baseline.json` 保留负向状态，独立 `diagnostics-acceptance.json` 表示诊断、恢复与回收检查是否通过，不产生合格容量基线。
 
 库存按 domain、节点指标按 node/source 独立使用 4s 预算；库存与运行时使用独立采集循环。读取日志携带 poll ID、domain、GET/LIST、resource、namespace、分类原因、HTTP 状态、耗时和剩余预算。Prometheus 新增 `agentbox_inventory_requests_total`、`agentbox_inventory_request_duration_seconds_bucket`、`agentbox_runtime_polls_total` 和 `agentbox_runtime_poll_duration_seconds_bucket`。指标只用有限分类，实例、请求、Pod 和进程 ID 保留在日志。失败保持 unknown，预算隔离不会将缺测改为零。
 
@@ -559,3 +559,17 @@ Go 驱动按 target.user 或显式 request.user 选择真实配置的 HTTP 客�
 静态基线另保留 `host-diagnostics.jsonl`（每 5s 的 PSI、磁盘计数、内存和可读取进程 I/O）、`controlplane-diagnostics.jsonl`（每 30s 的 API Server 请求/等待及 etcd WAL fsync/backend commit 直方图）和清理期间的 `cleanup-resources.jsonl`。后者按记录的 namespace UID 检查对象，保留 Pod/PVC/finalizer/事件原因与 CRI 状态；清理操作自身的开始、结束、结果和资源关联见 teardown_timeline。权限不足、采样缺失和超限明确记录，不补零；控制面直方图是聚合证据，不能自动证明某次请求的根因。
 
 成功和异常路径都在停止观察器后，将本轮时间范围的日志冻结为 `observer-events.jsonl`，另归档 `prometheus-final.json`。查询中途失败仍保存成功部分和 unavailable 标记，再返回 `diagnostic_metrics_incomplete`；所有归档失败均经过独立处理，namespace 清理继续尝试。采样器有单独的停止/失败状态，诊断子进程限制时间和输出字节；清理结束后不留下后台采样进程。
+
+
+<a id="product-entries"></a>
+## 独立产品部署入口
+
+应用入口为 `deploy/agentbox/overlays/lab/session/` 与 `batch/`；lab 根目录不再组合不相关资源。完整私有清单由 `scripts/render_product.py` 生成，再由管理员显式 apply，资源长期保留。底层 Calico/gVisor/Agent Sandbox 与 Kueue 沿用各自平台安装入口。准备命令、显式输入、TLS/凭据和 Service 访问方式见[部署资源说明](../deploy/README.md)。
+
+`python3 scripts/platform_lab.py product-images --with-batch` 在已校验的原节点上准备 API 镜像和 immutable 引用，并生成两份非秘密 inputs YAML。OCI manifest、config ID 和同配置可能出现的导入别名分别处理；选择具体 tag 的真实描述符并校验 config ID，不从 CRI RepoDigests 任取一个。补充缓存引用不升级 runtime 或修改已有安装 bundle。批 API 支持与配置 digest 精确一致的 worker 引用；旧受控本地 tag 保持兼容，其他可变 tag 仍被拒绝。
+
+最终 session 清单包含 12 个对象，batch 包含 15 个，均包括所需 Namespace、Service、Secret、RBAC、网络和各自预算。图片产品的 requests 预算为 600m/384Mi；500m/256Mi 的单 Job 配额只在验收夹具中使用。清理管理员权限独立选择。镜像/ID/digest 占位值、凭据不完整和已有 namespace 归属冲突会阻止渲染或检查，私有输出为新建的 0600 文件，不进入 stdout。
+
+验收夹具已迁至 `tests/fixtures/platform/`，会话实验参数迁至 `experiments/configs/session/`。平台 session 身份使用 v3 的锁与控制器补丁；SDK Job、RBAC 和 Dockerfile 另记验收身份，runtime-only 校验不读取 SDK 文件或要求缓存 SDK 镜像。旧记录仅在平台字段与已知旧记录精确匹配时兼容；模板变更另体现在产品组合身份，真实 UID 与 bundle 校验继续保留。
+
+`make platform-product-entry-test` 使用同一完整清单渲染器，在临时归属 namespace 验证执行、文件、真实图片产物和回收。它不接管或清理管理员显式部署的长期实例。批产品仍受当前有限记录容量和持久存储身份契约约束，改镜像/模板不能绕过已有数据与幂等保护。

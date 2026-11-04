@@ -142,3 +142,7 @@ platform-static-baseline:
 .PHONY: platform-diagnostics-test
 platform-diagnostics-test:
 	python3 scripts/platform_lab.py diagnostics-test
+
+.PHONY: platform-product-entry-test
+platform-product-entry-test:
+	python3 scripts/platform_lab.py product-entry-test

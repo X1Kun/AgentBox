@@ -17,7 +17,7 @@ from lib.platform_batch import BatchError
 
 class BaselineResults(unittest.TestCase):
     def setUp(self):
-        self.config = read_yaml(ROOT/'deploy/acceptance/boundaries/baseline.yaml')
+        self.config = read_yaml(ROOT/'experiments/configs/session/baseline.yaml')
 
     def test_plan_pairs_same_trace_without_changing_pool_or_template(self):
         calibration = results.plan(self.config)

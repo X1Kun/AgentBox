@@ -20,6 +20,13 @@ func TestExperimentDiagnostics(t *testing.T) {
 	}
 }
 
+func TestProductDeployment(t *testing.T) {
+	cmd := exec.Command("python3", "product_deployment_test.py", "-v")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("product deployment: %v\n%s", err, output)
+	}
+}
+
 func TestPlatformLab(t *testing.T) {
 	cmd := exec.Command("python3", "platform_test.py", "-v")
 	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")

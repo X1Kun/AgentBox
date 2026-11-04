@@ -9,10 +9,23 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	yaml "k8s.io/apimachinery/pkg/util/yaml"
+	"regexp"
 	"strings"
 )
 
-func validateTemplate(job *batchv1.Job, namespace string) error {
+var workerRepository = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*$`)
+
+func validWorkerReference(image, expectedDigest string) bool {
+	if repository, digest, pinned := strings.Cut(image, "@"); pinned {
+		return digest == expectedDigest && strings.HasPrefix(digest, "sha256:") && shaPattern.MatchString(strings.TrimPrefix(digest, "sha256:")) &&
+			workerRepository.MatchString(repository) && !strings.Contains(repository, "//") && !strings.Contains(repository, "..") && !strings.HasSuffix(repository, "/")
+	}
+	// Preserve the existing local build tags; other repositories require the
+	// administrator's exact digest, also checked against the observed Pod.
+	return strings.HasPrefix(image, "agentbox/image-worker:") && len(image) > len("agentbox/image-worker:")
+}
+
+func validateTemplate(job *batchv1.Job, namespace, expectedDigest string) error {
 	p := job.Spec.Template.Spec
 	if job.APIVersion != "batch/v1" || job.Kind != "Job" || job.Namespace != namespace || job.Spec.Suspend == nil || !*job.Spec.Suspend || job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 1 || job.Spec.ActiveDeadlineSeconds == nil || *job.Spec.ActiveDeadlineSeconds < 30 || *job.Spec.ActiveDeadlineSeconds > 600 || job.Spec.TTLSecondsAfterFinished != nil || job.Spec.Parallelism == nil || *job.Spec.Parallelism != 1 || job.Spec.Completions == nil || *job.Spec.Completions != 1 || job.Labels["kueue.x-k8s.io/queue-name"] != "batch" {
 		return errors.New("batch template must use the fixed suspended queue and bounded retry/deadline")
@@ -21,7 +34,7 @@ func validateTemplate(job *batchv1.Job, namespace string) error {
 		return errors.New("invalid batch Pod isolation")
 	}
 	for _, c := range append(p.Containers, p.InitContainers...) {
-		if c.Image != p.Containers[0].Image || !strings.HasPrefix(c.Image, "agentbox/image-worker:") || c.SecurityContext == nil || c.SecurityContext.AllowPrivilegeEscalation == nil || *c.SecurityContext.AllowPrivilegeEscalation || c.SecurityContext.ReadOnlyRootFilesystem == nil || !*c.SecurityContext.ReadOnlyRootFilesystem || c.SecurityContext.Privileged != nil && *c.SecurityContext.Privileged || len(c.EnvFrom) != 0 || len(c.Ports) != 0 {
+		if c.Image != p.Containers[0].Image || !validWorkerReference(c.Image, expectedDigest) || c.SecurityContext == nil || c.SecurityContext.AllowPrivilegeEscalation == nil || *c.SecurityContext.AllowPrivilegeEscalation || c.SecurityContext.ReadOnlyRootFilesystem == nil || !*c.SecurityContext.ReadOnlyRootFilesystem || c.SecurityContext.Privileged != nil && *c.SecurityContext.Privileged || len(c.EnvFrom) != 0 || len(c.Ports) != 0 {
 			return errors.New("invalid batch container template")
 		}
 		if c.Resources.Requests.Cpu().MilliValue() != 500 || c.Resources.Limits.Cpu().MilliValue() != 500 || c.Resources.Requests.Memory().Value() != 256<<20 || c.Resources.Limits.Memory().Value() != 256<<20 {

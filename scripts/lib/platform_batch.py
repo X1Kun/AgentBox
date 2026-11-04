@@ -332,7 +332,7 @@ class BatchAcceptance:
             require(nominal[key] == quantity(batch['requests.' + key]) == quantity(batch['limits.' + key]) ==
                     quantity(job['requests'][key]) == quantity(job['limits'][key]),
                     'invalid_batch_budget', 'queue, namespace and Job budgets must agree: ' + key)
-        session = read_yaml(self.lab.config / 'agentbox/overlays/lab/quota.yaml')['spec']['hard']
+        session = read_yaml(self.lab.config / 'agentbox/overlays/lab/session/quota.yaml')['spec']['hard']
         nodes = json.loads(self.lab.kubectl('get', 'nodes', '-o', 'json', announce=False))['items']
         worker = next(v for v in nodes if v['metadata']['name'] == self.runtime.worker_name)
         pods = json.loads(self.lab.kubectl('get', 'pods', '-A', '--field-selector=spec.nodeName=' + self.runtime.worker_name,
