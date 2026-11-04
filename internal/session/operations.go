@@ -22,8 +22,9 @@ const MaxOutputBytes = sessionprotocol.MaxOutputBytes
 // Target holds a snapshot, never a discoverable Service address. Validate must
 // succeed before and after opening a connection; that connection must not redial.
 type Target struct {
-	IP       string
-	Validate func(context.Context) error
+	SessionID, PodUID string
+	IP                string
+	Validate          func(context.Context) error
 }
 type Runtime interface {
 	Execute(context.Context, Target, string) (Execution, error)
@@ -71,8 +72,21 @@ func (s *Service) checkTarget(ctx context.Context, principal, id, expected strin
 
 // The Claim CAS serializes all data-plane calls across API replicas/restarts.
 // There is no expiring lease: a crash cannot quietly admit a second execution.
-func (s *Service) acquire(ctx context.Context, principal, id, expected string) (Target, string, error) {
+func (s *Service) acquire(ctx context.Context, principal, id, expected string) (targetResult Target, tokenResult string, resultErr error) {
 	started := time.Now()
+	defer func() {
+		if resultErr != nil {
+			if Code(resultErr) != sessionprotocol.CodeOperationOutcomeUnknown {
+				outcome := "error"
+				switch Code(resultErr) {
+				case sessionprotocol.CodeSessionBusy, sessionprotocol.CodeStateConflict, sessionprotocol.CodeIdentityChanged, sessionprotocol.CodeSessionNotReady:
+					outcome = "rejected"
+				}
+				s.operationEvent(ctx, id, "", "acquire", outcome, resultErr, started)
+			}
+			s.metrics.Diagnostic("acquire", Code(resultErr), time.Since(started))
+		}
+	}()
 	for attempts := 0; attempts < 3; attempts++ {
 		c, b, pod, err := s.checkTarget(ctx, principal, id, expected)
 		if err != nil {
@@ -100,7 +114,7 @@ func (s *Service) acquire(ctx context.Context, principal, id, expected string) (
 			return Target{}, "", fail(sessionprotocol.CodeOperationOutcomeUnknown)
 		}
 		s.operationEvent(ctx, id, token, "acquire", "complete", nil, started)
-		target := Target{IP: ip}
+		target := Target{IP: ip, SessionID: id, PodUID: b.Pod.UID}
 		target.Validate = func(callCtx context.Context) error {
 			current, _, p, e := s.checkTarget(callCtx, principal, id, expected)
 			if e != nil {

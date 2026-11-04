@@ -3,11 +3,13 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"github.com/X1Kun/AgentBox/internal/requestid"
 	sessionprotocol "github.com/X1Kun/AgentBox/internal/session/protocol"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"log/slog"
 	ext "sigs.k8s.io/agent-sandbox/extensions/api/v1beta1"
 	"strconv"
 	"time"
@@ -38,13 +40,13 @@ func (s *Service) Create(ctx context.Context, principal string, r CreateRequest)
 	if err != nil {
 		return View{}, false, err
 	}
-	c, err := s.resource(Claims).Get(ctx, name, metav1.GetOptions{})
+	c, err := s.getResource(ctx, Claims, name)
 	replay := err == nil
 	if err != nil && !apierrors.IsNotFound(err) {
 		return View{}, false, err
 	}
 	if apierrors.IsNotFound(err) {
-		pool, e := s.resource(Pools).Get(ctx, s.cfg.Pool, metav1.GetOptions{})
+		pool, e := s.getResource(ctx, Pools, s.cfg.Pool)
 		if e != nil {
 			return View{}, false, e
 		}
@@ -60,13 +62,15 @@ func (s *Service) Create(ctx context.Context, principal string, r CreateRequest)
 		if e != nil {
 			return View{}, false, e
 		}
+		done := s.beginBackend(ctx, "claim_create", name)
 		c, err = s.resource(Claims).Create(ctx, &unstructured.Unstructured{Object: object}, metav1.CreateOptions{})
+		done(err)
 		if err != nil {
 			if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) || apierrors.IsInvalid(err) || apierrors.IsBadRequest(err) || apierrors.IsTooManyRequests(err) {
 				return View{}, false, fail(sessionprotocol.CodeAdmissionRejected)
 			}
 			// No second application-level create, even on an ambiguous transport failure.
-			c, e = s.resource(Claims).Get(ctx, name, metav1.GetOptions{})
+			c, e = s.getResource(ctx, Claims, name)
 			if e != nil {
 				return View{}, false, &Error{Code: "create_outcome_unknown"}
 			}
@@ -92,7 +96,21 @@ type observation struct {
 }
 
 func (s *Service) Get(ctx context.Context, principal, id string) (View, error) {
+	started := time.Now()
 	snapshot, err := s.snapshot(ctx, principal, id)
+	reason := snapshot.Reason
+	if reason == "" {
+		reason = string(snapshot.State)
+	}
+	if err != nil {
+		reason = Code(err)
+	}
+	s.metrics.Diagnostic("state_observe", reason, time.Since(started))
+	logger := s.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.InfoContext(ctx, "session observed", "request_id", requestid.From(ctx), "session_id", id, "state", snapshot.State, "reason", reason, "duration_ms", time.Since(started).Milliseconds())
 	return snapshot.View, err
 }
 

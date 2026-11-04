@@ -22,12 +22,12 @@ class APIExecutionAcceptance(APIAcceptance):
     def save(self):
         (self.output/'api-execution-test.json').write_text(json.dumps(self.record,indent=2,sort_keys=True)+'\n')
 
-    def api(self, method, path, token, body=None, expected=None):
+    def api(self, method, path, token, body=None, expected=None, request_timeout=80):
         request=urllib.request.Request(self.base+path,method=method,
             data=json.dumps(body).encode() if body is not None else None,
             headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
         try:
-            with urllib.request.urlopen(request,context=self.tls_context,timeout=80) as response:
+            with urllib.request.urlopen(request,context=self.tls_context,timeout=request_timeout) as response:
                 status=response.status;value=json.loads(response.read(1<<20))
         except urllib.error.HTTPError as error:
             status=error.code;value=json.loads(error.read(1<<20))
@@ -118,8 +118,21 @@ class APIExecutionAcceptance(APIAcceptance):
         if self.log is not None:self.log.close();self.log=None
 
     def session(self,key,token,runtime,work):
-        _,v=self.api('POST','/v2/sessions',token,{'request_id':key},expected={202})
-        v=self.wait_state(v['session_id'],token,'ready')
+        # Creation has a stable identity; recover only that exact request. This
+        # never authorizes retry of execute/write or extends the startup window.
+        until = time.monotonic() + 180
+        while True:
+            self.require(time.monotonic() < until, 'creation recovery budget exhausted')
+            status, v = self.api('POST', '/v2/sessions', token, {'request_id': key}, expected={200, 202, 503, 504}, request_timeout=min(80, max(.01, until-time.monotonic())))
+            if status in (200, 202):
+                break
+            self.require(v.get('error') in ('backend_timeout', 'backend_unavailable', 'backend_throttled', 'create_outcome_unknown'),
+                         'creation rejected: ' + str(v.get('error')))
+            self.record.setdefault('creation_recoveries', []).append({'request_id': key, 'error': v.get('error')})
+            self.save()
+            self.require(time.monotonic() < until, 'creation recovery budget exhausted')
+            time.sleep(.5)
+        v=self.wait_state(v['session_id'],token,'ready',max(0, until-time.monotonic()))
         claim=json.loads(self.lab.kubectl('-n',work,'get','sandboxclaim',v['session_id'].split('.')[0],'-o','json'))
         binding=json.loads(claim['metadata']['annotations']['agentbox.dev/api-binding'])
         pod=json.loads(self.lab.kubectl('-n',work,'get','pod',binding['pod']['name'],'-o','json'))
@@ -138,8 +151,19 @@ class APIExecutionAcceptance(APIAcceptance):
         return self.api('POST','/v2/sessions/'+v['session_id']+'/files/'+action,token,data,expected)
 
     def close(self,v,token):
-        self.api('DELETE','/v2/sessions/'+v['session_id'],token,expected={200,202})
-        self.wait_state(v['session_id'],token,'closed',90)
+        until = time.monotonic() + 90
+        while time.monotonic() < until:
+            status, response = self.api('DELETE', '/v2/sessions/' + v['session_id'], token,
+                                        expected={200, 202, 503, 504}, request_timeout=min(80, max(.01, until-time.monotonic())))
+            if status in (200, 202):
+                self.wait_state(v['session_id'],token,'closed',max(0, until-time.monotonic()))
+                return
+            self.require(response.get('error') in ('backend_unavailable', 'backend_timeout', 'backend_throttled'),
+                         'closure rejected: ' + str(response.get('error')))
+            self.record.setdefault('close_recoveries', []).append({'session_id': v['session_id'], 'error': response.get('error')})
+            self.save()
+            time.sleep(.5)
+        self.require(False, 'closure recovery budget exhausted')
 
     def test(self):
         with self.lab.operation_lock():

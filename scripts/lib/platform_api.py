@@ -35,12 +35,12 @@ class APIAcceptance:
         if not condition:
             raise SessionError('api_acceptance_failed', detail)
 
-    def api(self, method, path, token, body=None, expected=None):
+    def api(self, method, path, token, body=None, expected=None, request_timeout=10):
         data = json.dumps(body).encode() if body is not None else None
         request = urllib.request.Request(self.base+path, method=method, data=data,
                   headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
         try:
-            with urllib.request.urlopen(request, timeout=10) as response:
+            with urllib.request.urlopen(request, timeout=request_timeout) as response:
                 status = response.status
                 value = json.loads(response.read(65536))
         except urllib.error.HTTPError as error:
@@ -113,10 +113,13 @@ class APIAcceptance:
     def wait_state(self, sid, token, wanted, seconds=180):
         until=time.monotonic()+seconds
         while time.monotonic()<until:
-            status,value=self.api('GET','/v2/sessions/'+sid,token,expected={200,503})
-            if status == 503 and value.get('error') == 'backend_unavailable':
+            status,value=self.api('GET','/v2/sessions/'+sid,token,expected={200,503,504}, request_timeout=min(10, max(.01, until-time.monotonic())))
+            # Read-only polling may recover transient dependency failures within
+            # the original observation budget; mutations are never replayed.
+            if (status, value.get('error')) in ((503, 'backend_unavailable'), (503, 'backend_throttled'), (504, 'backend_timeout')):
                 time.sleep(.5)
                 continue
+            self.require(status == 200, 'state query rejected: ' + str(value.get('error')))
             states = self.record.setdefault('observed_states', [])
             if not states or states[-1].get('state') != value.get('state') or states[-1].get('reason') != value.get('reason'):
                 states.append(value)

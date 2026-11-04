@@ -1,0 +1,133 @@
+schema_version: 1
+scope: fixed total namespace budget, fixed per-Pod spec; single Worker, two actual
+  principals
+pool_replicas: 2
+pod_budget: 7
+max_lag_ms: 1000
+deadline_ms: 10000
+scenarios:
+  baseline-two:
+    users:
+    - alice
+    - bob
+    max_inflight: 8
+    requests:
+    - id: alice-short
+      at_ms: 0
+      target: 0
+      work: short
+    - id: bob-short
+      at_ms: 0
+      target: 1
+      work: short
+  users-mixed:
+    users:
+    - alice
+    - bob
+    max_inflight: 8
+    requests:
+    - id: long-alice
+      at_ms: 0
+      target: 0
+      work: long
+    - id: bob-0
+      at_ms: 200
+      target: 1
+      work: short
+    - id: bob-1
+      at_ms: 5000
+      target: 1
+      work: short
+  code-shapes:
+    users:
+    - alice
+    - bob
+    max_inflight: 8
+    requests:
+    - id: memory
+      at_ms: 0
+      target: 0
+      work: memory
+    - id: file-roundtrip
+      at_ms: 0
+      target: 1
+      work: files
+    - id: output
+      at_ms: 5000
+      target: 0
+      work: output
+    - id: nonzero
+      at_ms: 5000
+      target: 1
+      work: failure
+  idle-and-close:
+    users:
+    - alice
+    - bob
+    max_inflight: 8
+    requests:
+    - id: alice-active
+      at_ms: 0
+      target: 0
+      work: long
+    - id: close-alice
+      at_ms: 400
+      target: 0
+      action: close
+    - id: idle-user-resumes
+      at_ms: 5000
+      target: 1
+      work: short
+  burst:
+    users:
+    - alice
+    - bob
+    max_inflight: 8
+    requests:
+    - id: recovered-alice
+      at_ms: 0
+      target: 0
+      work: short
+    - id: recovered-bob
+      at_ms: 0
+      target: 1
+      work: short
+  disconnect:
+    users:
+    - alice
+    - bob
+    max_inflight: 8
+    requests:
+    - id: client-cutoff
+      at_ms: 0
+      target: 0
+      work: long
+      client_timeout_ms: 800
+    - id: unaffected-peer
+      at_ms: 200
+      target: 1
+      work: short
+  parallel-four:
+    users:
+    - alice
+    - bob
+    - alice
+    - bob
+    max_inflight: 8
+    requests:
+    - id: a0
+      at_ms: 0
+      target: 0
+      work: short
+    - id: b0
+      at_ms: 0
+      target: 1
+      work: short
+    - id: a1
+      at_ms: 0
+      target: 2
+      work: short
+    - id: b1
+      at_ms: 0
+      target: 3
+      work: short

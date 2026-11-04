@@ -15,6 +15,21 @@ import (
 
 var ResourceQuotas = schema.GroupVersionResource{Version: "v1", Resource: "resourcequotas"}
 
+// Read failures must fail the sweep regardless of the public backend category.
+// A version/ownership change is handled separately after a successful read.
+func cleanupReadFailed(err error) bool {
+	if err == nil {
+		return false
+	}
+	switch Code(err) {
+	case sessionprotocol.CodeBackendUnavailable, sessionprotocol.CodeBackendTimeout,
+		sessionprotocol.CodeBackendForbidden, sessionprotocol.CodeBackendThrottled,
+		sessionprotocol.CodeBackendConflict:
+		return true
+	}
+	return false
+}
+
 const claimQuotaKey = "count/sandboxclaims.extensions.agents.x-k8s.io"
 
 type CleanupOptions struct {
@@ -129,7 +144,7 @@ func (s *Service) Sweep(ctx context.Context, principal string, opts CleanupOptio
 			report.Entries = append(report.Entries, entry)
 			index := len(report.Entries) - 1
 			current, loadErr := s.load(ctx, principal, entry.ID)
-			if loadErr != nil && Code(loadErr) == sessionprotocol.CodeBackendUnavailable {
+			if cleanupReadFailed(loadErr) {
 				report.Entries[index].Outcome = "read_failed"
 				return report, fail(codeCleanupReadFailed)
 			}
@@ -140,7 +155,8 @@ func (s *Service) Sweep(ctx context.Context, principal string, opts CleanupOptio
 			v, change, observeErr := s.observe(ctx, current)
 			if observeErr != nil {
 				report.Entries[index].Outcome = "skip_unverifiable"
-				if Code(observeErr) == sessionprotocol.CodeBackendUnavailable {
+				if cleanupReadFailed(observeErr) {
+					report.Entries[index].Outcome = "read_failed"
 					return report, fail(codeCleanupReadFailed)
 				}
 				continue
@@ -184,7 +200,7 @@ func (s *Service) Sweep(ctx context.Context, principal string, opts CleanupOptio
 				return report, fail(codeCleanupTimeout)
 			}
 			latest, loadErr := s.load(ctx, principal, entry.ID)
-			if loadErr != nil && Code(loadErr) == sessionprotocol.CodeBackendUnavailable {
+			if cleanupReadFailed(loadErr) {
 				report.Entries[index].Outcome = "read_failed"
 				return report, fail(codeCleanupReadFailed)
 			}
@@ -193,7 +209,7 @@ func (s *Service) Sweep(ctx context.Context, principal string, opts CleanupOptio
 				continue
 			}
 			check, latestChange, checkErr := s.observe(ctx, latest)
-			if checkErr != nil && Code(checkErr) == sessionprotocol.CodeBackendUnavailable {
+			if cleanupReadFailed(checkErr) {
 				report.Entries[index].Outcome = "read_failed"
 				return report, fail(codeCleanupReadFailed)
 			}

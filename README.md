@@ -35,7 +35,9 @@ platform-up 依赖已准备的锁定归档和镜像 bundle；不隐式下载/更
 
 图片产品闭环使用 `python3 scripts/prepare_batch_images.py --download`、`make platform-batch-image-build` 和 `make platform-batch-product-test`。输入为四张有许可和 SHA-256 的公开样例，每任务输出八张经过字节/像素校验的 PNG。`agentbox-api --mode=batch` 使用独立权限与 PVC，结果在 Job 删除后保留，原会话模式保持兼容。接口见[批任务 API](docs/usage.md#batch-api)，部署与临时数据清理见[图片任务运维](docs/operations.md#batch-images)。
 
-P3c 首步增加 [Prometheus/Grafana 与只读观察器](docs/operations.md#observability)。预载锁定镜像后运行 `make observability-up`；`make platform-observability-test` 自动连接临时会话/图片 API，验证真实指标、采集中断、权限丢失及重启恢复，导出原始时序和事件。Grafana 仅监听 `127.0.0.1:13000`，密码位于忽略的 `.local/observability/grafana-password`。宿主机与容器资源分别展示，缺失数据保留未知；固定到达轨迹和 R/B 性能基线后续实现。
+P3c 增加 [Prometheus/Grafana 与只读观察器](docs/operations.md#observability)。预载锁定镜像后运行 `make observability-up`；`make platform-observability-test` 验证真实指标、采集中断、权限丢失及重启恢复。Grafana 仅监听 `127.0.0.1:13000`，密码位于忽略的 `.local/observability/grafana-password`。固定到达与 R/B 静态配额实验入口为 `make platform-static-baseline`，配置、账本和解释边界见[基线运维](docs/operations.md#static-baseline)；提供实验入口不代表已形成容量或收益结论。
+
+`make platform-diagnostics-test` 独立验证分域权限故障、sandboxd 阶段关联和失败证据归档，包含宿主、控制面及清理时序，见[诊断细节](docs/operations.md#diagnostic-details)。诊断通过与 P3/P4 性能验收分别记录。
 
 `make platform-maintenance-test` 进一步验证队列停收时的后台发布/取消恢复、就绪状态失效、自然到期观测及 Claim 分页清理，范围与证据见[维护验收](docs/validation.md#maintenance)。客户端协议和工具契约已独立于 Kubernetes 服务实现；批任务记录的长期容量回收仍需显式协议升级。
 
@@ -52,3 +54,7 @@ P3c 首步增加 [Prometheus/Grafana 与只读观察器](docs/operations.md#obse
 | 行为证据、失败记录与测量计划 | [验证指南](docs/validation.md) |
 
 旧源码、安装与性能实验仅在[历史版本](docs/archive/legacy-runtime.md)复现。data/assets 和原始 artifacts 保持历史口径；不将旧 Warm 数字或 kind 功能结果当作新平台生产稳定性/性能结论。普通磁盘回收问题仍需独立排查。
+
+固定轨迹行为边界入口为 `make platform-session-boundary-test`，覆盖长短任务干扰、同会话冲突、突发池耗尽、低高低恢复、超时/关闭竞争及观察失联。逐请求结果与质量目标独立报告，见[实验记录](docs/validation.md#session-boundaries)。
+
+多 Pod/真实用户/代码负载组合使用 `make platform-session-matrix-test`，支持 2/4 个执行会话、Alice/Bob 独立凭据、CPU/内存/文件/输出/预期失败，以及空闲、关闭和客户端截止。选择独立诊断批次、预算与证据见[矩阵实验](docs/operations.md#session-matrix)。

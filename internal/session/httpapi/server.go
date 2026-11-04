@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/X1Kun/AgentBox/internal/readiness"
+	"github.com/X1Kun/AgentBox/internal/requestid"
 	"io"
 	"log/slog"
 	"mime"
@@ -71,14 +72,24 @@ func problem(w http.ResponseWriter, status int, code string) {
 	write(w, status, map[string]string{"error": code})
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r = r.WithContext(requestid.With(r.Context(), r.Header.Get(requestid.Header)))
+	w.Header().Set(requestid.Header, requestid.From(r.Context()))
+	started := time.Now()
+	if r.URL.Path != "/healthz" && r.URL.Path != "/readyz" {
+		slog.InfoContext(r.Context(), "session HTTP start", "request_id", requestid.From(r.Context()), "method", r.Method)
+		defer func() {
+			slog.InfoContext(r.Context(), "session HTTP completed", "request_id", requestid.From(r.Context()), "method", r.Method, "duration_ms", time.Since(started).Milliseconds())
+		}()
+	}
+
 	if r.URL.RawQuery != "" || r.URL.RawPath != "" {
-		problem(w, 400, session.CodeInvalidRequest)
+		s.problem(w, 400, session.CodeInvalidRequest)
 		return
 	}
 	if r.URL.Path == "/healthz" {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", "GET")
-			problem(w, 405, "method_not_allowed")
+			s.problem(w, 405, "method_not_allowed")
 			return
 		}
 		write(w, 200, map[string]bool{"alive": true})
@@ -87,11 +98,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/readyz" {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", "GET")
-			problem(w, 405, "method_not_allowed")
+			s.problem(w, 405, "method_not_allowed")
 			return
 		}
 		if !s.isReady() {
-			problem(w, 503, session.CodeBackendUnavailable)
+			s.problem(w, 503, session.CodeBackendUnavailable)
 			return
 		}
 		write(w, 200, map[string]bool{"ready": true})
@@ -108,7 +119,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	dataOperation := action == "execute" || action == "files/write" || action == "files/read"
 	if !collection && (id == "" || (action != "" && !dataOperation)) {
-		problem(w, 404, session.CodeNotFound)
+		s.problem(w, 404, session.CodeNotFound)
 		return
 	}
 	allowed := "POST"
@@ -117,13 +128,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if ((collection || dataOperation) && r.Method != "POST") || (!collection && !dataOperation && r.Method != "GET" && r.Method != "DELETE") {
 		w.Header().Set("Allow", allowed)
-		problem(w, 405, "method_not_allowed")
+		s.problem(w, 405, "method_not_allowed")
 		return
 	}
 	principal := s.authenticate(r)
 	if principal == "" {
 		w.Header().Set("WWW-Authenticate", "Bearer")
-		problem(w, 401, "unauthorized")
+		s.problem(w, 401, "unauthorized")
 		return
 	}
 	permits := s.permits
@@ -135,7 +146,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer func() { <-permits }()
 	default:
 		w.Header().Set("Retry-After", "1")
-		problem(w, 503, "api_capacity")
+		s.problem(w, 503, "api_capacity")
 		return
 	}
 	budget := s.timeout
@@ -154,7 +165,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if collection || dataOperation {
 		media, _, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if e != nil || media != "application/json" {
-			problem(w, 415, "unsupported_media_type")
+			s.problem(w, 415, "unsupported_media_type")
 			return
 		}
 		limit := int64(4096)
@@ -169,16 +180,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			var large *http.MaxBytesError
 			if errors.As(e, &large) {
-				problem(w, 413, "request_too_large")
+				s.problem(w, 413, "request_too_large")
 			} else {
-				problem(w, 400, session.CodeInvalidRequest)
+				s.problem(w, 400, session.CodeInvalidRequest)
 			}
 			return
 		}
 		if dataOperation {
 			backend, ok := s.backend.(Operations)
 			if !ok {
-				problem(w, 503, session.CodeExecutionUnavailable)
+				s.problem(w, 503, session.CodeExecutionUnavailable)
 				return
 			}
 			switch action {
@@ -206,13 +217,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if e != nil {
-				problem(w, 400, session.CodeInvalidRequest)
+				s.problem(w, 400, session.CodeInvalidRequest)
 				return
 			}
 		} else {
 			request, e := decodeCreate(data)
 			if e != nil {
-				problem(w, 400, session.CodeInvalidRequest)
+				s.problem(w, 400, session.CodeInvalidRequest)
 				return
 			}
 			var replay bool
@@ -223,7 +234,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if r.ContentLength > 0 || len(r.TransferEncoding) > 0 {
-			problem(w, 400, session.CodeInvalidRequest)
+			s.problem(w, 400, session.CodeInvalidRequest)
 			return
 		}
 		if r.Method == "GET" {
@@ -237,27 +248,39 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		code := session.Code(err)
+		if code == session.CodeBackendUnavailable {
+			switch {
+			case errors.Is(err, context.DeadlineExceeded) || apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err):
+				code = session.CodeBackendTimeout
+			case apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err):
+				code = session.CodeBackendForbidden
+			case apierrors.IsTooManyRequests(err):
+				code = session.CodeBackendThrottled
+			case apierrors.IsConflict(err):
+				code = session.CodeBackendConflict
+			}
+		}
 		reason := string(apierrors.ReasonForError(err))
 		if errors.Is(err, context.DeadlineExceeded) {
 			reason = "timeout"
 		}
-		slog.Warn("lifecycle request failed", "code", code, "reason", reason)
+		slog.WarnContext(ctx, "lifecycle request failed", "request_id", requestid.From(ctx), "code", code, "reason", reason)
 		status = 503
 		switch code {
 		case session.CodeInvalidRequest, "invalid_path":
 			status = 400
 		case session.CodeNotFound, "file_not_found":
 			status = 404
-		case session.CodeRequestConflict, session.CodeIdentityChanged, session.CodeIntegrityError, session.CodeStateConflict, session.CodeSessionBusy, session.CodeSessionNotReady:
+		case session.CodeRequestConflict, session.CodeIdentityChanged, session.CodeIntegrityError, session.CodeStateConflict, session.CodeBackendConflict, session.CodeSessionBusy, session.CodeSessionNotReady:
 			status = 409
 		case "file_access_denied":
 			status = 403
 		case "file_too_large", session.CodeExecutionOutputLimit:
 			status = 413
-		case session.CodeExecutionTimeout:
+		case session.CodeExecutionTimeout, session.CodeBackendTimeout:
 			status = 504
 		}
-		problem(w, status, code)
+		s.problem(w, status, code)
 		return
 	}
 	if response == nil {
@@ -364,4 +387,10 @@ func decodeOperation(data []byte, dst any, allowed, required []string) error {
 		}
 	}
 	return json.Unmarshal(data, dst)
+}
+
+func (s *Server) problem(w http.ResponseWriter, status int, code string) {
+	s.metrics.Diagnostic("http", code, 0)
+	slog.Info("session HTTP rejected", "request_id", w.Header().Get(requestid.Header), "status", status, "code", code)
+	problem(w, status, code)
 }

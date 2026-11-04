@@ -92,3 +92,13 @@ func TestAbortedHandlerDoesNotBecomeSuccessfulRequest(t *testing.T) {
 		t.Fatal(body)
 	}
 }
+
+func TestDiagnosticLabelsCannotLeakIdentities(t *testing.T) {
+	m := New("session")
+	m.Diagnostic("private-request-id", "Bearer-private-token", time.Millisecond)
+	m.Diagnostic("acquire", "session_busy", time.Millisecond)
+	body := scrape(t, m)
+	if strings.Contains(body, "private-request-id") || strings.Contains(body, "Bearer-private-token") || !strings.Contains(body, `reason="session_busy",stage="acquire"`) {
+		t.Fatal(body)
+	}
+}

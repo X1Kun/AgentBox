@@ -6,7 +6,6 @@ import (
 	"errors"
 	sessionprotocol "github.com/X1Kun/AgentBox/internal/session/protocol"
 	"github.com/X1Kun/AgentBox/internal/telemetry"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"log/slog"
 	"time"
@@ -18,7 +17,7 @@ type Error = sessionprotocol.Error
 
 func fail(code string) error { return &Error{Code: code} }
 
-func Code(err error) string { return sessionprotocol.Code(err) }
+func Code(err error) string { return publicBackendCode(err) }
 
 type Config struct {
 	Namespace, Pool, Instance, RuntimeClass string
@@ -66,6 +65,6 @@ func New(client dynamic.Interface, cfg Config) (*Service, error) {
 }
 
 func (s *Service) Ready(ctx context.Context) error {
-	_, err := s.resource(Pools).Get(ctx, s.cfg.Pool, metav1.GetOptions{})
+	_, err := s.getResource(ctx, Pools, s.cfg.Pool)
 	return err
 }

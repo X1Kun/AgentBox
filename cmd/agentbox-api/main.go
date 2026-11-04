@@ -142,7 +142,9 @@ func run() error {
 			return e
 		}
 		if execution {
-			backend.SetRuntime(sandboxd.New())
+			runtime := sandboxd.New()
+			runtime.SetTelemetry(metrics)
+			backend.SetRuntime(runtime)
 		}
 		backend.SetTelemetry(metrics)
 		handler, err = httpapi.New(backend, principals, timeout, maxInflight)

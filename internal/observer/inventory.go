@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -41,12 +42,17 @@ type Inventory struct {
 	logger                                         *slog.Logger
 	mu                                             sync.RWMutex
 	pollMu                                         sync.Mutex
+	stateMu                                        sync.Mutex
+	sequence                                       atomic.Uint64
+	budget                                         time.Duration
 	namespaceUIDs                                  map[string]string
 	values                                         map[string]sample
 	seen                                           map[string]map[string]bool
 	objects                                        map[string]map[string]string
 	validDesc, timestampDesc, itemsDesc, scopeDesc *prometheus.Desc
 	checks                                         *prometheus.CounterVec
+	reads                                          *prometheus.CounterVec
+	readDuration                                   *prometheus.HistogramVec
 	events                                         *prometheus.CounterVec
 	durations                                      *prometheus.HistogramVec
 }
@@ -66,6 +72,9 @@ func New(client dynamic.Interface, namespaces map[string]string, maxAge time.Dur
 		logger = slog.Default()
 	}
 	i := &Inventory{client: client, namespaces: copyNS, maxAge: maxAge, now: time.Now, started: time.Now(), logger: logger, values: map[string]sample{}, seen: map[string]map[string]bool{}, objects: map[string]map[string]string{}, namespaceUIDs: map[string]string{}}
+	i.budget = pollBudget
+	i.reads = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agentbox_inventory_requests_total", Help: "Inventory reads by finite resource and failure category."}, []string{"domain", "verb", "resource", "reason"})
+	i.readDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "agentbox_inventory_request_duration_seconds", Help: "Inventory backend read duration.", Buckets: prometheus.DefBuckets}, []string{"domain", "verb", "resource", "reason"})
 	i.validDesc = prometheus.NewDesc("agentbox_inventory_valid", "One only for a fresh complete namespace observation; missing data is not idle.", []string{"domain"}, nil)
 	i.scopeDesc = prometheus.NewDesc("agentbox_observer_scope", "Explicit configured application domains expected by monitoring.", []string{"domain"}, nil)
 	i.timestampDesc = prometheus.NewDesc("agentbox_inventory_timestamp_seconds", "Start time of last successful complete namespace observation.", []string{"domain"}, nil)
@@ -76,7 +85,7 @@ func New(client dynamic.Interface, namespaces map[string]string, maxAge time.Dur
 	return i, nil
 }
 func (i *Inventory) Register(registry *prometheus.Registry) {
-	registry.MustRegister(i, i.checks, i.events, i.durations)
+	registry.MustRegister(i, i.checks, i.events, i.durations, i.reads, i.readDuration)
 }
 func (i *Inventory) Describe(ch chan<- *prometheus.Desc) {
 	ch <- i.validDesc
@@ -110,13 +119,27 @@ func (i *Inventory) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 }
-func (i *Inventory) list(ctx context.Context, gvr schema.GroupVersionResource, namespace string) ([]unstructured.Unstructured, error) {
+func (i *Inventory) beginRead(ctx context.Context, verb, resource, namespace string) func(error) {
+	started := time.Now()
+	p, _ := ctx.Value(pollKey{}).(pollContext)
+	i.logger.InfoContext(ctx, "inventory read", "phase", "start", "poll_id", p.id, "domain", p.domain, "verb", verb, "resource", resource, "namespace", namespace, "remaining_budget_ms", remainingMS(ctx))
+	return func(err error) {
+		reason, status := readReason(err)
+		elapsed := time.Since(started)
+		i.reads.WithLabelValues(p.domain, verb, resource, reason).Inc()
+		i.readDuration.WithLabelValues(p.domain, verb, resource, reason).Observe(elapsed.Seconds())
+		i.logger.InfoContext(ctx, "inventory read", "phase", "end", "poll_id", p.id, "domain", p.domain, "verb", verb, "resource", resource, "namespace", namespace, "reason", reason, "http_status", status, "duration_ms", elapsed.Milliseconds(), "remaining_budget_ms", remainingMS(ctx))
+	}
+}
+func (i *Inventory) list(ctx context.Context, gvr schema.GroupVersionResource, namespace string) (items []unstructured.Unstructured, err error) {
+	done := i.beginRead(ctx, "list", gvr.Resource, namespace)
+	defer func() { done(err) }()
 	list, err := i.client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{Limit: 512})
 	if err != nil {
 		return nil, err
 	}
 	if list.GetContinue() != "" || len(list.Items) > 512 {
-		return nil, errors.New("observer inventory exceeds bounded scope")
+		return nil, &observationError{reason: "limit_exceeded"}
 	}
 	return list.Items, nil
 }
@@ -189,46 +212,66 @@ func emptyCounts(domain string) map[key]float64 {
 	return values
 }
 func (i *Inventory) Poll(ctx context.Context) error {
-	// The poller is serial; this mutex also keeps direct callers and scrapes race-free.
+	// Independent domains share shutdown cancellation, never each other's budget.
 	i.pollMu.Lock()
 	defer i.pollMu.Unlock()
-	var failures []error
+	failures := make(chan error, len(i.namespaces))
+	var workers sync.WaitGroup
+	id := fmt.Sprintf("%s-%d", i.started.UTC().Format(time.RFC3339Nano), i.sequence.Add(1))
 	domains := []string{}
 	for domain := range i.namespaces {
 		domains = append(domains, domain)
 	}
 	sort.Strings(domains)
 	for _, domain := range domains {
-		started := i.now()
-		err := i.pollDomain(ctx, domain, started)
-		outcome := "complete"
-		if err != nil {
-			outcome = "error"
-			i.mu.Lock()
-			previous := i.values[domain]
-			previous.valid = false
-			i.values[domain] = previous
-			i.mu.Unlock()
-			failures = append(failures, fmt.Errorf("%s inventory: %w", domain, err))
-			i.logger.Warn("inventory unavailable", "domain", domain, "reason", "read_failed")
-		}
-		i.checks.WithLabelValues(domain, outcome).Inc()
+		workers.Add(1)
+		go func(domain string) {
+			defer workers.Done()
+			call, cancel := context.WithTimeout(context.WithValue(ctx, pollKey{}, pollContext{id, domain}), i.budget)
+			defer cancel()
+			started := i.now()
+			err := i.pollDomain(call, domain, started)
+			outcome := "complete"
+			if err != nil {
+				outcome = "error"
+				i.mu.Lock()
+				previous := i.values[domain]
+				previous.valid = false
+				i.values[domain] = previous
+				i.mu.Unlock()
+				failures <- fmt.Errorf("%s inventory: %w", domain, err)
+				reason, status := readReason(err)
+				i.logger.Warn("inventory unavailable", "poll_id", id, "domain", domain, "reason", reason, "http_status", status, "duration_ms", i.now().Sub(started).Milliseconds(), "remaining_budget_ms", remainingMS(call))
+			}
+			i.checks.WithLabelValues(domain, outcome).Inc()
+		}(domain)
 	}
-	return errors.Join(failures...)
+	workers.Wait()
+	close(failures)
+	var all []error
+	for err := range failures {
+		all = append(all, err)
+	}
+	return errors.Join(all...)
 }
 func (i *Inventory) pollDomain(ctx context.Context, domain string, started time.Time) error {
 	namespace := i.namespaces[domain]
+	done := i.beginRead(ctx, "get", "namespaces", namespace)
 	ns, err := i.client.Resource(namespacesResource).Get(ctx, namespace, metav1.GetOptions{})
+	done(err)
 	if err != nil {
 		return err
 	}
 	if ns.GetUID() == "" || ns.GetDeletionTimestamp() != nil {
-		return errors.New("namespace identity unavailable")
+		return &observationError{reason: "identity_unavailable"}
 	}
+	i.stateMu.Lock()
 	if previous := i.namespaceUIDs[domain]; previous != "" && previous != string(ns.GetUID()) {
-		return errors.New("namespace identity changed")
+		i.stateMu.Unlock()
+		return &observationError{reason: "identity_changed"}
 	}
 	i.namespaceUIDs[domain] = string(ns.GetUID())
+	i.stateMu.Unlock()
 	p, err := i.list(ctx, pods, namespace)
 	if err != nil {
 		return err
@@ -254,6 +297,9 @@ func (i *Inventory) pollDomain(ctx context.Context, domain string, started time.
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	// Bookkeeping is shared, but no network read holds this lock.
+	i.stateMu.Lock()
+	defer i.stateMu.Unlock()
 	if domain == "batch" {
 		for n := range extra {
 			w := &extra[n]

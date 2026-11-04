@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,9 +32,9 @@ container_start_time_seconds{namespace="work",container="image-worker",pod="priv
 func TestRuntimeRatesExcludeParentsAndDoNotInventFirstSampleIdle(t *testing.T) {
 	now := time.Now()
 	data := runtimeFixture(10, 1, 200)
-	calls := 0
+	var calls atomic.Int64
 	client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
-		calls++
+		calls.Add(1)
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(data))}, nil
 	})}
 	r, err := NewRuntime([]RuntimeTarget{{Role: "worker", URL: "https://owned-node/metrics/cadvisor", Client: client}}, map[string]string{"batch": "work"}, 15*time.Second)
@@ -62,11 +63,11 @@ func TestRuntimeRatesExcludeParentsAndDoNotInventFirstSampleIdle(t *testing.T) {
 	if strings.Contains(body, "private-pod-id") || strings.Contains(body, "foreign") {
 		t.Fatal("unbounded/foreign identity leaked")
 	}
-	before := calls
+	before := calls.Load()
 	for n := 0; n < 10; n++ {
 		_ = text(t, registry)
 	}
-	if calls != before {
+	if calls.Load() != before {
 		t.Fatal("scrapes touched kubelet")
 	}
 	now = now.Add(16 * time.Second)

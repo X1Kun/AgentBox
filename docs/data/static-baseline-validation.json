@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-04T09:28:16.904116+00:00",
+  "status": {
+    "implementation": "implemented and regression checked",
+    "P3_performance_acceptance": "incomplete",
+    "P4": "not started",
+    "comparison_gate": "blocked: no qualifying R profile"
+  },
+  "config": {
+    "path": "deploy/acceptance/boundaries/baseline.yaml",
+    "sha256": "6fd05c5eee251bb3825dea897dfc56bdc432ba77403ccc3c4c4bbb796fe6b75a"
+  },
+  "R_calibration": {
+    "report": {
+      "path": "artifacts/platform-static-baseline-595f87e0ac65/report.json",
+      "sha256": "2f9e825f62523caccde847f2c5d466753dd1c50c199a73fb054a064955c44a0d"
+    },
+    "config_sha256": "30051e2f5ce7be0dd90d56f7b4f22636a58efeb2d4fb4197e74eaa3987ca1b50",
+    "stop_reason": "baseline_observation_invalid",
+    "cells": [
+      {
+        "id": "r1-steady-low-R",
+        "planned": 10,
+        "correct": 10,
+        "timely_correct": 6,
+        "timely_ratio": 0.6,
+        "outcomes": {
+          "correct": 10
+        },
+        "measurement_valid": true,
+        "observation_issues": [],
+        "p95_all_sent_ms": 5758.863577
+      },
+      {
+        "id": "r2-steady-low-R",
+        "planned": 10,
+        "correct": 10,
+        "timely_correct": 7,
+        "timely_ratio": 0.7,
+        "outcomes": {
+          "correct": 10
+        },
+        "measurement_valid": true,
+        "observation_issues": [],
+        "p95_all_sent_ms": 4097.789427
+      },
+      {
+        "id": "r3-steady-low-R",
+        "planned": 10,
+        "correct": 10,
+        "timely_correct": 9,
+        "timely_ratio": 0.9,
+        "outcomes": {
+          "correct": 10
+        },
+        "measurement_valid": true,
+        "observation_issues": [],
+        "p95_all_sent_ms": 4991.207523
+      },
+      {
+        "id": "r4-steady-low-R",
+        "planned": 10,
+        "correct": 8,
+        "timely_correct": 5,
+        "timely_ratio": 0.5,
+        "outcomes": {
+          "correct": 8,
+          "rejected": 2
+        },
+        "measurement_valid": false,
+        "observation_issues": [
+          "session_inventory_unknown",
+          "batch_inventory_unknown"
+        ],
+        "p95_all_sent_ms": 12987.563477
+      }
+    ],
+    "planned_cells": 15,
+    "completed_cells": 4,
+    "minimum_timely_ratio": 0.95,
+    "deadline_ms": 3000,
+    "eligible_profiles": []
+  },
+  "history": [
+    {
+      "report": {
+        "path": "artifacts/platform-static-baseline-64ebf3b092b5/report.json",
+        "sha256": "fd907cce30e454f7dee95247bbb07766af72c81ab1683482e5bfd417d3dfae5e"
+      },
+      "record": {
+        "path": "artifacts/platform-static-baseline-64ebf3b092b5/static-baseline.json",
+        "sha256": "6ad215bf301f589d1c3b6a6da68c989d1b72b677d2d0b6f2e42b5038ea43c309"
+      },
+      "reason": "baseline_batch_teardown_incomplete",
+      "stage": "pre-gating diagnostic",
+      "cells_recorded": 3,
+      "cleanup_complete_in_original_report": false,
+      "scope": "raw failure retained; pilot/interleaved results are not a qualified baseline"
+    },
+    {
+      "report": {
+        "path": "artifacts/platform-static-baseline-001be2b21ac1/report.json",
+        "sha256": "0cb7f26d03d313af45329b71e3ed781c48e945ccfb6af4e659586f80d145bc17"
+      },
+      "record": {
+        "path": "artifacts/platform-static-baseline-001be2b21ac1/static-baseline.json",
+        "sha256": "215f5345942e81030bd606c65809e083e13f7d8329eaa2d7b85481d0b0c0ca6b"
+      },
+      "reason": "boundary_teardown_incomplete",
+      "stage": "pre-gating diagnostic",
+      "cells_recorded": 3,
+      "cleanup_complete_in_original_report": false,
+      "scope": "raw failure retained; pilot/interleaved results are not a qualified baseline"
+    },
+    {
+      "report": {
+        "path": "artifacts/platform-static-baseline-e82f98b03fa5/report.json",
+        "sha256": "9886c22ed7aae8e984cb3652ccbb7eb6f832a3f26c079d24aec01da9b406cbf6"
+      },
+      "record": {
+        "path": "artifacts/platform-static-baseline-e82f98b03fa5/static-baseline.json",
+        "sha256": "da6631e40e211d3764a3bcec514b26bb9b75642c81d7fe14858c2dc9297d281e"
+      },
+      "reason": "baseline_invalid_generator",
+      "stage": "pre-gating diagnostic",
+      "cells_recorded": 2,
+      "cleanup_complete_in_original_report": true,
+      "scope": "raw failure retained; pilot/interleaved results are not a qualified baseline"
+    },
+    {
+      "report": {
+        "path": "artifacts/platform-static-baseline-595f87e0ac65/report.json",
+        "sha256": "2f9e825f62523caccde847f2c5d466753dd1c50c199a73fb054a064955c44a0d"
+      },
+      "record": {
+        "path": "artifacts/platform-static-baseline-595f87e0ac65/static-baseline.json",
+        "sha256": "9331f0a3cee3a8615cd1adb24df2d2af0f44626faddfb7bbbde1b6ef7a3f728d"
+      },
+      "reason": "baseline_observation_invalid",
+      "stage": "calibration",
+      "cells_recorded": 4,
+      "cleanup_complete_in_original_report": true,
+      "scope": "R calibration stopped on observation failure"
+    }
+  ],
+  "cleanup": {
+    "checked_at": "2026-11-04T09:25:26.832538+00:00",
+    "runs": [
+      "platform-static-baseline-e82f98b03fa5",
+      "platform-static-baseline-64ebf3b092b5",
+      "platform-static-baseline-001be2b21ac1",
+      "platform-static-baseline-595f87e0ac65",
+      "platform-static-baseline-cleanup-4ef4ed3c85c3"
+    ],
+    "remaining": {
+      "namespaces": [],
+      "clusterqueues": [],
+      "resourceflavors": [],
+      "pv": [],
+      "cri_sandboxes": [],
+      "gvisor_processes": []
+    },
+    "platform_identity_unchanged": true,
+    "all_reclaimed": true
+  },
+  "checks": {
+    "make_check": {
+      "passed": true,
+      "log": {
+        "path": "artifacts/platform-static-baseline-595f87e0ac65/final-checks/agentbox-static-final-check.log",
+        "sha256": "3410b1d56a9dd281b772ba95e6ed293575d3692f0061fddd13131f61340e8fbe"
+      }
+    },
+    "python": {
+      "passed": true,
+      "tests": 184,
+      "log": {
+        "path": "artifacts/platform-static-baseline-595f87e0ac65/final-checks/agentbox-static-final-python.log",
+        "sha256": "48b2b0d8b0ec91a659725d2050a45e3d2e1af7c2569507deda4bb210a299b2ef"
+      }
+    },
+    "comparison_rejection": {
+      "path": "artifacts/platform-static-baseline-595f87e0ac65/final-checks/agentbox-static-gate.log",
+      "sha256": "463e592fb9e2026763d698c654788c020879b0caaae020080174cb9494fa5faa"
+    }
+  },
+  "source_sha256": {
+    "scripts/platform_lab.py": "01af946922fff0381e7593d7477824d61a467422e8a887a5aa46061c690cf480",
+    "scripts/lib/static_baseline.py": "b6519dd3104575132babe7ed0083a4b411e29be729ee3efa7926833831814522",
+    "scripts/lib/baseline_results.py": "bc3721cfe30c41140fb334dbd9ddefb71c1dfd3486c9efd7d09de09d66b7ffff",
+    "scripts/lib/session_boundaries.py": "341f806cef96285f8bb2339ebd6b05b03d75ad7bb3d0df45a2eecfdaab2965bd",
+    "scripts/lib/platform_sessions.py": "3f34179ae2547f358c383262c8c899178259e611672fc8f5fdf4a49fead8361d",
+    "internal/experiment/session/runner.go": "60626b7de558187f5ab208c814d5d3350d7ac6ce9f58d67516a9261a1d433904",
+    "internal/experiment/session/runner_test.go": "794824f83bf1914239539effd2563ce0acf39c6868b9e1a7485cb2495d6df4ea",
+    "tests/scripts/static_baseline_test.py": "cd503e187b8dd996a82250c81e45f1aa588e48bff0d668b08c890550bea5a9f0",
+    "tests/scripts/platform_sessions_test.py": "b35662b44f6672722c45c3e791e71ab84d973614829887d481c51098613d0e4d",
+    "tests/scripts/platform_test.go": "66ed81033c41ec10124f8cbf8e88a46851b7e9f4a2bb59e0ee89b1cad62c56f7",
+    "deploy/acceptance/boundaries/baseline.yaml": "6fd05c5eee251bb3825dea897dfc56bdc432ba77403ccc3c4c4bbb796fe6b75a"
+  },
+  "measured_source_archive": "artifacts/platform-static-baseline-595f87e0ac65/source-at-run",
+  "supplemental_guards_after_R_launch": {
+    "scripts/lib/static_baseline.py": {
+      "measured_sha256": "f912f6586ef19883357a0785dfbacc05bbd73da87aebb29f4b6c79391b75312e",
+      "final_sha256": "b6519dd3104575132babe7ed0083a4b411e29be729ee3efa7926833831814522"
+    },
+    "scripts/platform_lab.py": {
+      "measured_sha256": "b013320250c61f2dc7ee7ceca6c5191455e25f2c8ec2998ac446216458ac79ad",
+      "final_sha256": "01af946922fff0381e7593d7477824d61a467422e8a887a5aa46061c690cf480"
+    }
+  },
+  "supplemental_guard_notes": [
+    "Wait for ClusterQueue Active observedGeneration to match the updated generation before a comparison cell. R cells used unchanged generation 1 and their archived queue snapshots already match observedGeneration 1.",
+    "Reject missing or inapplicable comparison reference arguments before accessing the platform. Neither change affects the R-only default command measured here."
+  ],
+  "slow_request": {
+    "request_id": "babea1b7e16d0a3744d1efbba12a3f45",
+    "ledger": {
+      "path": "artifacts/platform-static-baseline-595f87e0ac65/r1-steady-low-R/session.jsonl",
+      "sha256": "c6100f8493acd1a45747bc100fae0b263ee4e9503f3f4883e94fd15291030fc8"
+    },
+    "API_logs": {
+      "path": "artifacts/platform-static-baseline-595f87e0ac65/calibration-api-events.jsonl",
+      "sha256": "f289c2b58ee40eaf8b110b8e5e2680c1ec2b845797a30f38532c91256a68ef22"
+    },
+    "client_elapsed_ms": 5758.863577,
+    "server_HTTP_ms": 5745,
+    "acquire_ms": 1349,
+    "execute_chain_ms": 4217,
+    "release_ms": 123,
+    "scope": "Execution chain includes sandboxd transport and process startup, not just Python computation; native root cause not established."
+  },
+  "host_observations": {
+    "filesystem": "/dev/sda3 ext4; rotational disk",
+    "five_second_disk_sample": {
+      "sda_busy_percent": 95.92,
+      "read_await_ms": 102.10277324632953,
+      "write_await_ms": 85.99090909090908,
+      "read_MiB_s": 1.3046875,
+      "write_MiB_s": 0.56953125,
+      "timing": "during the second pilot teardown; exact sampling timestamp was not retained"
+    },
+    "process_wait_observed": "experiment Python process in D state at jbd2_log_wait_commit",
+    "accessible_process_IO_sample": {
+      "gopls_read_bytes_in_3s": 2084864,
+      "scope": "152 readable processes only; does not attribute all device activity"
+    },
+    "user_reported_other_heavy_load": false,
+    "inference_limit": "Storage pressure coincided with backend/cleanup delays; these samples do not prove that all latency was caused by the disk or gopls."
+  },
+  "limitations": [
+    "Fewer than five valid R repetitions and no target-qualified profile: no static B comparison or P4 benefit conclusion.",
+    "First three R rounds are valid negative timing results; the fourth preserves its request ledger but has invalid inventory observations.",
+    "Earlier pilots and the interleaved scan retain different windows/order and source versions; do not pool them into R/B performance scores.",
+    "CRI integrals cover sampled leaf containers only; missing resources and outside-Pod costs remain unknown.",
+    "No production SLO, maximum capacity, five-machine independence or long-term throughput claim."
+  ]
+}

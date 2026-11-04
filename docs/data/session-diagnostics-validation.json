@@ -1,0 +1,95 @@
+{
+  "current_sources": {
+    "internal/experiment/session/runner.go": "7f1d9c14b7adc79a7951c06372b232a5be399b3924a7647a3faad266c9f0a8c2",
+    "internal/experiment/session/runner_test.go": "155bcda1d81b77995f39519c4c7e8e7a1863cf45b1ebc00f78ab257b405dd5d1",
+    "internal/requestid/requestid.go": "9c5a8238f809584208a1b4104d1e1b13bbcc7703834f1dbe1e60a89ac526f8f2",
+    "internal/session/backend_diagnostics.go": "a2c4a37f2c4db2f06c7faed280cd6cfcf6445b8127c436548c1c09c86e9a1b38",
+    "internal/session/backend_diagnostics_test.go": "41022fca0eb4a0b886c3e120ab52b1f288c1c37ac22ca04f594b6f909ecff4bf",
+    "internal/session/client/client.go": "0d69e14a654d42b142896b099ac9bf1c4363d7ce4c49a784d4def3330a9dad84",
+    "internal/session/client/client_test.go": "f9b1940285bc51f93e03f421e1366b3fc7bfe871c9e771a308eac55a035c8bf9",
+    "internal/session/diagnostics.go": "da4093bdca8b0bd62b19cf965d63fa74e5ffddbf4b9007e760067253038e4fdf",
+    "internal/session/httpapi/operations_test.go": "7e749c9a8b2a7f1d31e504ae66dc21775da3c4a010e8e7f36ce6b79a1bf6aaff",
+    "internal/session/httpapi/readiness.go": "b7533af2e4e810a7e45088b4ff0466334c4a9a3c9b0aaf1b81565da2ad0cf15d",
+    "internal/session/httpapi/readiness_test.go": "955375ae1434c1760f993df2a03e6c0f2d5dc138acf488ea8745b3e59acf0e07",
+    "internal/session/httpapi/server.go": "e2ba80631405dedacbd6d04fd0726d6be2be615d32112fa740d1610a49402329",
+    "internal/session/httpapi/server_test.go": "bfc22549de882d2b86c37e223e0cec63096ef2cbbed1460156cb51c49dc9f767",
+    "internal/session/identity.go": "d41289ff13866b7faa62158853d3a2f1d3537dc7b6d8c0f15aab0ab357947bbf",
+    "internal/session/lifecycle.go": "fbe03c306573e7241d221b5d5cd27577416901676b7078683f5116fd0904d467",
+    "internal/session/operations.go": "bd752382fad3b4dd51581fa74f65061d8c00ae50a1eba136366869f8c06d7a4b",
+    "internal/session/operations_test.go": "8acd05fbfe9c082ed9f651deaba88c2794e6b3c98fa5b389de3f2152892eeab0",
+    "internal/session/protocol/types.go": "13135be7df5308c4ad3a375fddd2fb2e010ba92c948aad875887cca83da1b8d9",
+    "internal/session/protocol/validation.go": "af018ecc1855b2bc07a032ee3732e1d7d1c98c948f6401e65c9b11b523551a39",
+    "internal/session/protocol/values.go": "4e8c2049ce69c3d5001087595fac5e86dee4b3facbe5d7ab8a7748c03d2cd79d",
+    "internal/session/requests_test.go": "cbf7138c567391936f90c5da774796ac778a00d83fabc98bfec4e6ea5b430e04",
+    "internal/session/retention.go": "8049a41ab714cfb36c616c3ef6b8b5fffbaeded7b3d53f48ba0c6171b36d4952",
+    "internal/session/retention_test.go": "0a6a8e37208a82cc89ebefd4c6a7c470de054d182852310f29e1e2c5a18b49ed",
+    "internal/session/sandboxd/runtime.go": "12ca224b4b131c77de885f626fe6b11fd6de1bf36be24142c50ce5fc7ba7b6b4",
+    "internal/session/sandboxd/runtime_test.go": "a076a5f0edb06d4c1fbfb0bb5bb6c7de33ab0c193964985977d3cdb9492c7f19",
+    "internal/session/service.go": "91b22eabca0d716f8fb474df1462d619451409a5c9cdf2191f0b91906bdf538b",
+    "internal/session/service_test.go": "c1c8d27fb3701e873a81503cc9264ef56f995f6f27b3a3fe9364ea965ac03c1f",
+    "internal/session/values.go": "4a39464fcba2ea33e41f6a3b110ebeddcad994469f4844c0636db959cb26d76c",
+    "internal/telemetry/metrics.go": "66a9f6534bdaa985f3cb8de2a7603b85254d43212212c0c5dc439b867f39191d",
+    "internal/telemetry/metrics_test.go": "eb66cfc4988144fb227f60843a5a98909a588d909a70d60f2eeeaeba1b2e51b9"
+  },
+  "diagnostic_series_count": 17,
+  "exports": [
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/api-events.jsonl",
+      "sha256": "3a6bb92f9c8479358755568e5c7d877f6283311dbd0b4b5e7a44218babbe37d7"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/kubernetes-events.json",
+      "sha256": "7be2dc65c7f5397695ed412c7560b46b010b93f8135ecbdf3085dd59a00291a0"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/controller-events.log",
+      "sha256": "0c1149d276ad4e3ec2c2f18f214fa0926ca42ad6b628b87fbf77f4fb4bfefc3b"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/prometheus-range.json",
+      "sha256": "40ccb8dacdf0815bd240de493dc2ce60c7f066191a80f27c88463e082d861976"
+    },
+    {
+      "path": "artifacts/platform-session-boundary-test-ecc874f8e872/mixed.jsonl",
+      "sha256": "6ebd495b59dac521619231d5a1b2fb5d725d99ad958ac4086e7b6c74aad320ea"
+    }
+  ],
+  "full_check": {
+    "passed": true,
+    "path": "artifacts/diagnostics-validation-6e2008d845f6/agentbox-diagnostics-final-check.log",
+    "sha256": "96cbe5bed9b37bc35da2e3ad138cb883a5c2ed922f45e4d58985db8468eb9b09"
+  },
+  "identities_absent_from_metric_labels": true,
+  "limits": [
+    "Public backend_forbidden does not distinguish quota admission from RBAC by itself; Events/controller evidence is required.",
+    "Diagnostic logging changes measured overhead; no performance gain or maximum capacity conclusion.",
+    "Historical namespaces were deleted before complete diagnostics existed, so past root causes remain unconfirmed."
+  ],
+  "linked_rejection": {
+    "error_code": "session_busy",
+    "http_status": 409,
+    "matching_api_log_entries": 18,
+    "request_id": "ae6dc54435816521688ee87bfd2f9e16"
+  },
+  "native_cleanup_complete": true,
+  "native_report": {
+    "path": "artifacts/platform-session-boundary-test-ecc874f8e872/report.json",
+    "sha256": "bee23a7f9b3f323c61e64a7e2e6763abdd54b37ff94a82b6806c2cebef7e447b"
+  },
+  "native_snapshot_differences": [
+    "internal/session/httpapi/readiness_test.go",
+    "internal/session/httpapi/server.go",
+    "internal/session/operations.go",
+    "scripts/platform_lab.py"
+  ],
+  "quota_event_reasons": [
+    "SandboxPodCreateFailed"
+  ],
+  "quota_related_events": 19,
+  "schema_version": 1,
+  "scope_note": "New run proves quota-related Pod creation failures occur, but does not identify the deleted historical 180s failure cause.",
+  "targeted_http_classification": {
+    "path": "artifacts/diagnostics-validation-6e2008d845f6/agentbox-diagnostics-http-check.log",
+    "sha256": "edb8c21da347fa6f8b210e62b697ae5147bd6eb314db464e624a07b9df398bbb"
+  }
+}

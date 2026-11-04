@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/requestid"
 	"io"
 	"net"
 	"net/http"
@@ -156,6 +157,9 @@ func (c *Client) call(ctx context.Context, method, path string, body any, mutati
 	if body != nil {
 		request.ContentLength = int64(len(data))
 		request.Header.Set("Content-Type", "application/json")
+	}
+	if id := requestid.From(ctx); id != "" {
+		request.Header.Set(requestid.Header, id)
 	}
 	request.Header.Set("Authorization", "Bearer "+c.token)
 	response, err := c.http.Do(request)

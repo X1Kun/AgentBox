@@ -126,3 +126,19 @@ platform-up:
 
 platform-ready:
 	python3 scripts/platform_lab.py ready
+
+.PHONY: platform-session-boundary-test
+platform-session-boundary-test:
+	python3 scripts/platform_lab.py session-boundary-test
+
+.PHONY: platform-session-matrix-test
+platform-session-matrix-test:
+	python3 scripts/platform_lab.py session-matrix-test
+
+.PHONY: platform-static-baseline
+platform-static-baseline:
+	python3 scripts/platform_lab.py static-baseline
+
+.PHONY: platform-diagnostics-test
+platform-diagnostics-test:
+	python3 scripts/platform_lab.py diagnostics-test

@@ -160,6 +160,12 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, 'unowned_session_namespace')
         self.assertFalse(any('delete' in call.args for call in self.lab.kubectl.call_args_list))
 
+    def test_namespace_cleanup_accepts_already_removed_scope(self):
+        self.lab.kubectl.return_value = ''
+        self.sessions.close_namespaces({'work': {'name': 'owned', 'uid': 'original'}}, 'run')
+        self.assertEqual(self.lab.kubectl.call_count, 1)
+        self.assertIn('--ignore-not-found', self.lab.kubectl.call_args.args)
+
     def test_runtime_identity_checked_before_host_probe(self):
         runtime = Mock()
         self.lab.kubectl.return_value = '{"metadata":{"uid":"replaced"}}'
