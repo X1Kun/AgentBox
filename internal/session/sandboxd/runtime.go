@@ -1,6 +1,6 @@
-// Package sessionruntime adapts the pinned upstream sandboxd protocol. It does
+// Package sandboxd adapts the pinned upstream sandboxd protocol. It does
 // not create workloads or run code in the API process.
-package sessionruntime
+package sandboxd
 
 import (
 	"bytes"

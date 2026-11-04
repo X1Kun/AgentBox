@@ -5,8 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	sessionprotocol "github.com/X1Kun/AgentBox/internal/session/protocol"
 	"net"
-	"path"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -15,9 +15,9 @@ import (
 )
 
 const operationKey = "agentbox.dev/api-operation"
-const MaxCodeBytes = 64 << 10
-const MaxFileBytes = 256 << 10
-const MaxOutputBytes = 64 << 10
+const MaxCodeBytes = sessionprotocol.MaxCodeBytes
+const MaxFileBytes = sessionprotocol.MaxFileBytes
+const MaxOutputBytes = sessionprotocol.MaxOutputBytes
 
 // Target holds a snapshot, never a discoverable Service address. Validate must
 // succeed before and after opening a connection; that connection must not redial.
@@ -30,48 +30,16 @@ type Runtime interface {
 	Write(context.Context, Target, string, []byte) error
 	Read(context.Context, Target, string) ([]byte, error)
 }
-type ExecuteRequest struct {
-	IdentityRevision string `json:"identity_revision"`
-	Code             string `json:"code"`
-	TimeoutSeconds   int    `json:"timeout_seconds,omitempty"`
-}
-type FileRequest struct {
-	IdentityRevision string `json:"identity_revision"`
-	Path             string `json:"path"`
-	Content          []byte `json:"content_base64,omitempty"`
-}
-type Execution struct {
-	Stdout   string `json:"stdout"`
-	Stderr   string `json:"stderr"`
-	ExitCode int    `json:"exit_code"`
-}
-type ExecutionView struct {
-	Execution
-	SessionID        string `json:"session_id"`
-	IdentityRevision string `json:"identity_revision"`
-}
-type FileView struct {
-	SessionID        string `json:"session_id"`
-	IdentityRevision string `json:"identity_revision"`
-	Path             string `json:"path"`
-	Content          []byte `json:"content_base64"`
-	Size             int    `json:"size_bytes"`
-}
+type ExecuteRequest = sessionprotocol.ExecuteRequest
+type FileRequest = sessionprotocol.FileRequest
+type Execution = sessionprotocol.Execution
+type ExecutionView = sessionprotocol.ExecutionView
+type FileView = sessionprotocol.FileView
 
 // Configure the adapter once, before serving requests. Lifecycle-only operation
 // remains possible, for example on a host without access to the Pod network.
 func (s *Service) SetRuntime(r Runtime) { s.runtime = r }
-func validPath(p string) bool {
-	if p == "" || len(p) > 512 || !utf8.ValidString(p) || strings.HasPrefix(p, "/") || strings.ContainsAny(p, "\\\x00") || path.Clean(p) != p {
-		return false
-	}
-	for _, part := range strings.Split(p, "/") {
-		if part == "." || part == ".." || part == "" {
-			return false
-		}
-	}
-	return true
-}
+func validPath(p string) bool           { return sessionprotocol.ValidPath(p) }
 func (s *Service) checkTarget(ctx context.Context, principal, id, expected string) (*unstructured.Unstructured, *Binding, *unstructured.Unstructured, error) {
 	// Reuse only this observation's validated Pod. Each connection boundary
 	// makes a new observation, including the full uniqueness/selector scans.
@@ -79,11 +47,11 @@ func (s *Service) checkTarget(ctx context.Context, principal, id, expected strin
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if v.State != "ready" {
-		return nil, nil, nil, fail("session_not_ready")
+	if v.State != sessionprotocol.StateReady {
+		return nil, nil, nil, fail(sessionprotocol.CodeSessionNotReady)
 	}
 	if expected == "" || v.IdentityRevision != expected {
-		return nil, nil, nil, fail("identity_changed")
+		return nil, nil, nil, fail(sessionprotocol.CodeIdentityChanged)
 	}
 	// Re-read after observing backing objects: Close or another holder may
 	// have changed the Claim while those API reads were in flight.
@@ -96,7 +64,7 @@ func (s *Service) checkTarget(ctx context.Context, principal, id, expected strin
 		return nil, nil, nil, err
 	}
 	if b == nil || v.pod == nil || ref(v.pod) != b.Pod || revision(b) != expected || c.GetAnnotations()[invalidKey] != "" || c.GetAnnotations()[closeKey] == "true" {
-		return nil, nil, nil, fail("identity_changed")
+		return nil, nil, nil, fail(sessionprotocol.CodeIdentityChanged)
 	}
 	return c, b, v.pod, nil
 }
@@ -111,11 +79,11 @@ func (s *Service) acquire(ctx context.Context, principal, id, expected string) (
 			return Target{}, "", err
 		}
 		if c.GetAnnotations()[operationKey] != "" {
-			return Target{}, "", fail("session_busy")
+			return Target{}, "", fail(sessionprotocol.CodeSessionBusy)
 		}
 		ip, _, _ := unstructured.NestedString(pod.Object, "status", "podIP")
 		if string(pod.GetUID()) != b.Pod.UID || net.ParseIP(ip) == nil {
-			return Target{}, "", fail("identity_changed")
+			return Target{}, "", fail(sessionprotocol.CodeIdentityChanged)
 		}
 		var nonce [16]byte
 		if _, err = rand.Read(nonce[:]); err != nil {
@@ -129,7 +97,7 @@ func (s *Service) acquire(ctx context.Context, principal, id, expected string) (
 			}
 			// A lost CAS reply may have installed the lock. Do not dispatch or replay.
 			s.operationEvent(ctx, id, token, "acquire", "unknown", err, started)
-			return Target{}, "", fail("operation_outcome_unknown")
+			return Target{}, "", fail(sessionprotocol.CodeOperationOutcomeUnknown)
 		}
 		s.operationEvent(ctx, id, token, "acquire", "complete", nil, started)
 		target := Target{IP: ip}
@@ -139,17 +107,17 @@ func (s *Service) acquire(ctx context.Context, principal, id, expected string) (
 				return e
 			}
 			if current.GetAnnotations()[operationKey] != token {
-				return fail("state_conflict")
+				return fail(sessionprotocol.CodeStateConflict)
 			}
 			currentIP, _, _ := unstructured.NestedString(p.Object, "status", "podIP")
 			if string(p.GetUID()) != b.Pod.UID || currentIP != ip {
-				return fail("identity_changed")
+				return fail(sessionprotocol.CodeIdentityChanged)
 			}
 			return nil
 		}
 		return target, token, nil
 	}
-	return Target{}, "", fail("state_conflict")
+	return Target{}, "", fail(sessionprotocol.CodeStateConflict)
 }
 func (s *Service) release(ctx context.Context, principal, id, token string) error {
 	for attempts := 0; attempts < 3; attempts++ {
@@ -158,7 +126,7 @@ func (s *Service) release(ctx context.Context, principal, id, token string) erro
 			return err
 		}
 		if c.GetAnnotations()[operationKey] != token {
-			return fail("state_conflict")
+			return fail(sessionprotocol.CodeStateConflict)
 		}
 		err = s.patch(ctx, c, map[string]string{operationKey: ""}, "")
 		if err == nil {
@@ -174,7 +142,7 @@ func (s *Service) release(ctx context.Context, principal, id, token string) erro
 			return err
 		}
 	}
-	return fail("state_conflict")
+	return fail(sessionprotocol.CodeStateConflict)
 }
 func (s *Service) finish(ctx context.Context, principal, id, expected, token string, operationErr error, mutating bool) error {
 	// Any uncertain mutation keeps its durable lock and requests full-session
@@ -193,36 +161,36 @@ func (s *Service) finish(ctx context.Context, principal, id, expected, token str
 	if uncertain {
 		s.requestOperationClose(cleanup, principal, id, token)
 		switch Code(operationErr) {
-		case "execution_output_limit":
-			return fail("execution_output_limit")
+		case sessionprotocol.CodeExecutionOutputLimit:
+			return fail(sessionprotocol.CodeExecutionOutputLimit)
 		}
 		if errors.Is(operationErr, context.DeadlineExceeded) {
-			return fail("execution_timeout")
+			return fail(sessionprotocol.CodeExecutionTimeout)
 		}
-		return fail("operation_outcome_unknown")
+		return fail(sessionprotocol.CodeOperationOutcomeUnknown)
 	}
 	started := time.Now()
 	if err := s.release(cleanup, principal, id, token); err != nil {
 		s.operationEvent(cleanup, id, token, "release", "unknown", err, started)
 		s.requestOperationClose(cleanup, principal, id, token)
-		return fail("operation_outcome_unknown")
+		return fail(sessionprotocol.CodeOperationOutcomeUnknown)
 	}
 	s.operationEvent(cleanup, id, token, "release", "complete", nil, started)
 	return operationErr
 }
 func (s *Service) Execute(ctx context.Context, principal, id string, r ExecuteRequest) (ExecutionView, error) {
 	if len(r.Code) == 0 || len(r.Code) > MaxCodeBytes || !utf8.ValidString(r.Code) || strings.ContainsRune(r.Code, 0) {
-		return ExecutionView{}, fail("invalid_request")
+		return ExecutionView{}, fail(sessionprotocol.CodeInvalidRequest)
 	}
 	seconds := r.TimeoutSeconds
 	if seconds == 0 {
 		seconds = 20
 	}
 	if seconds < 1 || seconds > 60 {
-		return ExecutionView{}, fail("invalid_request")
+		return ExecutionView{}, fail(sessionprotocol.CodeInvalidRequest)
 	}
 	if s.runtime == nil {
-		return ExecutionView{}, fail("execution_unavailable")
+		return ExecutionView{}, fail(sessionprotocol.CodeExecutionUnavailable)
 	}
 	target, token, err := s.acquire(ctx, principal, id, r.IdentityRevision)
 	if err != nil {
@@ -255,19 +223,19 @@ func (s *Service) Execute(ctx context.Context, principal, id string, r ExecuteRe
 }
 func (s *Service) Write(ctx context.Context, principal, id string, r FileRequest) (FileView, error) {
 	if !validPath(r.Path) || len(r.Content) > MaxFileBytes {
-		return FileView{}, fail("invalid_request")
+		return FileView{}, fail(sessionprotocol.CodeInvalidRequest)
 	}
 	return s.file(ctx, principal, id, r, true)
 }
 func (s *Service) Read(ctx context.Context, principal, id string, r FileRequest) (FileView, error) {
 	if !validPath(r.Path) || r.Content != nil {
-		return FileView{}, fail("invalid_request")
+		return FileView{}, fail(sessionprotocol.CodeInvalidRequest)
 	}
 	return s.file(ctx, principal, id, r, false)
 }
 func (s *Service) file(ctx context.Context, principal, id string, r FileRequest, write bool) (FileView, error) {
 	if s.runtime == nil {
-		return FileView{}, fail("execution_unavailable")
+		return FileView{}, fail(sessionprotocol.CodeExecutionUnavailable)
 	}
 	target, token, err := s.acquire(ctx, principal, id, r.IdentityRevision)
 	if err != nil {

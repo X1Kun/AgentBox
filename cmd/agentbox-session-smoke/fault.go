@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/X1Kun/AgentBox/internal/sessionprobe"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -37,7 +36,7 @@ func replacementBoundary(before, after identity) error {
 	return nil
 }
 func (p *probe) faultCheck(name string) {
-	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: name, Passed: true})
+	p.result.Checks = append(p.result.Checks, Check{Name: name, Passed: true})
 }
 
 func (p *probe) runFault(ctx context.Context, config *rest.Config) (result report, retErr error) {
@@ -169,7 +168,7 @@ func (p *probe) runFault(ctx context.Context, config *rest.Config) (result repor
 	if err := p.stable(ctx, a, original); err == nil {
 		return result, errors.New("old backing identity was accepted after Pod loss")
 	} else {
-		p.result.Fault.GuardError = sessionprobe.ShortError(err)
+		p.result.Fault.GuardError = ShortError(err)
 	}
 	p.faultCheck("pod_replacement_changes_uid_and_invalidates_old_identity")
 	// Inspect the new environment explicitly; never replay any old command against it.

@@ -39,7 +39,9 @@ func run(args []string) error {
 	flags.StringVar(&reportPath, "report", "", "new private JSON report path; must not already exist")
 	flags.StringVar(&opts.QuotaName, "quota-name", "agentbox-api-budget", "record ResourceQuota name; empty disables quota inspection")
 	flags.DurationVar(&opts.Retention, "retention", 24*time.Hour, "retention since first confirmed API cleanup, 1s..8760h")
-	flags.IntVar(&opts.MaxRecords, "max-records", 100, "maximum scoped records per invocation, 1..1000")
+	flags.IntVar(&opts.MaxRecords, "max-records", 100, "maximum scoped records to scan per invocation, 1..1000")
+	flags.IntVar(&opts.MaxDeletes, "max-deletes", 100, "maximum eligible deletion candidates per invocation, 1..1000")
+	flags.StringVar(&opts.Continue, "continue", "", "opaque next_continue from the previous report with the same scope; expired cursors fail closed")
 	flags.BoolVar(&opts.Apply, "apply", false, "persist closure observations and delete eligible records; default is read-only preview")
 	flags.DurationVar(&timeout, "timeout", 2*time.Minute, "total invocation budget, 1s..30m")
 	flags.DurationVar(&requestTimeout, "request-timeout", 5*time.Second, "individual Kubernetes request budget, 1s..30s")
@@ -49,7 +51,7 @@ func run(args []string) error {
 	if flags.NArg() != 0 || kubeconfig == "" || reportPath == "" || !session.ValidPrincipal(principal) || timeout < time.Second || timeout > 30*time.Minute || requestTimeout < time.Second || requestTimeout > 30*time.Second {
 		return errors.New("explicit kubeconfig, report and valid scope/budgets are required")
 	}
-	if opts.Retention < time.Second || opts.Retention > 365*24*time.Hour || opts.Retention%time.Second != 0 || opts.MaxRecords < 1 || opts.MaxRecords > 1000 {
+	if opts.Retention < time.Second || opts.Retention > 365*24*time.Hour || opts.Retention%time.Second != 0 || opts.MaxRecords < 1 || opts.MaxRecords > 1000 || opts.MaxDeletes < 1 || opts.MaxDeletes > 1000 || len(opts.Continue) > 16384 {
 		return errors.New("invalid retention or record limit")
 	}
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)

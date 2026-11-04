@@ -1,4 +1,4 @@
-package sessionclient
+package client
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/X1Kun/AgentBox/internal/session"
+	session "github.com/X1Kun/AgentBox/internal/session/protocol"
 )
 
 const testToken = "session-client-test-token-at-least-32-characters"

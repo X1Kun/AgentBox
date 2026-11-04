@@ -1,6 +1,6 @@
 # 路线图与阶段验收
 
-更新：2026-11-03｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
+更新：2026-11-04｜路线：成熟平台主体＋Go 产品适配＋一个可验证的资源策略。架构以 [DESIGN](../DESIGN.md)为准。
 
 在现有 AgentBox 内演进，优先复用 Agent Sandbox 管理会话，Job/Kueue 管理批任务，共用 containerd/gVisor。agentboxd/旧 Gateway 已退出活动源码，不再提供本地运行后端；两类 Kubernetes 工作负载不等于长期维护新旧双后端。
 
@@ -98,6 +98,10 @@ P3a 提供固定 Kueue v0.20.3 的受限安装、LocalQueue/ClusterQueue/Worker 
 P3b 将固定图片数据集、独立产物契约和 Go 批任务接口合并交付：四张公开图片和处理库/wheel 固定版本/摘要；真实缩略图/灰度处理在 gVisor Job 内运行；独立 PVC 保留产物与有限幂等记录；支持原 Job UID 查询/取消、跨身份拒绝、重启后恢复、失败尝试隔离及已验证 PNG 下载。接口见[使用指南](usage.md#batch-api)，准备和验收见[运维指南](operations.md#batch-images)。
 
 P3c 分三步交付：当前先实现 API 指标、只读 Kubernetes/运行时观察器、本地 Prometheus/Grafana 和缺失/重启验收；下一步冻结到达轨迹、逐请求事件与仅会话 R 容量基线；再扫描共享预算下的静态批配额 B。当前采集功能不构成 R/B 成绩，也不证明所有 gVisor 叶资源均可由 cAdvisor 测得，边界见[观测验收](validation.md#observability)。完成 P3 的全部门槛后再进入健康感知准入策略；P3b 的功能结果不作为性能收益或磁盘问题根治证据。
+
+容量实验前先补齐维护与分层：后台 reconcile 独立于 readiness，统一快照新鲜度/退出失效，修正自然到期观测、提交锁范围及分页进度；抽离轻量 DTO/工具契约并拆分相关职责。验证入口为 `make platform-maintenance-test`，边界见[维护验收](validation.md#maintenance)。记录容量回收先按[后续契约](usage.md#batch-record-evolution)设计，当前 v2 不自动删记录；该有限容量平台不作为长期连续运行已经完成的证明。
+
+会话相关适配器已聚合到 `internal/session/` 的 protocol/httpapi/client/sandboxd 子包，业务主包按文件拆职责；单一 smoke 命令使用的验收场景回到命令目录。包边界和依赖方向继续由回归检查，已有运行时与当前验收客户端分别验证，见[目录整理验收](validation.md#session-layout)。
 
 先完成 Job/Kueue 的 LocalQueue/ClusterQueue/ResourceFlavor，固定规格与配额，不借用、不抢占。会话 namespace/固定池预算与批任务预算分开声明，共同受 Worker 实际容量约束；首版不让 Kueue 接管 Claim 或命令。
 

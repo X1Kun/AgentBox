@@ -57,18 +57,25 @@ class APIRetentionAcceptance(APIAcceptance):
 
     def test(self):
         with self.lab.operation_lock():
-            sessions=Sessions(self.lab);sessions.attach();bundle=sessions.bundle();sessions.verify(bundle)
-            run=uuid.uuid4().hex[:10];namespaces={}
+            sessions = Sessions(self.lab)
+            sessions.attach()
+            bundle = sessions.bundle(require_client=False)
+            sessions.verify(bundle)
+            run = uuid.uuid4().hex[:10]
+            namespaces = {}
             self.record.update(run=run,owner=sessions.state['session'],namespaces=namespaces,
                 scope='32 already-expired Retain Claims; controller acknowledgement is real; no executor Pods',
                 io_pressure=Path('/proc/pressure/io').read_text())
-            binary=self.lab.state_dir/'api-build'/'agentbox-cleanup';binary.parent.mkdir(exist_ok=True)
+            binary = self.lab.state_dir / 'api-build' / 'agentbox-cleanup'
+            binary.parent.mkdir(exist_ok=True)
             self.lab.runner.run(['env','CGO_ENABLED=0','go','build','-p=2','-mod=readonly','-trimpath','-buildvcs=false','-o',binary,'./cmd/agentbox-cleanup'],timeout=900)
             self.record['binary_sha256']=hashlib.sha256(binary.read_bytes()).hexdigest()
             try:
                 for role in ('work','client'):
                     namespaces[role]=sessions.namespace('agentbox-retention-'+role+'-'+run,'retention-'+role,run)
-                work=namespaces['work']['name'];client=namespaces['client']['name'];instance='retention-'+run
+                work = namespaces['work']['name']
+                client = namespaces['client']['name']
+                instance = 'retention-' + run
                 params={'OWNER':sessions.state['session'],'RUN':run,'WORK_NS':work,'CLIENT_NS':client,'RUNTIME_IMAGE':bundle['images']['runtime']['name']}
                 for name in ('session','api-rbac','cleanup-rbac','api-quota'):
                     sessions.create(sessions.render(name,params))
@@ -102,15 +109,39 @@ class APIRetentionAcceptance(APIAcceptance):
                 with tempfile.TemporaryDirectory(prefix='retention-private-',dir=self.lab.state_dir) as tmp:
                     credentials=self.credentials(Path(tmp),work,client)
                     self.mark('independent_cleanup_role_and_unchanged_product_role')
-                    def sweep(label, retention, apply=False):
-                        report=self.output/(label+'.json')
-                        args=[binary,'--kubeconfig',credentials,'--namespace',work,'--pool','python-cold','--instance',instance,'--principal','alice','--retention',retention,'--report',report]
-                        if apply:args+=['--apply']
+                    def sweep(label, retention, apply=False, max_records=100, max_deletes=100, continuation=''):
+                        report = self.output / (label + '.json')
+                        args = [binary, '--kubeconfig', credentials, '--namespace', work,
+                                '--pool', 'python-cold', '--instance', instance, '--principal', 'alice',
+                                '--retention', retention, '--report', report,
+                                '--max-records', str(max_records), '--max-deletes', str(max_deletes)]
+                        if continuation:
+                            args += ['--continue', continuation]
+                        if apply:
+                            args += ['--apply']
                         self.lab.runner.run(args,timeout=150)
                         value=json.loads(report.read_text())
-                        self.require(not value.get('error') and not value['truncated'],'cleanup report incomplete')
+                        self.require(not value.get('error'), 'cleanup report failed')
+                        if max_records == 100:
+                            self.require(not value['truncated'], 'cleanup report incomplete')
                         self.record.setdefault('sweeps',[]).append({'report':str(report),'sha256':hashlib.sha256(report.read_bytes()).hexdigest(),'outcomes':[v['outcome'] for v in value['entries']]})
                         return value
+                    continuation = ''
+                    scanned = []
+                    for page in range(5):
+                        preview_page = sweep('preview-page-' + str(page), '1h',
+                                             max_records=7, max_deletes=2, continuation=continuation)
+                        self.require(len(preview_page['entries']) <= 7 and preview_page['delete_candidates'] == 0,
+                                     'preview budgets differ')
+                        scanned.extend(entry['uid'] for entry in preview_page['entries'])
+                        continuation = preview_page.get('next_continue', '')
+                        self.require(preview_page['truncated'] == bool(continuation), 'cursor/report disagreement')
+                        if not continuation:
+                            break
+                    self.require(len(scanned) == 32 and len(set(scanned)) == 32 and
+                                 set(scanned) == set(original.values()), 'pagination skipped or repeated a Claim')
+                    self.require(not continuation, 'preview did not finish all pages')
+                    self.mark('bounded_preview_cursor_visits_every_retained_record')
                     preview=sweep('preview-legacy','1h')
                     self.require(len(preview['entries'])==32 and all(v['outcome']=='would_finalize' for v in preview['entries']),'legacy preview skipped closure validation')
                     self.require(preview['quota_before']['pressure']=='exhausted','quota exhaustion not reported')

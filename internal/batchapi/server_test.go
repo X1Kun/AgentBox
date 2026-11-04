@@ -118,7 +118,7 @@ func TestReadinessIsSeparateFromLiveness(t *testing.T) {
 	if w := call(s, http.MethodGet, "/readyz", "", false); w.Code != 503 {
 		t.Fatal(w.Code)
 	}
-	s.ready.Store(true)
+	s.readiness.Store(true, s.now())
 	if w := call(s, http.MethodGet, "/readyz", "", false); w.Code != 200 {
 		t.Fatal(w.Code)
 	}

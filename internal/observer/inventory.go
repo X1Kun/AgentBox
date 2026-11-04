@@ -181,7 +181,7 @@ func emptyCounts(domain string) map[key]float64 {
 			values[key{"job", phase}] = 0
 		}
 	} else {
-		for _, phase := range []string{"creating", "ready", "closing", "closed", "invalidated"} {
+		for _, phase := range []string{"creating", "ready", "closing", "closed", "invalidated", "unknown"} {
 			values[key{"claim", phase}] = 0
 		}
 		values[key{"pool", "objects"}] = 0
@@ -310,6 +310,14 @@ func (i *Inventory) pollDomain(ctx context.Context, domain string, started time.
 			if claim.GetAnnotations()["agentbox.dev/api-close-requested"] == "true" || claim.GetDeletionTimestamp() != nil {
 				phase = "closing"
 			}
+			// Natural expiration need not have been observed by the product API.
+			// Expired/terminating is not proof that backing resources are gone.
+			deadline := timestamp(str(claim.Object, "spec", "lifecycle", "shutdownTime"))
+			if deadline.IsZero() && (phase == "creating" || phase == "ready") {
+				phase = "unknown"
+			} else if !deadline.IsZero() && !started.Before(deadline) || claimExpired(claim) {
+				phase = "closing"
+			}
 			if !closed.IsZero() {
 				phase = "closed"
 			}
@@ -388,4 +396,19 @@ func (i *Inventory) pollDomain(ctx context.Context, domain string, started time.
 	i.values[domain] = sample{at: started, valid: true, values: values}
 	i.mu.Unlock()
 	return nil
+}
+
+func claimExpired(claim *unstructured.Unstructured) bool {
+	conditions, _, _ := unstructured.NestedSlice(claim.Object, "status", "conditions")
+	for _, raw := range conditions {
+		c, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		generation, _ := c["observedGeneration"].(int64)
+		if c["type"] == "Ready" && c["status"] == "False" && c["reason"] == "ClaimExpired" && generation == claim.GetGeneration() {
+			return true
+		}
+	}
+	return false
 }

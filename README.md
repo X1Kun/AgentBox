@@ -37,6 +37,8 @@ platform-up 依赖已准备的锁定归档和镜像 bundle；不隐式下载/更
 
 P3c 首步增加 [Prometheus/Grafana 与只读观察器](docs/operations.md#observability)。预载锁定镜像后运行 `make observability-up`；`make platform-observability-test` 自动连接临时会话/图片 API，验证真实指标、采集中断、权限丢失及重启恢复，导出原始时序和事件。Grafana 仅监听 `127.0.0.1:13000`，密码位于忽略的 `.local/observability/grafana-password`。宿主机与容器资源分别展示，缺失数据保留未知；固定到达轨迹和 R/B 性能基线后续实现。
 
+`make platform-maintenance-test` 进一步验证队列停收时的后台发布/取消恢复、就绪状态失效、自然到期观测及 Claim 分页清理，范围与证据见[维护验收](docs/validation.md#maintenance)。客户端协议和工具契约已独立于 Kubernetes 服务实现；批任务记录的长期容量回收仍需显式协议升级。
+
 ## 文档导航
 
 | 内容 | 入口 |

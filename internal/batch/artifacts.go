@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/batchprotocol"
 	"image/png"
 	"os"
 	"regexp"
@@ -28,28 +29,28 @@ type attemptResult struct {
 
 func verifyPNG(data []byte, file, expected File) error {
 	if int64(len(data)) != file.Size || file.Size < 1 || file.Size > MaxFileBytes || hash(data) != file.SHA256 || file.Name != expected.Name || file.Width != expected.Width || file.Height != expected.Height || file.PixelSHA256 != expected.PixelSHA256 {
-		return fail("artifact_invalid")
+		return fail(batchprotocol.CodeArtifactInvalid)
 	}
 	config, err := png.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width != expected.Width || config.Height != expected.Height {
-		return fail("artifact_invalid")
+		return fail(batchprotocol.CodeArtifactInvalid)
 	}
 	image, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
-		return fail("artifact_invalid")
+		return fail(batchprotocol.CodeArtifactInvalid)
 	}
 	pixels := make([]byte, 0, expected.Width*expected.Height*3)
 	for y := 0; y < expected.Height; y++ {
 		for x := 0; x < expected.Width; x++ {
 			r, g, b, a := image.At(x, y).RGBA()
 			if a != 65535 {
-				return fail("artifact_invalid")
+				return fail(batchprotocol.CodeArtifactInvalid)
 			}
 			pixels = append(pixels, byte(r>>8), byte(g>>8), byte(b>>8))
 		}
 	}
 	if hash(pixels) != expected.PixelSHA256 {
-		return fail("artifact_invalid")
+		return fail(batchprotocol.CodeArtifactInvalid)
 	}
 	return nil
 }
@@ -59,27 +60,27 @@ func (s *Service) publish(r *Record, pod *corev1.Pod) (resultErr error) {
 		outcome := "complete"
 		if resultErr != nil {
 			outcome = "error"
-			if Code(resultErr) == "artifact_invalid" {
+			if Code(resultErr) == batchprotocol.CodeArtifactInvalid {
 				outcome = "invalid"
 			}
 		}
 		s.metrics.Operation("publication", outcome, time.Since(started))
 	}()
 	if !uid.MatchString(r.JobUID) || !uid.MatchString(string(pod.UID)) {
-		return fail("artifact_invalid")
+		return fail(batchprotocol.CodeArtifactInvalid)
 	}
 	attempt, err := s.store.root.OpenRoot("attempts/" + r.JobUID + "/" + string(pod.UID))
 	if err != nil {
-		return fail("artifact_invalid")
+		return fail(batchprotocol.CodeArtifactInvalid)
 	}
 	defer attempt.Close()
 	data, err := boundedFile(attempt, "result.json", 64<<10)
 	if err != nil {
-		return fail("artifact_invalid")
+		return fail(batchprotocol.CodeArtifactInvalid)
 	}
 	var result attemptResult
 	if decodeOne(data, &result) != nil || result.Version != 1 || result.DatasetSHA256 != s.contract.DatasetSHA256 || result.RequestSHA256 != r.Digest || result.JobUID != r.JobUID || result.PodUID != string(pod.UID) || result.Passes != r.Request.Passes || len(result.Files) != len(s.contract.Outputs) {
-		return fail("artifact_invalid")
+		return fail(batchprotocol.CodeArtifactInvalid)
 	}
 	expected := map[string]File{}
 	for _, f := range s.contract.Outputs {
@@ -91,19 +92,19 @@ func (s *Service) publish(r *Record, pod *corev1.Pod) (resultErr error) {
 	for _, file := range result.Files {
 		want, ok := expected[file.Name]
 		if !ok || seen[file.Name] || !validArtifact(file.Name) {
-			return fail("artifact_invalid")
+			return fail(batchprotocol.CodeArtifactInvalid)
 		}
 		seen[file.Name] = true
 		payload, e := boundedFile(attempt, file.Name, MaxFileBytes)
 		if e != nil {
-			return fail("artifact_invalid")
+			return fail(batchprotocol.CodeArtifactInvalid)
 		}
 		if e = verifyPNG(payload, file, want); e != nil {
 			return e
 		}
 		total += int64(len(payload))
 		if total > MaxOutputBytes {
-			return fail("artifact_invalid")
+			return fail(batchprotocol.CodeArtifactInvalid)
 		}
 		contents[file.Name] = payload
 	}
@@ -133,7 +134,7 @@ func (s *Service) publish(r *Record, pod *corev1.Pod) (resultErr error) {
 			old, e := boundedFile(published, name, MaxFileBytes)
 			if e != nil || !bytes.Equal(old, payload) {
 				published.Close()
-				return fail("artifact_invalid")
+				return fail(batchprotocol.CodeArtifactInvalid)
 			}
 		}
 		published.Close()
@@ -162,22 +163,22 @@ func (s *Service) Download(ctx context.Context, principal, id, name string) (pay
 		s.metrics.Operation("artifact_read", outcome, time.Since(started))
 	}()
 	if !validArtifact(name) {
-		return nil, fail("not_found")
+		return nil, fail(batchprotocol.CodeNotFound)
 	}
 	r, unlock, err := s.lookup(ctx, principal, id)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
-	if r.State != "succeeded" {
-		return nil, fail("artifact_not_ready")
+	if r.State != batchprotocol.StateSucceeded {
+		return nil, fail(batchprotocol.CodeArtifactNotReady)
 	}
 	expires, err := time.Parse(time.RFC3339, r.ExpiresAt)
 	if err != nil {
-		return nil, fail("record_invalid")
+		return nil, fail(batchprotocol.CodeRecordInvalid)
 	}
 	if !s.now().Before(expires) {
-		return nil, fail("artifact_expired")
+		return nil, fail(batchprotocol.CodeArtifactExpired)
 	}
 	var file, want *File
 	for i := range r.Artifacts {
@@ -191,7 +192,7 @@ func (s *Service) Download(ctx context.Context, principal, id, name string) (pay
 		}
 	}
 	if file == nil || want == nil {
-		return nil, fail("not_found")
+		return nil, fail(batchprotocol.CodeNotFound)
 	}
 	published, err := s.store.root.OpenRoot("published/" + r.Name)
 	if err != nil {
@@ -214,7 +215,7 @@ func (s *Service) expire(ctx context.Context, r *Record) error {
 	if err := s.store.root.RemoveAll("published/" + r.Name + ".pending"); err != nil {
 		return err
 	}
-	if r.State != "succeeded" {
+	if r.State != batchprotocol.StateSucceeded {
 		if err := s.store.root.RemoveAll("published/" + r.Name); err != nil {
 			return err
 		}
@@ -224,10 +225,10 @@ func (s *Service) expire(ctx context.Context, r *Record) error {
 			return err
 		}
 	}
-	if r.State == "succeeded" {
+	if r.State == batchprotocol.StateSucceeded {
 		expiry, err := time.Parse(time.RFC3339, r.ExpiresAt)
 		if err != nil {
-			return fail("record_invalid")
+			return fail(batchprotocol.CodeRecordInvalid)
 		}
 		if !s.now().Before(expiry) {
 			return s.store.root.RemoveAll("published/" + r.Name)

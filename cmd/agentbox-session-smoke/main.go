@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/X1Kun/AgentBox/internal/sessionprobe"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	authv1 "k8s.io/api/authorization/v1"
@@ -52,22 +51,22 @@ type identity struct {
 	ServiceFQDN string `json:"service_fqdn"`
 }
 type report struct {
-	Stage     string               `json:"stage"`
-	Run       string               `json:"run"`
-	Owner     string               `json:"owner"`
-	Namespace string               `json:"namespace"`
-	SDK       string               `json:"sdk_version"`
-	Go        string               `json:"go_version"`
-	Sessions  []identity           `json:"sessions"`
-	Expiring  *identity            `json:"expiring,omitempty"`
-	TimedOut  *identity            `json:"timed_out,omitempty"`
-	Checks    []sessionprobe.Check `json:"checks"`
-	Timings   map[string]int64     `json:"timings_ms"`
-	Error     string               `json:"error,omitempty"`
-	Cleanup   bool                 `json:"cleanup_complete"`
-	Profile   string               `json:"profile"`
-	Warm      *warmReport          `json:"warm,omitempty"`
-	Fault     *faultReport         `json:"fault,omitempty"`
+	Stage     string           `json:"stage"`
+	Run       string           `json:"run"`
+	Owner     string           `json:"owner"`
+	Namespace string           `json:"namespace"`
+	SDK       string           `json:"sdk_version"`
+	Go        string           `json:"go_version"`
+	Sessions  []identity       `json:"sessions"`
+	Expiring  *identity        `json:"expiring,omitempty"`
+	TimedOut  *identity        `json:"timed_out,omitempty"`
+	Checks    []Check          `json:"checks"`
+	Timings   map[string]int64 `json:"timings_ms"`
+	Error     string           `json:"error,omitempty"`
+	Cleanup   bool             `json:"cleanup_complete"`
+	Profile   string           `json:"profile"`
+	Warm      *warmReport      `json:"warm,omitempty"`
+	Fault     *faultReport     `json:"fault,omitempty"`
 }
 type probe struct {
 	namespace, run, owner, pool string
@@ -279,7 +278,7 @@ func run(ctx context.Context) (result report, retErr error) {
 			return result, fmt.Errorf("unexpected client RBAC for %s %s", check.verb, check.resource)
 		}
 	}
-	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: "client_rbac_scope", Passed: true})
+	p.result.Checks = append(p.result.Checks, Check{Name: "client_rbac_scope", Passed: true})
 
 	defer func() { result = p.result }()
 	profile := os.Getenv("SESSION_PROFILE")
@@ -366,7 +365,7 @@ func run(ctx context.Context) (result report, retErr error) {
 		return result, err
 	}
 	start = time.Now()
-	checks, err := sessionprobe.Exercise(ctx, a, b, ib.PodIP, parsedAPI.Hostname())
+	checks, err := Exercise(ctx, a, b, ib.PodIP, parsedAPI.Hostname())
 	if err != nil {
 		return result, err
 	}
@@ -378,7 +377,7 @@ func run(ctx context.Context) (result report, retErr error) {
 	if err := p.stable(ctx, b, ib); err != nil {
 		return result, err
 	}
-	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: "stable_claim_sandbox_pod_service_identity", Passed: true})
+	p.result.Checks = append(p.result.Checks, Check{Name: "stable_claim_sandbox_pod_service_identity", Passed: true})
 	if err := b.Close(ctx); err != nil {
 		return result, err
 	}
@@ -388,7 +387,7 @@ func run(ctx context.Context) (result report, retErr error) {
 	if _, err := b.Run(ctx, "echo must-not-run"); !errors.Is(err, sdk.ErrNotReady) {
 		return result, errors.New("closed handle accepted a command")
 	}
-	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: "explicit_close_and_reject_new_calls", Passed: true})
+	p.result.Checks = append(p.result.Checks, Check{Name: "explicit_close_and_reject_new_calls", Passed: true})
 	c, err := client.CreateSandbox(ctx, p.pool, namespace, sdk.WithShutdownAfter(30*time.Second))
 	if err != nil {
 		return result, err
@@ -406,7 +405,7 @@ func run(ctx context.Context) (result report, retErr error) {
 	if err := c.Close(ctx); err != nil {
 		return result, err
 	}
-	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: "controller_claim_expiry_and_gc", Passed: true})
+	p.result.Checks = append(p.result.Checks, Check{Name: "controller_claim_expiry_and_gc", Passed: true})
 	d, err := client.CreateSandbox(ctx, p.pool, namespace, sdk.WithShutdownAfter(2*time.Minute))
 	if err != nil {
 		return result, err
@@ -447,7 +446,7 @@ func run(ctx context.Context) (result report, retErr error) {
 	if err := p.gone(ctx, id); err != nil {
 		return result, err
 	}
-	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: "deadline_no_replay_and_session_cleanup", Passed: true})
+	p.result.Checks = append(p.result.Checks, Check{Name: "deadline_no_replay_and_session_cleanup", Passed: true})
 	if err := a.Write(ctx, "long.py", []byte(longScript)); err != nil {
 		return result, err
 	}
@@ -499,7 +498,7 @@ func run(ctx context.Context) (result report, retErr error) {
 	if _, err := a.Run(ctx, "echo must-not-run"); !errors.Is(err, sdk.ErrNotReady) {
 		return result, errors.New("active session accepted calls after closure")
 	}
-	p.result.Checks = append(p.result.Checks, sessionprobe.Check{Name: "close_running_parent_and_child", Passed: true})
+	p.result.Checks = append(p.result.Checks, Check{Name: "close_running_parent_and_child", Passed: true})
 	remaining, err := dyn.Resource(sandboxes).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return result, err
@@ -516,7 +515,7 @@ func main() {
 	result, err := run(ctx)
 	if err != nil {
 		result.Stage = "failed"
-		result.Error = sessionprobe.ShortError(err)
+		result.Error = ShortError(err)
 		_ = json.NewEncoder(os.Stdout).Encode(result)
 		os.Exit(1)
 	}

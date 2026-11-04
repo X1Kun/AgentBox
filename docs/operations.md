@@ -187,6 +187,8 @@ GOPROXY=https://goproxy.cn,direct python3 scripts/platform_lab.py session-build 
 
 build 核对上游模块版本/校验与工具链，用 `go build -mod=readonly` 构建上游 sandboxd 和本项目的 Go 验收客户端，再将二进制放入固定 Python 基镜像。上游 controller 使用官方发布 digest。Docker 构建只发送临时最小上下文，不发送仓库或凭据；本地镜像按输入哈希命名，bundle 记录来源、二进制 SHA-256、Docker daemon ID 和实际 image ID。变更 Go/镜像输入后必须重新 build，镜像别名被替换时拒绝继续。 仅客户端变化时，sandboxd 可复用前次同 Docker daemon、工具链、SDK 校验和、go.mod/go.sum、锁文件及 runtime Dockerfile 对应的缓存二进制；复用前核对其 SHA-256，来源不同则重编译，内容不符则拒绝。报告单列 reused_binaries。
 
+已有安装仅修改 SDK 验收源码时，直接运行 `platform-session-test`：先验证原运行时版本、依赖输入、镜像 ID 和安装 UID，再以当前 `cmd/agentbox-session-smoke/*.go` 的完整输入指纹构建本轮客户端，仅导入该客户端镜像。`session-client-build.json` 记录新源码指纹、二进制/镜像摘要及复用的原 runtime；原安装 bundle 不改写，控制器/runtime 不重装。API、Agent 等不消费 SDK 验收客户端的入口只要求运行时输入匹配，仍核对缓存镜像 ID。旧客户端不会代替改动后的 smoke 程序验收；运行时输入变化仍拒绝复用。完整 `session-build` 继续用于准备新的安装 bundle。
+
 install 校验官方 release YAML，再由固定 kubectl 解析；部署上游合并控制器及四个 CRD，不自研会话控制器。只增加归属、固定镜像/节点及有界资源配置；现有外来对象拒绝接管。控制器安装后改变版本/模板定义需新建实验环境，不能直接覆盖运行中的 profile。`--session-manifest PATH` 可指定同校验值的本地清单。三个 session 动作支持 `--dry-run`；build 只变更本地构建产物，不变更集群。 镜像准备分为 Docker 导出（最多 600s）和 kind 归档导入（最多 300s）；归档在本地按 bundle 命名，记录 Docker daemon、image ID 与 SHA-256，重试前重新校验。失败导出不发布缓存，内容或身份不匹配会拒绝复用。 每个节点都核对 tag 与实际 image ID；内容已齐全时跳过导入，存在未完成 ctr 操作时拒绝叠加。导入成功后为 CRI 镜像缓存同步保留独立 60s 收敛窗口，超时仍拒绝继续。安装预算与会话执行/清理预算分开。
 
 会话 Pod 在 Worker 经 containerd/runsc 运行，sandboxd 与 Python 在同一容器；非 root、只读根、无 SA token，500m CPU/512MiB 内存，工作目录/tmp 使用独立内存卷。可信 Go 客户端是控制面节点上的一次性普通 Job，通过 headless Service 使用上游 REST 8080 和 gRPC 9090，不使用 gVisor 不支持的 Pod port-forward。该 Job 只是验收客户端，实际脚本在会话 Pod 内执行，其资源与客户端分开记录。
@@ -354,13 +356,17 @@ bin/agentbox-cleanup --kubeconfig /path/to/cleanup.kubeconfig \
 
 默认无 Kubernetes 写入。检查报告后，以相同范围和保留期增加 `--apply` 并使用新的 `--report` 路径执行。每次报告路径必须不存在，文件为 0600；每次 mutation 前先以原子替换、文件与目录 fsync 保存身份、绑定、摘要和操作意图，再重新读取 Claim 并复核关闭/残留/保留期。删除同时携带 UID 与 resourceVersion 前置条件；不能把同名新对象作为原记录删除。报告写入失败、读权限/传输失败或写结果不确定时停止后续操作，不主动重放不确定写入。
 
-默认保留期 24h，可显式设置整数秒 1s～8760h；判断使用工具 UTC 时钟，部署须保持时间同步；首版不新增常驻 GC 控制器。默认最多扫描 100 条同归属记录，`--max-records` 范围 1～1000；`truncated=true` 表示未扫描完整范围。总预算默认 2m，单次 Kubernetes 请求默认 5s，均有上限。首次完整关闭确认持久化 `closed_at`；旧记录无时间时仅执行 `finalized`，从此次观察开始保留，不能按已过去的 TTL 立即删除。尚未关闭、资源仍存在、时间无效/未来或身份变化的记录均跳过。
+默认保留期 24h，可显式设置整数秒 1s～8760h；判断使用工具 UTC 时钟，部署须保持时间同步；首版不新增常驻 GC 控制器。默认最多扫描 100 条同归属记录，`--max-records` 范围 1～1000；另由 `--max-deletes` 限制候选删除数，默认 100，范围 1～1000，预览与 apply 使用相同预算。保留或待确认的记录消耗扫描预算，不消耗删除预算；补充关闭时间受扫描预算限制。总预算默认 2m，单次 Kubernetes 请求默认 5s，均有上限。首次完整关闭确认持久化 `closed_at`；旧记录无时间时仅执行 `finalized`，从此次观察开始保留，不能按已过去的 TTL 立即删除。尚未关闭、资源仍存在、时间无效/未来或身份变化的记录均跳过。
+
+工具在本轮预算内自动读取后续页，只在页边界停止。`truncated=true` 时报告 `next_continue`；下次使用新报告路径和 `--continue TOKEN` 继续，保持相同 namespace/pool/instance/principal、保留期及预览/apply 模式。游标是有期限的 Kubernetes 分页快照，不是永久任务身份；过期或读取失败会退出，不自动从第一页补删。中途失败的报告保留最后完整页的游标，重试可能重看部分记录，删除前仍复核 UID/resourceVersion。报告完成与否必须同时检查 `error` 和 `truncated`。
 
 预览中的 `would_finalize` 表示尚未持久化的关闭观察，`retain` 表示保留期未到，`would_delete` 表示符合清理资格。实际 `deleted`/`original_absent` 只证明原 Claim 已消失；`deleting` 表示删除已请求但对象仍在，不能当作配额已恢复。`delete_outcome_unknown`/`finalize_outcome_unknown` 需按报告中的原 UID 重新核对，不换对象补删。报告在结果不确定时也保留先前写入的意图和资源关联，供运行时排障使用。此工具只确认 API 对象状态，没有 CRI 权限；此前执行验收中的运行时回收超时仍需独立补验。
 
 `--quota-name` 默认 `agentbox-api-budget`，报告 `quota_before` 为操作前 namespace 总记录配额状态，含其他调用方记录。达到 80% 输出 warning，达到上限输出 exhausted；状态缺失或未观察本代配额时为 unknown，不补零。检查可显式用空名称关闭；自定义配额名需同步调整 Role 的 resourceNames。清理后配额统计可能延迟，应重新查询配额并用受控创建确认恢复。
 
 `make platform-api-retention-test` 使用两个临时 namespace 和独立清理凭据，创建 32 条在提交时就已过期的 Retain Claim，等待上游真实终止确认；验证第 33 条被配额拒绝、默认预览不写、旧记录补时间、保留期保护、显式短保留策略清理后重新创建及 UID 变化。夹具不启动执行 Pod；1h/1s 只用于保留与删除两阶段验收，生产默认仍为 24h。报告和 namespace 清理独立记录，开发集群保留。运行时完整验收仍使用 `make platform-api-exec-test`。
+
+该入口另以每轮扫描 7 条、删除候选预算 2 条进行分页预览，跨报告继续直至覆盖全部 32 条 UID，核对无遗漏、无重复、无预览写入。`make platform-maintenance-test` 在已有观测验收基础上，还验证 LocalQueue Hold 后不接受新任务、已有图片任务仍由后台发布并设置 TTL、被临时权限拒绝的持久取消可恢复，以及这 32 条自然到期 Claim 在产品确认前被观察为 closing。权限和队列故障只限本轮归属资源，并按原 UID 恢复；完成后清理临时资源，保留监控栈与开发集群。
 
 <a id="platform-plan"></a>
 ## 会话与批任务平台部署计划

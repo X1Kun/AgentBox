@@ -180,7 +180,7 @@ class AgentAcceptance(APIExecutionAcceptance):
 
     def test(self):
         with self.lab.operation_lock():
-            sessions = Sessions(self.lab); runtime = sessions.attach(); bundle = sessions.bundle(); sessions.verify(bundle)
+            sessions = Sessions(self.lab); runtime = sessions.attach(); bundle = sessions.bundle(require_client=False); sessions.verify(bundle)
             inventory = legacy_inventory()
             self.require(not inventory['processes'], 'legacy AgentBox processes must be retired before acceptance')
             self.require(all(v.get('ActiveState') in ('inactive', 'failed') and v.get('ExecMainPID') == '0' for v in inventory['units'].values()), 'legacy service is active or cannot be inspected')

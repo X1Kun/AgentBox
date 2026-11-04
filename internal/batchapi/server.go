@@ -6,32 +6,41 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/X1Kun/AgentBox/internal/readiness"
 	"io"
 	"mime"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
-	"github.com/X1Kun/AgentBox/internal/batch"
+	batch "github.com/X1Kun/AgentBox/internal/batchprotocol"
 	"github.com/X1Kun/AgentBox/internal/httpauth"
 	"github.com/X1Kun/AgentBox/internal/telemetry"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
+type Backend interface {
+	Submit(context.Context, string, batch.Request) (batch.View, bool, error)
+	Get(context.Context, string, string) (batch.View, error)
+	Cancel(context.Context, string, string) (batch.View, error)
+	Download(context.Context, string, string, string) ([]byte, error)
+	Ready(context.Context) error
+}
+
 type Server struct {
-	backend batch.Backend
-	auth    *httpauth.Authenticator
-	timeout time.Duration
-	permits chan struct{}
-	ready   atomic.Bool
-	metrics *telemetry.Metrics
+	backend   Backend
+	auth      *httpauth.Authenticator
+	timeout   time.Duration
+	permits   chan struct{}
+	readiness readiness.Snapshot
+	now       func() time.Time
+	metrics   *telemetry.Metrics
 }
 
 func (s *Server) SetTelemetry(metrics *telemetry.Metrics) { s.metrics = metrics }
 
-func New(backend batch.Backend, principals []httpauth.Principal, timeout time.Duration, maxInflight int) (*Server, error) {
+func New(backend Backend, principals []httpauth.Principal, timeout time.Duration, maxInflight int) (*Server, error) {
 	if backend == nil || timeout < time.Second || timeout > 30*time.Second || maxInflight < 1 || maxInflight > 128 {
 		return nil, errors.New("invalid batch HTTP configuration")
 	}
@@ -39,7 +48,7 @@ func New(backend batch.Backend, principals []httpauth.Principal, timeout time.Du
 	if err != nil {
 		return nil, err
 	}
-	return &Server{backend: backend, auth: auth, timeout: timeout, permits: make(chan struct{}, maxInflight)}, nil
+	return &Server{backend: backend, auth: auth, timeout: timeout, permits: make(chan struct{}, maxInflight), now: time.Now}, nil
 }
 func write(w http.ResponseWriter, status int, value interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -88,7 +97,7 @@ func decode(data []byte, request *batch.Request) error {
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" || r.URL.RawPath != "" {
-		problem(w, 400, "invalid_request")
+		problem(w, 400, batch.CodeInvalidRequest)
 		return
 	}
 	if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
@@ -96,8 +105,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			problem(w, 405, "method_not_allowed")
 			return
 		}
-		if r.URL.Path == "/readyz" && !s.ready.Load() {
-			problem(w, 503, "backend_unavailable")
+		if r.URL.Path == "/readyz" && !s.readiness.Ready(s.now()) {
+			problem(w, 503, batch.CodeBackendUnavailable)
 			return
 		}
 		write(w, 200, map[string]bool{"alive": true})
@@ -108,7 +117,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	item := len(parts) == 3 && parts[0] == "v2" && parts[1] == "batches"
 	artifact := len(parts) == 5 && parts[0] == "v2" && parts[1] == "batches" && parts[3] == "artifacts"
 	if !collection && !item && !artifact {
-		problem(w, 404, "not_found")
+		problem(w, 404, batch.CodeNotFound)
 		return
 	}
 	if collection && r.Method != "POST" || item && r.Method != "GET" && r.Method != "DELETE" || artifact && r.Method != "GET" {
@@ -135,36 +144,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var err error
 	status := 200
 	if artifact {
-		var data []byte
-		data, err = s.backend.Download(ctx, principal, parts[2], parts[4])
-		if err == nil {
-			w.Header().Set("Content-Type", "image/png")
-			w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": parts[4]}))
-			w.Header().Set("Cache-Control", "no-store")
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			_, _ = w.Write(data)
-			return
-		}
-	} else if collection {
-		media, _, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		if e != nil || media != "application/json" {
-			problem(w, 415, "unsupported_media_type")
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 4096)
-		data, e := io.ReadAll(r.Body)
-		if e != nil {
-			var large *http.MaxBytesError
-			if errors.As(e, &large) {
-				problem(w, 413, "request_too_large")
-			} else {
-				problem(w, 400, "invalid_request")
-			}
-			return
-		}
-		var request batch.Request
-		if decode(data, &request) != nil {
-			problem(w, 400, "invalid_request")
+		s.download(w, ctx, principal, parts[2], parts[4])
+		return
+	}
+	if collection {
+		request, ok := readSubmission(w, r)
+		if !ok {
 			return
 		}
 		var created bool
@@ -181,46 +166,69 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		view, err = s.backend.Get(ctx, principal, parts[2])
 	}
 	if err != nil {
-		code := batch.Code(err)
-		status = 503
-		switch code {
-		case "invalid_request":
-			status = 400
-		case "not_found":
-			status = 404
-		case "request_conflict", "artifact_not_ready":
-			status = 409
-		case "artifact_expired":
-			status = 410
-		case "record_capacity":
-			status = 429
-		}
-		if apierrors.IsConflict(err) {
-			status = 409
-			code = "conflict"
-		}
-		problem(w, status, code)
+		writeError(w, err)
 		return
 	}
+
 	write(w, status, view)
 }
-func (s *Server) RunReadiness(ctx context.Context) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	for {
-		started := time.Now()
-		budget, cancel := context.WithTimeout(ctx, s.timeout)
-		err := s.backend.Ready(budget)
-		s.ready.Store(err == nil)
-		s.metrics.Backend(err == nil && budget.Err() == nil, started)
-		if err == nil {
-			_ = s.backend.Reconcile(budget)
-		}
-		cancel()
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
+
+func writeError(w http.ResponseWriter, err error) {
+	code := batch.Code(err)
+	status := 503
+	switch code {
+	case batch.CodeInvalidRequest:
+		status = 400
+	case batch.CodeNotFound:
+		status = 404
+	case batch.CodeRequestConflict, batch.CodeArtifactNotReady:
+		status = 409
+	case batch.CodeArtifactExpired:
+		status = 410
+	case batch.CodeRecordCapacity:
+		status = 429
 	}
+	if apierrors.IsConflict(err) {
+		status = 409
+		code = "conflict"
+	}
+	problem(w, status, code)
+}
+func (s *Server) download(w http.ResponseWriter, ctx context.Context, principal, id, name string) {
+	data, err := s.backend.Download(ctx, principal, id, name)
+	if err == nil {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(data)
+		return
+	}
+
+	writeError(w, err)
+}
+func readSubmission(w http.ResponseWriter, r *http.Request) (batch.Request, bool) {
+	media, _, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if e != nil || media != "application/json" {
+		problem(w, 415, "unsupported_media_type")
+		return batch.Request{}, false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	data, e := io.ReadAll(r.Body)
+	if e != nil {
+		var large *http.MaxBytesError
+		if errors.As(e, &large) {
+			problem(w, 413, "request_too_large")
+		} else {
+			problem(w, 400, batch.CodeInvalidRequest)
+		}
+		return batch.Request{}, false
+	}
+	var request batch.Request
+	if decode(data, &request) != nil {
+		problem(w, 400, batch.CodeInvalidRequest)
+		return batch.Request{}, false
+	}
+
+	return request, true
 }

@@ -11,7 +11,7 @@ import (
 	"syscall"
 
 	"github.com/X1Kun/AgentBox/internal/mcpserver"
-	"github.com/X1Kun/AgentBox/internal/sessionclient"
+	sessionclient "github.com/X1Kun/AgentBox/internal/session/client"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

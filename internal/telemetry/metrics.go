@@ -3,6 +3,7 @@
 package telemetry
 
 import (
+	backendreadiness "github.com/X1Kun/AgentBox/internal/readiness"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-const MaxObservationAge = 5 * time.Second
+const MaxObservationAge = backendreadiness.MaxAge
 
 type readiness struct {
 	healthy bool
@@ -91,6 +92,14 @@ func (m *Metrics) Backend(healthy bool, started time.Time) {
 		outcome = "ready"
 	}
 	m.checks.WithLabelValues(outcome).Inc()
+}
+
+// InvalidateBackend marks a stopped monitor as unknown without inventing a
+// backend check or counting shutdown as a backend failure.
+func (m *Metrics) InvalidateBackend() {
+	if m != nil {
+		m.last.Store(nil)
+	}
 }
 func (m *Metrics) Handler() http.Handler {
 	handler := promhttp.HandlerFor(m.Registry, promhttp.HandlerOpts{MaxRequestsInFlight: 2, Timeout: 2 * time.Second})

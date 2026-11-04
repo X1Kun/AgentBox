@@ -16,6 +16,10 @@ import (
 
 func TestRestartReclaimsInterruptedRecordCreationAndContinuesSubmitting(t *testing.T) {
 	h := setup(t)
+	// Submit establishes installation identity before its initial atomic write.
+	if err := h.service.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
 	name := "bat-" + strings.Repeat("f", 40)
 	// This is atomicWrite's on-disk state before the initial record rename.
 	path := "records/" + name + ".json." + strings.Repeat("b", 32) + ".tmp"
@@ -144,12 +148,12 @@ func TestReconcileRetainsProgressAcrossCatalogBudgetsAndExpiresTail(t *testing.T
 	var pass context.Context
 	var cancel context.CancelFunc
 	reads := 0
-	// Each already-cleaned record takes four Kubernetes reads. Five exhausts
-	// this pass's simulated request budget, just as a shared deadline would.
+	// Installation verification takes two reads, followed by four reads for
+	// one cleaned record. A second record exhausts this simulated budget.
 	h.client.PrependReactor("*", "*", func(action kt.Action) (bool, runtime.Object, error) {
 		if pass != nil {
 			reads++
-			if reads > 4 {
+			if reads > 6 {
 				cancel()
 				return true, nil, pass.Err()
 			}

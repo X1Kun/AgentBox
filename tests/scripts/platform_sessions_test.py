@@ -28,6 +28,48 @@ class SessionTests(unittest.TestCase):
         self.sessions = Sessions(self.lab)
         self.sessions.state = {'session': 'a' * 32, 'cluster': 'owned'}
 
+    def test_runtime_bundle_reuse_does_not_claim_client_sources_are_fresh(self):
+        inputs = {'go.mod': 'mod', 'go.sum': 'sum', 'deploy/platform/session.lock.json': 'lock',
+                  'deploy/platform/sandbox-runtime.Dockerfile': 'runtime', 'cmd/agentbox-session-smoke/main.go': 'old'}
+        bundle = {'inputs': inputs, 'docker_id': 'daemon', 'images': {'runtime': {'name': 'runtime', 'id': 'id'}}}
+        self.sessions.bundle_path.write_text(json.dumps(bundle))
+        self.lab.docker_info.return_value = {'ID': 'daemon'}
+        current = dict(inputs, **{'cmd/agentbox-session-smoke/main.go': 'new'})
+        with patch.object(self.sessions, 'build_inputs', return_value=current), \
+                patch.object(self.sessions, 'docker_image', return_value={'Id': 'id'}):
+            self.assertEqual(self.sessions.bundle(require_client=False), bundle)
+            with self.assertRaises(SessionError):
+                self.sessions.bundle()
+            current['go.sum'] = 'different-dependencies'
+            with self.assertRaises(SessionError):
+                self.sessions.bundle(require_client=False)
+
+    def test_fresh_acceptance_client_never_overwrites_installed_runtime_bundle(self):
+        inputs = self.sessions.build_inputs()
+        before = dict(inputs, **{'cmd/agentbox-session-smoke/main.go': 'old'})
+        image = 'registry/python@sha256:' + 'a' * 64
+        installed = {'inputs': before, 'fingerprint': 'installation', 'go_version': 'go version ' + self.sessions.lock['go_toolchain'] + ' linux/amd64',
+                     'python_source': image, 'images': {'runtime': {'name': 'runtime', 'id': 'unchanged'}, 'client': {'name': 'old-client', 'id': 'old'}}}
+        self.sessions.bundle_path.write_text(json.dumps(installed))
+        self.lab.lock = {'smoke': {'image': image}}
+        self.lab.runner.run.return_value = installed['go_version']
+        fingerprint = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+        directory = self.lab.state_dir / ('session-client-build-' + fingerprint[:16])
+        directory.mkdir()
+        (directory / 'agentbox-session-smoke').write_bytes(b'new-client')
+        with patch.object(self.sessions, 'docker_image', side_effect=[{'RepoDigests': [image]}, {'Id': 'new-client'}]), \
+                patch.object(self.sessions, 'build_inputs', return_value=inputs), \
+                patch.object(self.sessions, 'load_images') as load, patch('lib.platform_sessions.digest', return_value='binary-sha'):
+            result = self.sessions.current_client_bundle(installed)
+        self.assertEqual(result['images']['runtime'], installed['images']['runtime'])
+        self.assertEqual(result['images']['client']['id'], 'new-client')
+        self.assertEqual(result['binary_sha256']['agentbox-session-smoke'], 'binary-sha')
+        self.assertNotEqual(result['fingerprint'], installed['fingerprint'])
+        self.assertEqual(set(load.call_args.args[0]['images']), {'client'})
+        self.assertEqual(json.loads(self.sessions.bundle_path.read_text()), installed)
+        self.assertEqual(installed['images']['client']['id'], 'old')
+        self.lab.write_json.assert_not_called()
+
     def test_source_requires_exact_digest(self):
         official = self.sessions.lock['controller_image']
         mirror = 'mirror.example/controller@' + official.split('@')[1]

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	sessionprotocol "github.com/X1Kun/AgentBox/internal/session/protocol"
 	"log/slog"
 	"time"
 
@@ -45,7 +46,7 @@ func (s *Service) requestOperationClose(ctx context.Context, principal, id, toke
 	outcome := "pending"
 	if err != nil {
 		outcome = "request_failed"
-	} else if v.State == "closed" && v.CleanupComplete {
+	} else if v.State == sessionprotocol.StateClosed && v.CleanupComplete {
 		outcome = "complete"
 	}
 	s.operationEvent(ctx, id, token, "close", outcome, err, started)
