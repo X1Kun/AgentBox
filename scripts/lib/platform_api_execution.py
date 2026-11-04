@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 import uuid
 
+from lib.api_image import build_api_image
 from lib.platform_api import APIAcceptance
 from lib.platform_sessions import Sessions, SessionError, checked_source
 
@@ -36,45 +37,9 @@ class APIExecutionAcceptance(APIAcceptance):
         return status,value
 
     def build_image(self, sessions):
-        directory=self.lab.state_dir/'api-build';directory.mkdir(exist_ok=True)
-        binary=directory/'agentbox-api'
-        self.lab.runner.run(['env','CGO_ENABLED=0','go','build','-p=2','-mod=readonly','-trimpath',
-            '-buildvcs=false','-ldflags=-s -w','-o',binary,'./cmd/agentbox-api'],timeout=900)
-        base=checked_source(self.lab.lock['smoke']['image'],sessions.bundle(require_client=False)['python_source'])
-        base_image=sessions.docker_image(base)  # Require the verified cached source; no implicit pull.
-        self.require(base in base_image.get('RepoDigests',[]),'cached API base digest not confirmed')
-        inputs={'binary':hashlib.sha256(binary.read_bytes()).hexdigest(),
-                'dockerfile':hashlib.sha256((self.lab.config/'agentbox/api/Dockerfile').read_bytes()).hexdigest(),
-                'base':base,'base_id':base_image['Id']}
-        fingerprint=hashlib.sha256(json.dumps(inputs,sort_keys=True).encode()).hexdigest()
-        image='agentbox/api:'+fingerprint[:16]
-        # Send only the binary and Dockerfile, never previous image archives.
-        with tempfile.TemporaryDirectory(prefix='api-image-',dir=self.lab.state_dir) as tmp:
-            context=Path(tmp)
-            shutil.copyfile(self.lab.config/'agentbox/api/Dockerfile',context/'Dockerfile')
-            shutil.copy2(binary,context/'agentbox-api')
-            self.lab.runner.run([self.lab.tools['docker'],'build','--pull=false','--network=none','--build-arg',
-                'BASE_IMAGE='+base,'-t',image,context],timeout=300)
-        identity=sessions.docker_image(image)['Id']
-        node=sessions.state['cluster']+'-control-plane'
-        def imported():
-            inventory=json.loads(self.lab.runner.run([self.lab.tools['docker'],'exec',node,'crictl','images','-o','json']))['images']
-            return any(v['id']==identity and 'docker.io/'+image in v.get('repoTags',[]) for v in inventory)
-        cached=imported()
-        if not cached:
-            processes=self.lab.runner.run([self.lab.tools['docker'],'exec',node,'ps','-eo','comm='])
-            self.require('ctr' not in processes.split(),'existing node image import must finish before API image import')
-            archive=directory/('api-'+fingerprint[:16]+'.tar')
-            self.lab.runner.run([self.lab.tools['docker'],'save','-o',archive,image],timeout=300)
-            self.lab.runner.run([self.lab.tools['kind'],'load','image-archive',archive,'--name',sessions.state['cluster'],
-                '--nodes',node],timeout=300)
-            until=time.monotonic()+60
-            while not imported():
-                self.require(time.monotonic()<until,'API image ID did not converge in the CRI cache')
-                time.sleep(.5)
-        self.record['api_image_node_cache_reused']=cached
-        self.record['api_image']={'name':image,'id':identity,'inputs':inputs,'fingerprint':fingerprint}
-        return image
+        prepared = build_api_image(self.lab, sessions)
+        self.record.update(prepared)
+        return prepared['api_image']['name']
 
     def secret(self,directory,client,alice,bob):
         key=directory/'tls.key';cert=directory/'tls.crt'

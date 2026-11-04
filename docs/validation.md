@@ -456,3 +456,13 @@ P3 完成 R/B 和多档静态批配额扫描；P4 比较 B/A；P5 仅在必要�
 真实 `platform-diagnostics-test` 临时撤销本轮 batch observer 的读取权限，再按原 UID/resourceVersion 恢复。四条命令结果全部正确、无 dropped，每条均关联八个 runtime 阶段；归档捕获四次 batch `403/forbidden` 读取，session 库存保持有效。保留 301 条 observer 日志、30 个宿主样本、API Server/etcd 10 次采集记录及 15 份清理快照，故障退出路径仍完成资源回收。该场景有意导致基线观测失效，诊断验收通过与容量验收分别记录；本轮不证明旧 4.22s 执行阶段的根因或性能改善。
 
 首轮诊断验收曾因脚本未接受空 RBAC Rules 的 null 表示而停止；原失败保留，已修复并补齐 []、null、字段缺失及规则被外部修改时的保护回归。另补充 Python 3.10 的纳秒时间戳归档、子进程时间/字节上限、部分指标查询失败保留证据、归档失败仍清理，以及采样线程异常不能误报完成的回归。最终 `make check` 与 192 项 Python 测试通过。原始报告、源码版本差异、请求时间线、归档和回收证据见[诊断细节记录](data/diagnostic-details-validation.json)，入口及解读见[运维指南](operations.md#diagnostic-details)。P3 的重复 R/B 性能门槛和 P4 状态保持原口径。
+
+
+<a id="product-entries"></a>
+## 独立部署组合与资源目录整理
+
+已拆除混合 lab 根组合，提供独立 session/batch 入口及显式 inputs、私有完整清单渲染器和镜像准备入口。共享 Namespace、API 网络和预热补丁位于部署组件，纯夹具与四份会话实验参数分别迁至 tests/fixtures/platform、experiments/configs/session。原资源默认/动态语义黄金检查保持通过，七份版本锁值未改。平台 session 安装身份与 SDK 验收身份分离；兼容旧运行记录时只核对有证据的平台字段，并继续核对实际 UID 与 runtime bundle。
+
+真实 `platform-product-entry-test` 最终通过：12 对象会话产品完成执行、文件写读与关闭；15 对象图片产品完成一次真实处理并逐项验证 8 份 PNG 字节/像素；Kueue、运行时、证书和 API 出口由实际输入满足。早期尝试分别发现 runtime 缓存只有 tag、worker 旧 RepoDigests 的歧义，以及批模板只接受 tag 的校验限制；均保留失败，修复后通过，不以放宽隔离/资源约束代替修复。
+
+完整 make check 和 203 项 Python 回归通过。验收仅创建临时实例并按原 UID 回收，显式部署的长期入口由管理员应用私有清单使用；不宣称已运行生产常驻实例或形成新的 P3 性能结论。原始报告、输入、目录与身份兼容检查见[部署入口验收记录](data/product-entry-layout-validation.json)。

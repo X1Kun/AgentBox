@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-04T15:19:04.591341+00:00",
+  "result": {
+    "session_objects": 12,
+    "batch_objects": 15,
+    "png_artifacts": 8,
+    "all_passed": true,
+    "cleanup_complete": true
+  },
+  "reports": {
+    "report.json": {
+      "path": "artifacts/platform-product-entry-test-7732a1aa5e7a/report.json",
+      "sha256": "49bc052b230778bab4231fd752322cd25f6089a0e17ed56834b1bb1d7e7b6960"
+    },
+    "product-entry-test.json": {
+      "path": "artifacts/platform-product-entry-test-7732a1aa5e7a/product-entry-test.json",
+      "sha256": "26e9f0eb62fedbf032e7323f8bf2edb98b7a5a962c80d5c0318e41ec08b0eac5"
+    },
+    "product-images.json": {
+      "path": "artifacts/platform-product-entry-test-7732a1aa5e7a/product-images.json",
+      "sha256": "431527d489ab79b7cae5d872962a6a6515168864a1e879d2f4232b735808fb1a"
+    },
+    "session-inputs.yaml": {
+      "path": "artifacts/platform-product-entry-test-7732a1aa5e7a/session-inputs.yaml",
+      "sha256": "28adfe601e9a7e431b9c8748de9dcf904e17c80c96273f263220f008bf3376d9"
+    },
+    "batch-inputs.yaml": {
+      "path": "artifacts/platform-product-entry-test-7732a1aa5e7a/batch-inputs.yaml",
+      "sha256": "95d4bab470733133757b1b6747bc9fe4f2a477bfe4bd481d61afcb0959684496"
+    },
+    "session-test-inputs.json": {
+      "path": "artifacts/platform-product-entry-test-7732a1aa5e7a/session-test-inputs.json",
+      "sha256": "0db112883ae4202e30bf4eb678a355847063f03d2a3eb3431333565013d0c67f"
+    },
+    "batch-test-inputs.json": {
+      "path": "artifacts/platform-product-entry-test-7732a1aa5e7a/batch-test-inputs.json",
+      "sha256": "258293af96a7a0dbf9395d4bec7a7418ac0d23d7adbe2a1d9ee30bc55a611eab"
+    }
+  },
+  "checks": {
+    "make_check": true,
+    "python_tests": 203,
+    "legacy_render_semantics": "unchanged golden static and dynamic profiles"
+  },
+  "platform_state": {
+    "cluster.json": {
+      "before": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      "after": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b"
+    },
+    "session-bundle.json": {
+      "before": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e",
+      "after": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e"
+    }
+  },
+  "platform_state_unchanged": true,
+  "lock_files": {
+    "deploy/components/observability/versions.lock.yaml": "ee193a81cf7ad9b00555ca69f151359d84fb66a14672d3ebf2ef1e8d1377be16",
+    "deploy/components/calico/versions.lock.yaml": "a467394c777484348a7d78f3cf25b83e0ea53fd0315be0cb2322842e78415507",
+    "deploy/components/agent-sandbox/versions.lock.yaml": "7430ef24e369e4266246afbd63ffe99ed945ed20182d70b89c1e971b3771fc57",
+    "deploy/components/gvisor/versions.lock.yaml": "5c992d8962a7eff72ceef4cde80a74f25669f0fad879ff6af0d8e50ddaa0a43a",
+    "deploy/components/kueue/versions.lock.yaml": "049b1e726b102f37d34479e50a903597e5ad26edf1b709e262ec6dda3966abf1",
+    "deploy/agentbox/batch-images/versions.lock.yaml": "fd30ebdcfdb0c573365ffd4e1c1122173b2cb9059d89baa8988eb9394d386d2a",
+    "deploy/lab/versions.lock.yaml": "1dc37d6c851ba0d6793beb19954cea56b36fe31130568ddf9d6a9b2739ede617"
+  },
+  "history": [
+    {
+      "report": {
+        "path": "artifacts/platform-product-entry-test-0b094947033b/report.json",
+        "sha256": "6af91a98ae5c74ccb4f7777b990c982eb836fa1775a13cd575988a91aba7c009"
+      },
+      "reason": "product_worker_digest_changed"
+    },
+    {
+      "report": {
+        "path": "artifacts/platform-product-entry-test-b5a087bed322/report.json",
+        "sha256": "14d312703041a0c3e899d7ea7d00ad9b58c588833256b70cc37bdb48ad164c46"
+      },
+      "reason": "command_failed"
+    },
+    {
+      "report": {
+        "path": "artifacts/platform-product-entry-test-d1eadd74fc96/report.json",
+        "sha256": "05e06056abfc8cc043284d049ab12e724f0ac0d261030771579493235e410902"
+      },
+      "reason": "entry_image_digest_missing"
+    }
+  ],
+  "scope": [
+    "Persistent product bundles are independently rendered; native verification used disposable namespaces.",
+    "No component version upgrade, controller replacement or rewrite of historical evidence.",
+    "Digest aliases bind verified existing OCI content/config IDs; historical import aliases remain recorded.",
+    "P3 performance qualification and P4 status are unchanged."
+  ]
+}

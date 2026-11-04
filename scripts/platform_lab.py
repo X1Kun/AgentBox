@@ -35,6 +35,8 @@ from lib.maintenance_acceptance import MaintenanceAcceptance
 from lib.session_boundaries import SessionBoundaries, SessionMatrix
 from lib.static_baseline import StaticBaseline
 from lib.diagnostics_acceptance import DiagnosticsAcceptance
+from lib.product_entry_acceptance import ProductEntryAcceptance
+from lib.product_images import prepare_product_images
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -614,11 +616,12 @@ class Lab:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-image-build", "batch-product-test", "batch-product-cleanup", "observability-test", "maintenance-test", "session-boundary-test", "session-matrix-test", "static-baseline", "static-baseline-cleanup", "diagnostics-test"))
-    parser.add_argument("--baseline-config", type=Path, default=ROOT / "deploy/acceptance/boundaries/baseline.yaml", help="frozen R/B baseline YAML")
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-image-build", "batch-product-test", "batch-product-cleanup", "observability-test", "maintenance-test", "session-boundary-test", "session-matrix-test", "static-baseline", "static-baseline-cleanup", "diagnostics-test", "product-entry-test", "product-images"))
+    parser.add_argument("--baseline-config", type=Path, default=ROOT / "experiments/configs/session/baseline.yaml", help="frozen R/B baseline YAML")
     parser.add_argument("--baseline-report", type=Path, help="original static-baseline.json for scoped cleanup recovery")
     parser.add_argument("--baseline-stage", choices=("calibration", "comparison"), default="calibration", help="R calibration first; R/B comparison requires a matching reference")
     parser.add_argument("--reference-report", type=Path, help="R calibration static-baseline.json for comparison gating")
+    parser.add_argument("--with-batch", action="store_true", help="include the verified image worker in product-images output")
     parser.add_argument("--matrix-scenarios", help="comma-separated matrix scenarios; isolated diagnostic selection")
     parser.add_argument("--dry-run", action="store_true", help="offline plan; no tools, writes or Docker calls")
     parser.add_argument("--output", type=Path, help="new evidence directory; never overwritten")
@@ -725,6 +728,10 @@ def main(argv=None):
                     source_root/'scripts/lib/batch_guest_probe.py',
                     source_root/'scripts/lib/gvisor_node_processes.sh',
                     *list((source_root/'deploy').rglob('*.yaml')),
+                    *list((source_root/'tests/fixtures/platform').rglob('*.yaml')),
+                    *list((source_root/'experiments/configs').rglob('*.yaml')),
+                    source_root/'tests/fixtures/platform/sessions/client.Dockerfile', source_root/'scripts/lib/api_network.py',
+                    source_root/'scripts/lib/api_image.py', source_root/'scripts/lib/product_images.py', source_root/'scripts/lib/product_deployment.py', source_root/'scripts/lib/product_entry_acceptance.py', source_root/'scripts/render_product.py',
                     *[p for p in (source_root/'deploy').rglob('*') if p.is_file() and (p.name=='Dockerfile' or p.suffix in ('.Dockerfile','.toml'))],
                     *[p for folder in ('session/sandboxd','session','session/httpapi','session/client','mcpserver','mcpclient','agent','deepseek','batch','batchapi','httpauth','observer','telemetry','session/protocol','batchprotocol','toolcontract','readiness','requestid','experiment/session') for p in (source_root/'internal'/folder).glob('*.go')],
                     *[p for folder in ('agentbox-api','agentbox-cleanup','agentbox-agent','agentbox-mcp','agentbox-session-smoke','agentbox-observer','agentbox-session-experiment') for p in (source_root/'cmd'/folder).glob('*.go')],
@@ -812,6 +819,12 @@ def main(argv=None):
             report["ok"] = True
         elif args.action == "diagnostics-test":
             report["result"] = DiagnosticsAcceptance(lab).test()
+            report["ok"] = True
+        elif args.action == "product-images":
+            report["result"] = prepare_product_images(lab, args.with_batch)
+            report["ok"] = True
+        elif args.action == "product-entry-test":
+            report["result"] = ProductEntryAcceptance(lab).test()
             report["ok"] = True
         elif args.action == "session-boundary-test":
             report["result"] = SessionBoundaries(lab).test()

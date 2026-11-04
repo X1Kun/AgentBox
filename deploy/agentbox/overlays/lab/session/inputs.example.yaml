@@ -1,0 +1,12 @@
+schema_version: 1
+product: session
+owner: REQUIRED_PLATFORM_OWNER
+instance: session-lab
+namespaces: {work: agentbox-session-work, api: agentbox-session-api}
+images:
+  api: docker.io/agentbox/api@sha256:REQUIRED_API_MANIFEST_DIGEST
+  runtime: docker.io/agentbox/session-runtime@sha256:REQUIRED_RUNTIME_MANIFEST_DIGEST
+# Supply both Service and EndpointSlice addresses for pre/post-DNAT policy.
+api_server_endpoints:
+- {address: 10.96.0.1, port: 443}
+- {address: REQUIRED_CONTROL_PLANE_IP, port: 6443}

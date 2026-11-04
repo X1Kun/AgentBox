@@ -16,6 +16,7 @@ except ImportError as error:
     raise RuntimeError('Install scripts/requirements-platform.txt before platform commands') from error
 
 ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = ROOT / 'tests/fixtures/platform'
 LOCK_PATHS = {'versions':'lab/versions.lock.yaml','gvisor':'components/gvisor/versions.lock.yaml',
               'calico':'components/calico/versions.lock.yaml','session':'components/agent-sandbox/versions.lock.yaml',
               'kueue':'components/kueue/versions.lock.yaml'}
@@ -105,32 +106,32 @@ def executable():
 # Resource definitions and environment patches live alongside their components.
 APP_LAB='agentbox/overlays/lab'
 RECIPES={
- 'api':(APP_LAB,[],{('Deployment','agentbox-api')}),
- 'api-rbac':(APP_LAB,[],{(k,'agentbox-api') for k in ('ServiceAccount','Role','RoleBinding')}),
- 'api-quota':(APP_LAB,[],{('ResourceQuota','agentbox-api-budget')}),
- 'cleanup-rbac':(APP_LAB,[],{(k,'agentbox-cleanup') for k in ('ServiceAccount','Role','RoleBinding')}),
- 'session':(APP_LAB,[],{('SandboxTemplate','python'),('SandboxWarmPool','python-cold')}),
- 'session-warm':(APP_LAB,[('SandboxWarmPool','acceptance/sessions/warm-pool-patch.yaml')],{('SandboxTemplate','python'),('SandboxWarmPool','python-warm')}),
+ 'api':('agentbox/api/deployment.yaml',[('Deployment',APP_LAB+'/session/api-patch.yaml')],{('Deployment','agentbox-api')}),
+ 'api-rbac':('agentbox/api/rbac.yaml',[],{(k,'agentbox-api') for k in ('ServiceAccount','Role','RoleBinding')}),
+ 'api-quota':(APP_LAB+'/session/quota.yaml',[],{('ResourceQuota','agentbox-api-budget')}),
+ 'cleanup-rbac':('agentbox/cleanup',[],{(k,'agentbox-cleanup') for k in ('ServiceAccount','Role','RoleBinding')}),
+ 'session':('components/agent-sandbox',[('SandboxTemplate',APP_LAB+'/session/sandbox-patch.yaml')],{('SandboxTemplate','python'),('SandboxWarmPool','python-cold')}),
+ 'session-warm':('components/agent-sandbox',[('SandboxTemplate',APP_LAB+'/session/sandbox-patch.yaml'),('SandboxWarmPool','components/agent-sandbox/warm-pool-patch.yaml')],{('SandboxTemplate','python'),('SandboxWarmPool','python-warm')}),
  'runtime':('components/gvisor',[('RuntimeClass','lab/gvisor-patch.yaml')],{('RuntimeClass','agentbox-gvisor')}),
- 'gvisor-probe':('acceptance/gvisor',[],{('Job','agentbox-probe')}),
- 'smoke':('acceptance/smoke',[],{('Job','agentbox-smoke-preview')}),
- 'sdk-client':('acceptance/sessions',[],{('Job','session-client')}),
- 'sdk-rbac':('acceptance/sessions',[],{(k,'session-client') for k in ('ServiceAccount','Role','RoleBinding')}),
- 'warm-quota':('acceptance/sessions',[],{('ResourceQuota','session-budget')}),
- 'client-policy':('acceptance/sessions',[],{('NetworkPolicy','session-client')}),
- 'network-pod':('acceptance/network',[],{('Pod','agentbox-probe')}),
- 'network-control':('acceptance/network',[('Pod','acceptance/network/control-patch.yaml')],{('Pod','agentbox-probe')}),
- 'network-worker':('acceptance/network',[('Pod','acceptance/network/worker-patch.yaml')],{('Pod','agentbox-probe')}),
- 'observer':('acceptance/network',[('Pod','acceptance/network/observer-patch.yaml')],{('Pod','agentbox-probe')}),
- 'network-policy':('acceptance/network',[],{('NetworkPolicy',name) for name in ('default-deny','allow-control','allow-data','allow-dns')}),
+ 'gvisor-probe':('fixtures/gvisor',[],{('Job','agentbox-probe')}),
+ 'smoke':('fixtures/smoke',[],{('Job','agentbox-smoke-preview')}),
+ 'sdk-client':('fixtures/sessions/client-job.yaml',[],{('Job','session-client')}),
+ 'sdk-rbac':('fixtures/sessions/rbac.yaml',[],{(k,'session-client') for k in ('ServiceAccount','Role','RoleBinding')}),
+ 'warm-quota':('fixtures/sessions/quota.yaml',[],{('ResourceQuota','session-budget')}),
+ 'client-policy':('agentbox/api/network',[],{('NetworkPolicy','session-client')}),
+ 'network-pod':('fixtures/network',[],{('Pod','agentbox-probe')}),
+ 'network-control':('fixtures/network',[('Pod','fixtures/network/control-patch.yaml')],{('Pod','agentbox-probe')}),
+ 'network-worker':('fixtures/network',[('Pod','fixtures/network/worker-patch.yaml')],{('Pod','agentbox-probe')}),
+ 'observer':('fixtures/network',[('Pod','fixtures/network/observer-patch.yaml')],{('Pod','agentbox-probe')}),
+ 'network-policy':('fixtures/network',[],{('NetworkPolicy',name) for name in ('default-deny','allow-control','allow-data','allow-dns')}),
  'platform-namespace':('lab/namespace.yaml',[],{('Namespace','agentbox-platform')}),
- 'session-namespace':('acceptance/sessions/namespace.yaml',[],{('Namespace','agentbox-platform')}),
- 'network-namespace':('acceptance/network/namespace.yaml',[],{('Namespace','agentbox-platform')}),
- 'batch-resources':(APP_LAB,[],{('Namespace','agentbox-batch'),('ResourceFlavor','agentbox-batch-worker'),
+ 'session-namespace':('agentbox/api/work-namespace.yaml',[],{('Namespace','agentbox-work')}),
+ 'network-namespace':('fixtures/network/namespace.yaml',[],{('Namespace','agentbox-platform')}),
+ 'batch-resources':('fixtures/batch/resources',[],{('Namespace','agentbox-batch'),('ResourceFlavor','agentbox-batch-worker'),
      ('ClusterQueue','agentbox-batch'),('LocalQueue','batch'),('ResourceQuota','batch-budget'),('NetworkPolicy','batch-default-deny')}),
- 'batch-job':('acceptance/batch',[],{('Job','batch-probe')}),
- 'batch-oversized':('acceptance/batch',[('Job','acceptance/batch/oversized-patch.yaml')],{('Job','batch-probe')}),
- 'batch-deadline':('acceptance/batch',[('Job','acceptance/batch/deadline-patch.yaml')],{('Job','batch-probe')}),
+ 'batch-job':('fixtures/batch',[],{('Job','batch-probe')}),
+ 'batch-oversized':('fixtures/batch',[('Job','fixtures/batch/oversized-patch.yaml')],{('Job','batch-probe')}),
+ 'batch-deadline':('fixtures/batch',[('Job','fixtures/batch/deadline-patch.yaml')],{('Job','batch-probe')}),
  'image-job':('agentbox/batch-images/image-job.yaml',[],{('Job','image-job')}),
  'batch-api-resources':('agentbox/batch-api',[],{('Namespace','agentbox-batch'),('ClusterQueue','agentbox-batch'),
      ('ResourceFlavor','agentbox-batch-worker'),('LocalQueue','batch'),('NetworkPolicy','batch-default-deny'),
@@ -168,27 +169,37 @@ def _validate_tree(directory):
         refs=value.get('resources',[])+value.get('components',[])+value.get('configurations',[])
         refs += [v['path'] for v in value.get('patches',[]) if 'path' in v]
         refs += [ref.split('=',1)[-1] for entry in value.get('configMapGenerator',[]) for ref in entry.get('files',[])]
+        allowed = directory/'deploy' if path.is_relative_to(directory/'deploy') else directory
         for ref in refs:
-            if not isinstance(ref,str) or '://' in ref or ref.startswith(('git@','/')) or not (path.parent/ref).resolve().is_relative_to(directory.resolve()):
+            if not isinstance(ref,str) or '://' in ref or ref.startswith(('git@','/')) or not (path.parent/ref).resolve().is_relative_to(allowed.resolve()):
                 raise ManifestError('Kustomize references must stay within the local deploy tree')
 
 
 @contextmanager
-def _stage(config):
+def _stage(config, fixture_root=None):
     config=Path(config)
     if any((p.is_symlink() for p in config.rglob('*'))):
         raise ManifestError('symlinked manifest inputs are forbidden')
     with tempfile.TemporaryDirectory(prefix='agentbox-kustomize-') as tmp:
         root = Path(tmp)
-        shutil.copytree(config, root / 'source')
-        _validate_tree(root)
+        shutil.copytree(config, root / 'source/deploy')
+        if fixture_root is not None:
+            fixture_root = Path(fixture_root)
+            if any(p.is_symlink() for p in fixture_root.rglob('*')):
+                raise ManifestError('symlinked acceptance inputs are forbidden')
+            shutil.copytree(fixture_root, root/'source/tests/fixtures/platform')
+        _validate_tree(root/'source')
         yield root
 
 
+def _source(entry):
+    return 'source/tests/fixtures/platform/' + entry[len('fixtures/'):] if entry.startswith('fixtures/') else 'source/deploy/' + entry
+
+
 def _build(root,entry,patches=(),images=None,configmaps=None):
-    k={'apiVersion':'kustomize.config.k8s.io/v1beta1','kind':'Kustomization','resources':['source/'+entry]}
+    k={'apiVersion':'kustomize.config.k8s.io/v1beta1','kind':'Kustomization','resources':[_source(entry)]}
     if patches:
-        k['patches'] = [{'target': {'kind': kind}, 'path': 'source/' + path} for (kind, path) in patches]
+        k['patches'] = [{'target': {'kind': kind}, 'path': _source(path)} for (kind, path) in patches]
     if images:
         k['images'] = images
     if configmaps:
@@ -289,6 +300,8 @@ def _inject(values,p,profile):
         _labels(meta.get('labels', {}), p, True)
         if 'namespace' in meta:
             meta['namespace'] = _namespace(meta['namespace'], p)
+        if kind == 'Namespace':
+            meta['name'] = _namespace(meta['name'], p)
         if kind in ('Namespace', 'Pod', 'Job') and 'NAME' in p:
             meta['name'] = p['NAME']
         if profile == 'smoke' and 'RUN_ID' in p:
@@ -328,14 +341,17 @@ def _inject(values,p,profile):
     return values
 
 
-def render(config,profile,params=None,strict=True):
+def render(config,profile,params=None,strict=True,fixture_root=FIXTURES):
     if profile not in RECIPES:
         raise ManifestError('unknown experiment resource selection: ' + profile)
     p=_parameters(profile,params,strict)
+    if profile == 'session-namespace' and params is None:
+        p['NAME'] = 'agentbox-platform'  # Preserve the old preview; callers name actual scopes explicitly.
     optional={'runtime':{'RUNTIME_NAME','HANDLER'},'api':{'API_INSTANCE'},'batch-api-resources':{'API_INSTANCE'}}.get(profile,set())
     p={k:v for k,v in p.items() if k in REQUIRED[profile] | optional}
     entry,patches,selected=RECIPES[profile]
-    with _stage(config) as root:
+    fixtures = fixture_root if entry.startswith('fixtures/') or any(path.startswith('fixtures/') for _, path in patches) else None
+    with _stage(config, fixtures) as root:
         values=[o for o in _build(root,entry,patches) if (o['kind'],o['metadata']['name']) in selected]
     if len(values) != len(selected):
         raise ManifestError('component resource selection is incomplete: ' + profile)
@@ -346,25 +362,32 @@ def render_component(config,name,params=None,environment='lab'):
     entries={'api':'agentbox/api','cleanup':'agentbox/cleanup','agent-sandbox':'components/agent-sandbox','gvisor':'components/gvisor','batch':'agentbox/batch','batch-api':'agentbox/batch-api'}
     if name not in entries:
         raise ManifestError('unknown component')
-    if environment=='lab' and name in ('api','cleanup','agent-sandbox','batch'):
-        entry=APP_LAB
-        names={'api':{'agentbox-api','agentbox-api-budget'},'cleanup':{'agentbox-cleanup'},'agent-sandbox':{'python','python-cold'},
-               'batch':{'agentbox-batch','agentbox-batch-worker','batch','batch-budget','batch-default-deny'}}[name]
-    else:entry=entries[name];names=None
-    patches=[('RuntimeClass','lab/gvisor-patch.yaml')] if name=='gvisor' and environment=='lab' else []
+    entry = entries[name]
+    patches = []
+    if environment == 'lab':
+        patches = {'api':[('Deployment',APP_LAB+'/session/api-patch.yaml')],
+                   'agent-sandbox':[('SandboxTemplate',APP_LAB+'/session/sandbox-patch.yaml')],
+                   'gvisor':[('RuntimeClass','lab/gvisor-patch.yaml')]}.get(name, [])
     with _stage(config) as root:
         values = _build(root, entry, patches)
-    if names:
-        values = [o for o in values if o['metadata']['name'] in names]
     return bundle(_inject(values,_parameters('runtime',params,False),name))
 
 
-def render_fixture(config,name,params=None):
+def render_fixture(config,name,params=None,fixture_root=FIXTURES):
     if name not in ('smoke', 'gvisor', 'network', 'sessions', 'batch'):
         raise ManifestError('unknown acceptance fixture')
-    with _stage(config) as root:
-        values = _build(root, 'acceptance/' + name)
+    with _stage(config, fixture_root) as root:
+        values = _build(root, 'fixtures/' + name)
     return bundle(_inject(values,_parameters('runtime',params,False),name))
+
+
+def render_product_template(config, name, params=None):
+    if name not in ('session', 'batch'):
+        raise ManifestError('unknown product')
+    with _stage(config) as root:
+        values = _build(root, APP_LAB+'/'+name)
+    profile = 'api' if name == 'session' else 'batch-api-resources'
+    return bundle(_inject(values, _parameters('runtime', params, False), profile))
 
 
 def lock_identity(config,name):
@@ -376,9 +399,11 @@ def lock_identity(config,name):
 
 def definition(config,name):
     config=Path(config)
+    if name == 'session':
+        return {'schema_version': 3, 'locks': {'session': lock_identity(config, 'session')},
+                'files': {'components/agent-sandbox/controller-lab-patch.yaml': canonical(read_yaml(config/'components/agent-sandbox/controller-lab-patch.yaml', mapping=False))}}
     specs={'runtime':(['gvisor'],['runtime'],['components/gvisor/runsc.toml']),
-      'network':(['calico'],[],['lab/kind-calico.yaml','components/calico/lab-patch.yaml']),
-      'session':(['session'],['session','sdk-rbac','sdk-client'],['components/agent-sandbox/controller-lab-patch.yaml'])}
+      'network':(['calico'],[],['lab/kind-calico.yaml','components/calico/lab-patch.yaml'])}
     locks,selections,files=specs[name]
     current={'schema_version':2,'locks':{n:lock_identity(config,n) for n in locks},
       'profiles':{n:canonical(normalized(render(config,n))) for n in selections},
@@ -387,19 +412,42 @@ def definition(config,name):
     return old['legacy'] if current==old.get('current') else current
 
 
+def session_definition_matches(config, recorded):
+    current = definition(config, 'session')
+    if recorded == current:
+        return True
+    old = read_yaml(Path(config)/'lab/format-compatibility.yaml')['definitions']['session']
+    if recorded == old['legacy']:
+        return all(current[k] == old['current'][k] for k in ('locks', 'files'))
+    if not isinstance(recorded, dict) or recorded.get('schema_version') != 2 or set(recorded) != {'schema_version','locks','profiles','files'}:
+        return False
+    profiles = recorded.get('profiles', {})
+    if not isinstance(profiles, dict):
+        return False
+    return (set(profiles) == {'session','sdk-client','sdk-rbac'} and
+            all(isinstance(v, str) and re.fullmatch('[a-f0-9]{64}', v) for v in profiles.values()) and
+            all(current[k] == recorded[k] for k in ('locks', 'files')))
+
+
+def acceptance_definition(config, fixture_root=FIXTURES):
+    return {'schema_version': 3, 'profiles': {name: canonical(normalized(render(config, name, fixture_root=fixture_root)))
+            for name in ('sdk-client','sdk-rbac')},
+            'client_dockerfile': hashlib.sha256((Path(fixture_root)/'sessions/client.Dockerfile').read_bytes()).hexdigest()}
+
+
 def render_upstream(config,component,resources,params,images=None):
     if component=='kueue-lab':
         patches=[('Deployment','components/kueue/controller-lab-patch.yaml'),
                  ('MutatingWebhookConfiguration','components/kueue/mutating-lab-patch.yaml'),
                  ('ValidatingWebhookConfiguration','components/kueue/validating-lab-patch.yaml')]
         configmaps=[{'name':'kueue-manager-config','namespace':'kueue-system','behavior':'replace',
-                     'files':['controller_manager_config.yaml=source/components/kueue/controller-config.yaml']}]
+                     'files':['controller_manager_config.yaml=source/deploy/components/kueue/controller-config.yaml']}]
     else:
         path={'controller-lab':'components/agent-sandbox/controller-lab-patch.yaml','calico-lab':'components/calico/lab-patch.yaml'}[component]
         patches=[('Deployment' if component=='controller-lab' else 'DaemonSet',path)]
         configmaps=None
     with _stage(config) as root:
-        (root/'source/upstream.yaml').write_text(yaml.safe_dump_all(copy.deepcopy(resources),sort_keys=False))
+        (root/'source/deploy/upstream.yaml').write_text(yaml.safe_dump_all(copy.deepcopy(resources),sort_keys=False))
         values=_build(root,'upstream.yaml',patches,images,configmaps)
     for obj in values:
         obj['metadata'].setdefault('labels',{}).update({'agentbox.dev/session':params['OWNER'],'app.kubernetes.io/managed-by':'agentbox-platform'})

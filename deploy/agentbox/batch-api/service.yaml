@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentbox-batch-api
+  namespace: agentbox-batch
+  labels:
+    agentbox.dev/session: development
+    agentbox.dev/batch-run: preview
+spec:
+  selector: {app: agentbox-batch-api}
+  ports:
+  - {name: https, port: 8090, targetPort: https, protocol: TCP}

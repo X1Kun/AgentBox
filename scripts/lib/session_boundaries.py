@@ -20,7 +20,7 @@ from lib.observability_acceptance import ObservationAcceptance, instrument
 
 
 class SessionBoundaries(ObservationAcceptance):
-    config_path = "acceptance/boundaries/session.yaml"
+    config_path = "session.yaml"
     def test(self):
         with self.lab.operation_lock():
             sessions = Sessions(self.lab)
@@ -31,7 +31,7 @@ class SessionBoundaries(ObservationAcceptance):
             self.record.update(run=run, owner=sessions.state['session'], started_at=time.time(),
                                scope='R behavioral boundaries; no statistically established capacity')
             self.save()
-            config = read_yaml(self.lab.config / self.config_path)
+            config = read_yaml(self.lab.root / 'experiments/configs/session' / self.config_path)
             selected = getattr(self, 'selected_scenarios', None)
             if selected:
                 require(set(selected) <= set(config['scenarios']), 'invalid_scenario_selection', str(selected))
@@ -336,4 +336,4 @@ class SessionBoundaries(ObservationAcceptance):
 
 
 class SessionMatrix(SessionBoundaries):
-    config_path = 'acceptance/boundaries/matrix.yaml'
+    config_path = 'matrix.yaml'
