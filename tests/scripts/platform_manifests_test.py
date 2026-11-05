@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
-from lib.platform_manifests import ManifestError,canonical,definition,lock_identity,normalized,objects,read_yaml,load_lock,LOCK_PATHS,render,render_component,profiles,python_image_source,build_input_identity
-from lib.platform_manifests import acceptance_definition, session_definition_matches, render_product_template, FIXTURES
+from lib.manifests import ManifestError,canonical,definition,lock_identity,normalized,objects,read_yaml,load_lock,LOCK_PATHS,render,render_component,profiles,python_image_source,build_input_identity
+from lib.manifests import acceptance_definition, session_definition_matches, render_product_template, FIXTURES
 import yaml
 
 
@@ -174,7 +174,7 @@ class ManifestTests(unittest.TestCase):
                     with self.assertRaises(ManifestError):read_yaml(path)
 
     def test_remote_paths_invalid_parameters_and_missing_parameters_fail_before_build(self):
-        with patch('lib.platform_manifests._build',side_effect=AssertionError('built')):
+        with patch.object(__import__('importlib').import_module('lib.manifests.render'), '_build',side_effect=AssertionError('built')):
             with self.assertRaises(ManifestError):render(ROOT/'deploy','api',{'OWNER':'owner'})
             with self.assertRaises(ManifestError):render(ROOT/'deploy','api',{'WORK_NS':'../../escape'},strict=False)
             with self.assertRaises(ManifestError):render(ROOT/'deploy','api',{'TOKEN':'secret'},strict=False)
@@ -182,7 +182,7 @@ class ManifestTests(unittest.TestCase):
             root=Path(tmp)/'config';shutil.copytree(ROOT/'deploy',root)
             path=root/'agentbox/api/kustomization.yaml'
             config=read_yaml(path);config['resources']=['https://example.invalid/remote.yaml'];path.write_text(yaml.safe_dump(config,sort_keys=False))
-            with patch('lib.platform_manifests._build',side_effect=AssertionError('built')):
+            with patch.object(__import__('importlib').import_module('lib.manifests.render'), '_build',side_effect=AssertionError('built')):
                 with self.assertRaises(ManifestError):render(root,'api')
 
 if __name__=='__main__':unittest.main()

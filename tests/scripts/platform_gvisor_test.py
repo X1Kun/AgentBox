@@ -12,8 +12,11 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.platform_gvisor import GVisor, GVisorError, RUNTIME, checked_archive, runtime_config
+from lib.platform.gvisor import GVisor, RUNTIME, checked_archive, runtime_config
+from lib.core.errors import GVisorError
 import platform_lab
+
+from lib.acceptance.gvisor import GVisorAcceptance
 
 
 class GVisorTests(unittest.TestCase):
@@ -26,13 +29,14 @@ class GVisorTests(unittest.TestCase):
         self.lab.root = ROOT
         self.lab.runner.output = self.root
         self.runtime = GVisor(self.lab)
+        self.fixture = GVisorAcceptance(self.lab, runtime=self.runtime)
         self.runtime.state = {'session': 'a' * 32}
         self.runtime.worker = '1' * 64
 
     def test_archive_must_match_digest_before_parsing(self):
         path = self.root / 'bad.tar.bz2'
         path.write_bytes(b'not an archive')
-        with patch('lib.platform_gvisor.tarfile.open', side_effect=AssertionError('parsed first')):
+        with patch('lib.platform.gvisor.tarfile.open', side_effect=AssertionError('parsed first')):
             with self.assertRaises(GVisorError) as caught:
                 checked_archive(path, {'sha512': '0' * 128})
         self.assertEqual(caught.exception.reason, 'gvisor_checksum_mismatch')
@@ -97,7 +101,7 @@ class GVisorTests(unittest.TestCase):
         self.runtime.state['gvisor'] = {'phase': 'ready', 'definition': self.runtime.definition(),
                                        'worker_id': self.runtime.worker, 'original_config_sha256': h,
                                        'installed_config_sha256': h}
-        with patch('lib.platform_gvisor.checked_archive', return_value={}), \
+        with patch('lib.platform.gvisor.checked_archive', return_value={}), \
                 patch.object(self.runtime, 'attach'), patch.object(self.runtime, 'node_hash', return_value=h), \
                 patch.object(self.runtime, 'verify_installation') as verify, patch.object(self.runtime, 'copy') as copy:
             from contextlib import nullcontext
@@ -114,7 +118,7 @@ class GVisorTests(unittest.TestCase):
                                        'installed_config_sha256': 'new'}
         from contextlib import nullcontext
         self.lab.operation_lock.return_value = nullcontext()
-        with patch('lib.platform_gvisor.checked_archive', return_value={}), \
+        with patch('lib.platform.gvisor.checked_archive', return_value={}), \
                 patch.object(self.runtime, 'attach'), patch.object(self.runtime, 'node_hash', return_value='external'), \
                 patch.object(self.runtime, 'copy') as copy:
             with self.assertRaises(GVisorError) as caught:
@@ -147,12 +151,12 @@ class GVisorTests(unittest.TestCase):
 
     def test_cleanup_needs_process_and_cri_confirmation_not_just_api_deletion(self):
         record = {'name': 'job', 'uid': 'uid', 'pod_uid': 'pod-uid', 'runtime': {'sandbox_id': '2' * 64}}
-        with patch.object(self.runtime, 'get_job'), patch.object(self.runtime, 'pods', return_value=[]), \
+        with patch.object(self.fixture, 'get_job'), patch.object(self.fixture, 'pods', return_value=[]), \
                 patch.object(self.runtime, 'processes', return_value=[{'pid': 99}]), \
                 patch.object(self.runtime, 'node', return_value='{"items":[]}'), \
-                patch('lib.platform_gvisor.time.monotonic', side_effect=[0, 0, 61]), patch('lib.platform_gvisor.time.sleep'):
+                patch('lib.acceptance.gvisor.time.monotonic', side_effect=[0, 0, 61]), patch('lib.acceptance.gvisor.time.sleep'):
             with self.assertRaises(GVisorError) as caught:
-                self.runtime.cleanup(record)
+                self.fixture.cleanup(record)
         self.assertEqual(caught.exception.reason, 'gvisor_cleanup_incomplete')
         self.assertFalse(record.get('cleanup_complete'))
 
@@ -163,18 +167,18 @@ class GVisorTests(unittest.TestCase):
                'spec': {'runtimeClassName': RUNTIME, 'containers': [{'image': 'image'}]}}
         self.lab.kubectl.return_value = json.dumps({'items': [pod]})
         with self.assertRaises(GVisorError) as caught:
-            self.runtime.pods(record)
+            self.fixture.pods(record)
         self.assertEqual(caught.exception.reason, 'probe_identity_changed')
 
     def test_oom_requires_explicit_oom_reason_not_generic_kill_exit(self):
         record = {'name': 'job', 'uid': 'uid', 'pod_uid': 'pod', 'mode': 'oom'}
         pod = {'metadata': {'uid': 'pod'}, 'status': {'containerStatuses': [
             {'state': {'terminated': {'exitCode': 137, 'reason': 'Error'}}}]}}
-        with patch.object(self.runtime, 'get_job', return_value={'status': {'conditions': [{'type': 'Failed', 'status': 'True'}]}}), \
-                patch.object(self.runtime, 'pods', return_value=[pod]), patch.object(self.runtime, 'logs', return_value=''), \
-                patch.object(self.runtime, 'memory_snapshot', return_value=''):
+        with patch.object(self.fixture, 'get_job', return_value={'status': {'conditions': [{'type': 'Failed', 'status': 'True'}]}}), \
+                patch.object(self.fixture, 'pods', return_value=[pod]), patch.object(self.fixture, 'logs', return_value=''), \
+                patch.object(self.fixture, 'memory_snapshot', return_value=''):
             with self.assertRaises(GVisorError) as caught:
-                self.runtime.wait_terminal(record, 30)
+                self.fixture.wait_terminal(record, 30)
         self.assertEqual(caught.exception.reason, 'unexpected_probe_result')
 
     def test_oom_accepts_new_kernel_event_when_cri_only_reports_error(self):
@@ -183,28 +187,28 @@ class GVisorTests(unittest.TestCase):
                                             {'cgroup': '/kubelet.slice', 'limits': 'oom_kill 99\n'}]}}
         pod = {'metadata': {'uid': 'pod'}, 'status': {'containerStatuses': [
             {'state': {'terminated': {'exitCode': 137, 'reason': 'Error'}}}]}}
-        with patch.object(self.runtime, 'get_job', return_value={'status': {'conditions': [{'type': 'Failed', 'status': 'True'}]}}), \
-                patch.object(self.runtime, 'pods', return_value=[pod]), patch.object(self.runtime, 'logs', return_value=''), \
-                patch.object(self.runtime, 'memory_snapshot', return_value='oom_kill 1\n'):
-            self.runtime.wait_terminal(record, 30)
+        with patch.object(self.fixture, 'get_job', return_value={'status': {'conditions': [{'type': 'Failed', 'status': 'True'}]}}), \
+                patch.object(self.fixture, 'pods', return_value=[pod]), patch.object(self.fixture, 'logs', return_value=''), \
+                patch.object(self.fixture, 'memory_snapshot', return_value='oom_kill 1\n'):
+            self.fixture.wait_terminal(record, 30)
         self.assertEqual(record['oom_kill_delta'], 1)
 
     def test_deadline_accepts_controller_removed_pod_without_inventing_exit_code(self):
         record = {'name': 'job', 'uid': 'uid', 'pod_uid': 'pod', 'mode': 'deadline'}
         status = {'conditions': [{'type': 'Failed', 'status': 'True', 'reason': 'DeadlineExceeded'}]}
-        with patch.object(self.runtime, 'get_job', return_value={'status': status}), \
-                patch.object(self.runtime, 'pods', return_value=[]):
-            self.runtime.wait_terminal(record, 30)
+        with patch.object(self.fixture, 'get_job', return_value={'status': status}), \
+                patch.object(self.fixture, 'pods', return_value=[]):
+            self.fixture.wait_terminal(record, 30)
         self.assertIsNone(record['termination'])
         self.assertNotIn('cleanup_complete', record)
 
     def test_missing_handler_that_executes_is_failure(self):
         pod = {'metadata': {'name': 'pod', 'uid': 'uid'}, 'status': {
             'containerStatuses': [{'state': {'running': {'startedAt': 'now'}}}]}}
-        with patch.object(self.runtime, 'ensure_runtime_class'), patch.object(self.runtime, 'job', return_value={}), \
-                patch.object(self.runtime, 'pods', return_value=[pod]):
+        with patch.object(self.runtime, 'ensure_runtime_class'), patch.object(self.fixture, 'job', return_value={}), \
+                patch.object(self.fixture, 'pods', return_value=[pod]):
             with self.assertRaises(GVisorError) as caught:
-                self.runtime.missing_handler('image', 30)
+                self.fixture.missing_handler('image', 30)
         self.assertEqual(caught.exception.reason, 'runtime_fallback')
 
     def test_gvisor_dry_run_does_not_require_tools_or_write_state(self):

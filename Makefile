@@ -27,7 +27,7 @@ check: test
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal tests)"
 	git diff --check
-	bash -n scripts/lib/gvisor_node_processes.sh
+	bash -n scripts/lib/platform/resources/gvisor_node_processes.sh
 	python3 -c 'import ast,pathlib; [ast.parse(p.read_text(), filename=str(p)) for base in ("scripts", "tests") for p in pathlib.Path(base).rglob("*.py")]'
 
 k8s-render:
@@ -57,7 +57,7 @@ observability-down:
 	python3 scripts/observability.py down
 
 observability-render:
-	python3 -c 'import sys,pathlib; sys.path.insert(0,"scripts"); from lib.platform_manifests import read_yaml; [read_yaml(p) for p in pathlib.Path("deploy/components/observability").glob("*.yaml")]'
+	python3 -c 'import sys,pathlib; sys.path.insert(0,"scripts"); from lib.manifests import read_yaml; [read_yaml(p) for p in pathlib.Path("deploy/components/observability").glob("*.yaml")]'
 
 platform-maintenance-test:
 	python3 scripts/platform_lab.py maintenance-test

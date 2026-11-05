@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import sys
 import yaml
-from lib.platform_manifests import ROOT,ManifestError,canonical,normalized,objects,profiles,render,render_component,render_fixture
+from lib.manifests import ROOT,ManifestError,canonical,normalized,objects,profiles,render,render_component,render_fixture
 
 
 def main(argv=None):

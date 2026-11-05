@@ -27,6 +27,13 @@ func TestProductDeployment(t *testing.T) {
 	}
 }
 
+func TestScriptArchitecture(t *testing.T) {
+	cmd := exec.Command("python3", "script_architecture_test.py", "-v")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("script architecture: %v\n%s", err, output)
+	}
+}
+
 func TestPlatformLab(t *testing.T) {
 	cmd := exec.Command("python3", "platform_test.py", "-v")
 	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")

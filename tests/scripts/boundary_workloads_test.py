@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.boundary_workloads import compile_workload
+from lib.experiments.workloads import compile_workload
 
 
 class Workloads(unittest.TestCase):
@@ -27,13 +27,13 @@ class Workloads(unittest.TestCase):
 class ReadPolling(unittest.TestCase):
     def test_classified_timeout_is_retried_only_as_read(self):
         from unittest.mock import Mock, patch
-        from lib.platform_api import APIAcceptance
+        from lib.acceptance.api import APIAcceptance
         api = object.__new__(APIAcceptance)
         api.record = {}
         api.save = Mock()
         api.api = Mock(side_effect=[(504, {'error': 'backend_timeout'}),
                                     (200, {'state': 'ready'})])
-        with patch('lib.platform_api.time.sleep'):
+        with patch('lib.acceptance.api.time.sleep'):
             result = api.wait_state('ses-test.uid', 'private', 'ready')
         self.assertEqual(result['state'], 'ready')
         self.assertTrue(all(call.args[0] == 'GET' for call in api.api.call_args_list))
@@ -43,7 +43,7 @@ class CreateRecovery(unittest.TestCase):
     def test_same_create_identity_recovers_timeout_without_replaying_data(self):
         from unittest.mock import Mock, patch
         import json
-        from lib.platform_api_execution import APIExecutionAcceptance
+        from lib.acceptance.api_execution import APIExecutionAcceptance
         api = object.__new__(APIExecutionAcceptance)
         api.record = {'runtime_evidence': {}}
         api.save = Mock()
@@ -54,7 +54,7 @@ class CreateRecovery(unittest.TestCase):
         api.lab.kubectl.side_effect = [json.dumps({'metadata': {'annotations': {'agentbox.dev/api-binding': json.dumps({'pod': {'name': 'pod'}})}}}), json.dumps({'metadata': {'uid': 'pod-uid'}})]
         runtime = Mock()
         runtime.runtime_evidence.return_value = {'sandbox_id': 'sandbox'}
-        with patch('lib.platform_api_execution.time.sleep'):
+        with patch('lib.acceptance.api_execution.time.sleep'):
             result = api.session('same-request', 'private', runtime, 'work')
         self.assertEqual(result, view)
         self.assertEqual([call.args[:4] for call in api.api.call_args_list], [('POST', '/v2/sessions', 'private', {'request_id': 'same-request'})]*2)

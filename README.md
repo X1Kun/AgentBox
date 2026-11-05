@@ -17,6 +17,8 @@ Agent 自动创建并绑定一个会话，仅向模型开放查询/执行/文件
 
 静态部署资源使用 [YAML＋Kustomize](docs/operations.md#manifests)：配置按组件集中，独立的 lab/session、lab/batch 组合环境，验收夹具位于 tests/fixtures/platform，实验参数位于 experiments/configs/session；七份版本锁使用 YAML。Python 保留实验编排和验证，JSON 用于运行报告、缓存元数据及历史证据。普通检查的 Python 依赖包含固定 Pillow，见 scripts/requirements-platform.txt。
 
+宿主脚本按 core、manifests、platform、product、acceptance、experiments、observability 分类。图片容器入口位于 `workloads/images/`，Pod 探针位于 `tests/fixtures/probes/`；依赖边界与执行位置见[脚本组织](docs/operations.md#script-layout)。
+
 ## 开发平台与真实验收
 
 先按[运维指南](docs/operations.md#platform-lab)准备 kind、工具、缓存、Calico/gVisor 与上游组件。已有健康开发集群可复用：

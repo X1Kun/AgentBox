@@ -573,3 +573,30 @@ Go 驱动按 target.user 或显式 request.user 选择真实配置的 HTTP 客�
 验收夹具已迁至 `tests/fixtures/platform/`，会话实验参数迁至 `experiments/configs/session/`。平台 session 身份使用 v3 的锁与控制器补丁；SDK Job、RBAC 和 Dockerfile 另记验收身份，runtime-only 校验不读取 SDK 文件或要求缓存 SDK 镜像。旧记录仅在平台字段与已知旧记录精确匹配时兼容；模板变更另体现在产品组合身份，真实 UID 与 bundle 校验继续保留。
 
 `make platform-product-entry-test` 使用同一完整清单渲染器，在临时归属 namespace 验证执行、文件、真实图片产物和回收。它不接管或清理管理员显式部署的长期实例。批产品仍受当前有限记录容量和持久存储身份契约约束，改镜像/模板不能绕过已有数据与幂等保护。
+
+
+<a id="script-layout"></a>
+## 脚本职责与执行位置
+
+根 scripts 下保留 CLI。平台入口按所选命令加载实现；基础 preflight/dry-run 不导入验收、实验或 Pillow。库代码不反向导入命令入口，旧的 scripts/lib 平铺模块已移除。
+
+| 目录 | 职责 |
+| --- | --- |
+| scripts/lib/core | 子进程、原子状态、操作锁、公共异常及归属/数量校验 |
+| scripts/lib/manifests | YAML/锁读取、Kustomize 渲染、安装身份和 API 网络规则 |
+| scripts/lib/platform | kind、Calico、gVisor、Sandbox、Kueue 安装/检查 |
+| scripts/lib/product | API/worker 镜像准备、数据集准备、完整部署清单 |
+| scripts/lib/acceptance | 功能验收、故障注入；clients 下是可复用的测试驱动与环境 |
+| scripts/lib/experiments | 行为轨迹、R/B 编排、实验统计 |
+| scripts/lib/observability | 监控栈、诊断采集和验收/实验共享环境 |
+| workloads/images/worker.py | 图片计算容器入口 |
+| tests/fixtures/probes | 送入 Pod 执行的探针，与宿主 Python 导入分开 |
+| scripts/lib/platform/resources | 在已归属节点运行的诊断 Shell |
+
+platform 层不导入产品、验收或实验。验收/实验共享窄化客户端及环境能力，实验不继承整套验收流程；SDK 验收与安装、Kueue 安装与批任务验收分别实现。公共 require/异常不再要求导入整套批任务模块。
+
+图片准备 CLI 委托 product/dataset.py；共享变换在 product/image_pipeline.py，Docker 构建将其安装为独立的 agentbox_image_pipeline 模块。容器入口不导入宿主 lib，在 Python isolated 模式下运行。由于 worker 内容及构建上下文改变，本次需要显式运行 `make platform-batch-image-build`，得到新 fingerprint/tag；既有运行中的镜像不被覆盖。
+
+Sandbox 平台只构建/验证 controller 和 runtime。SDK 客户端镜像由 acceptance/session.py 单独准备，不重写已安装 bundle；已验证的 v1 runtime 缓存继续复用，新建平台 bundle 使用 runtime-only 输入。旧 bundle 中路径状字符串仍是协议键，不能据改目录盲目归一化；锁、输入内容或实际镜像 ID 不一致继续拒绝复用。集群和 gVisor 无需因目录整理重建。
+
+`make check` 包含脚本依赖约束、独立解释器的基本 CLI 导入检查、Pod 程序位置与无宿主依赖检查，以及既有行为回归。原有命令、专用 kubeconfig、UID/归属校验和回收门槛继续使用。

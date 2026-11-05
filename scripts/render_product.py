@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 import sys
 
-from lib.platform_manifests import ROOT, ManifestError, read_yaml
-from lib.product_deployment import compose, credentials, validate_inputs, validate_cluster, write_bundle
+from lib.manifests import ROOT, ManifestError, read_yaml
+from lib.product.deployment import compose, credentials, validate_inputs, validate_cluster, write_bundle
 
 
 def main(argv=None):

@@ -8,8 +8,8 @@ from unittest.mock import Mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.session_boundaries import SessionBoundaries
-from lib.platform_batch import BatchError
+from lib.experiments.session_boundaries import SessionBoundaries
+from lib.core.errors import ToolError
 
 
 class BoundaryTeardown(unittest.TestCase):
@@ -41,7 +41,7 @@ class BoundaryTeardown(unittest.TestCase):
     def test_running_pod_with_missing_cri_still_deletes_both_namespaces(self):
         h, api, sessions, runtime = self.setup_harness()
         runtime.runtime_evidence.side_effect = ValueError('private native response')
-        with self.assertRaises(BatchError):
+        with self.assertRaises(ToolError):
             h._teardown(api, sessions, runtime, {}, 'run')
         self.assertEqual(sessions.close_namespaces.call_count, 2)
         self.assertEqual({next(iter(c.args[0])) for c in sessions.close_namespaces.call_args_list}, {'work', 'client'})
@@ -78,7 +78,7 @@ class BoundaryTeardown(unittest.TestCase):
                     runtime.node.side_effect = fail
                 else:
                     runtime.processes.side_effect = fail
-                with self.assertRaises(BatchError):
+                with self.assertRaises(ToolError):
                     h._teardown(api, sessions, runtime, {}, 'run')
                 self.assertEqual(sessions.close_namespaces.call_count, 2)
                 self.assertTrue(h.record['namespace_cleanup_complete'])
@@ -90,7 +90,7 @@ class BoundaryTeardown(unittest.TestCase):
     def test_one_namespace_failure_does_not_skip_the_other(self):
         h, api, sessions, runtime = self.setup_harness()
         sessions.close_namespaces.side_effect = [ValueError('UID replaced'), None]
-        with self.assertRaises(BatchError):
+        with self.assertRaises(ToolError):
             h._teardown(api, sessions, runtime, {}, 'run')
         self.assertEqual(sessions.close_namespaces.call_count, 2)
         self.assertFalse(h.record['namespace_cleanup_complete'])

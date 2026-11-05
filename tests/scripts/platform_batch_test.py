@@ -16,11 +16,17 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.platform_batch import (BatchAcceptance, BatchError, Kueue, OWNER, RUN, MANAGED,
-    checked_manifest, controller_source, identity, quantity, render_controller, webhook_contract, validate_cleanup_record)
-from lib.platform_manifests import objects, render
-from lib.platform_sessions import SessionError
-from lib import batch_guest_probe
+from lib.acceptance.batch import BatchAcceptance, validate_cleanup_record
+from lib.core.errors import ToolError
+from lib.platform.kueue import Kueue, OWNER, RUN, MANAGED, checked_manifest, controller_source, render_controller
+from lib.core.kubernetes import identity, quantity
+from lib.platform.kueue import webhook_contract
+from lib.manifests import objects, render
+from lib.core.errors import SessionError
+import importlib.util
+spec=importlib.util.spec_from_file_location("batch_guest_probe",ROOT/"tests/fixtures/probes/batch_guest_probe.py")
+batch_guest_probe=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(batch_guest_probe)
 import platform_lab
 
 
@@ -72,7 +78,7 @@ class BatchTests(unittest.TestCase):
     def test_manifest_checksum_is_rejected_before_any_cluster_access(self):
         path = self.output / 'wrong.yaml'
         path.write_text('wrong')
-        with self.assertRaises(BatchError) as caught:
+        with self.assertRaises(ToolError) as caught:
             self.kueue.install(path)
         self.assertEqual(caught.exception.reason, 'kueue_checksum_mismatch')
         self.lab.owned.assert_not_called()
@@ -81,8 +87,8 @@ class BatchTests(unittest.TestCase):
 
     def test_attach_passes_owned_state_to_native_control_plane_check(self):
         state = self.kueue.state
-        with patch('lib.platform_batch.Network') as network, patch('lib.platform_batch.Sessions') as sessions, \
-                patch('lib.platform_batch.GVisor') as runtime:
+        with patch('lib.platform.kueue.Network') as network, patch('lib.platform.kueue.Sessions') as sessions, \
+                patch('lib.platform.kueue.GVisor') as runtime:
             network.return_value.state = state
             self.assertIs(self.kueue.attach(), runtime.return_value)
             self.assertIs(sessions.return_value.state, state)
@@ -99,7 +105,7 @@ class BatchTests(unittest.TestCase):
             path.write_text(yaml.safe_dump_all(current))
             lock = dict(self.kueue.lock, object_count=len(values), manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
             if changed:
-                with self.assertRaisesRegex(BatchError, 'controller image'):
+                with self.assertRaisesRegex(ToolError, 'controller image'):
                     checked_manifest(path, lock)
             else:
                 self.assertEqual(checked_manifest(path, lock), current)
@@ -137,7 +143,7 @@ class BatchTests(unittest.TestCase):
 
     def test_inventory_reads_metadata_only_and_rejects_foreign_ownership(self):
         self.lab.kubectl.return_value = 'v1\tSecret\tkueue-system\tcert\tsecret-uid\t{"agentbox.dev/session":"foreign"}\n'
-        with self.assertRaises(BatchError) as caught:
+        with self.assertRaises(ToolError) as caught:
             self.kueue.inventory([{'kind': 'Secret', 'metadata': {'name': 'cert'}}])
         self.assertEqual(caught.exception.reason, 'unowned_kueue_resource')
         args = self.lab.kubectl.call_args.args
@@ -160,8 +166,8 @@ class BatchTests(unittest.TestCase):
 
     def test_ready_install_verifies_without_apply_or_restarting_controller(self):
         self.kueue.state['kueue'] = {'phase': 'ready', 'definition': self.kueue.definition(), 'image': self.kueue.image_source()}
-        with patch('lib.platform_batch.checked_manifest', return_value=[]), patch.object(self.kueue, 'attach'), \
-                patch('lib.platform_batch.render_controller', return_value={'kind': 'List', 'items': []}), \
+        with patch('lib.platform.kueue.checked_manifest', return_value=[]), patch.object(self.kueue, 'attach'), \
+                patch('lib.platform.kueue.render_controller', return_value={'kind': 'List', 'items': []}), \
                 patch.object(self.kueue, 'verify', return_value={'verified': True}):
             self.assertTrue(self.kueue.install(self.output / 'unused')['already_installed'])
         self.lab.kubectl.assert_not_called()
@@ -170,9 +176,9 @@ class BatchTests(unittest.TestCase):
 
     def test_ready_install_refuses_changed_source_instead_of_upgrading(self):
         self.kueue.state['kueue'] = {'phase': 'ready', 'definition': self.kueue.definition(), 'image': 'old-source'}
-        with patch('lib.platform_batch.checked_manifest', return_value=[]), patch.object(self.kueue, 'attach'), \
-                patch('lib.platform_batch.render_controller', return_value={'kind': 'List', 'items': []}):
-            with self.assertRaises(BatchError) as caught:
+        with patch('lib.platform.kueue.checked_manifest', return_value=[]), patch.object(self.kueue, 'attach'), \
+                patch('lib.platform.kueue.render_controller', return_value={'kind': 'List', 'items': []}):
+            with self.assertRaises(ToolError) as caught:
                 self.kueue.install(self.output / 'unused')
         self.assertEqual(caught.exception.reason, 'kueue_definition_changed')
         self.lab.kubectl.assert_not_called()
@@ -180,7 +186,7 @@ class BatchTests(unittest.TestCase):
     def test_uid_replacement_blocks_component_verification(self):
         self.kueue.state['kueue'] = {'phase': 'ready', 'definition': self.kueue.definition(), 'resources': [], 'uids': {'object': 'old'}}
         with patch.object(self.kueue, 'inventory', return_value={'object': 'new'}):
-            with self.assertRaises(BatchError) as caught:
+            with self.assertRaises(ToolError) as caught:
                 self.kueue.verify()
         self.assertEqual(caught.exception.reason, 'kueue_identity_changed')
 
@@ -209,7 +215,7 @@ class BatchTests(unittest.TestCase):
         values = objects(render(ROOT / 'deploy', 'batch-resources', self.batch.params()))
         self.lab.kubectl.side_effect = [json.dumps({'items': [{'metadata': {'name': self.batch.runtime.worker_name},
             'status': {'allocatable': {'cpu': '1', 'memory': '1Gi'}}}]}), '{"items":[]}']
-        with self.assertRaises(BatchError) as caught:
+        with self.assertRaises(ToolError) as caught:
             self.batch.budget(values)
         self.assertEqual(caught.exception.reason, 'batch_capacity_insufficient')
 
@@ -232,7 +238,7 @@ class BatchTests(unittest.TestCase):
     def test_mismatched_queue_budget_fails_before_node_access(self):
         values = objects(render(ROOT / 'deploy', 'batch-resources', self.batch.params()))
         next(v for v in values if v['kind'] == 'ResourceQuota')['spec']['hard']['limits.cpu'] = '2'
-        with self.assertRaises(BatchError) as caught:
+        with self.assertRaises(ToolError) as caught:
             self.batch.budget(values)
         self.assertEqual(caught.exception.reason, 'invalid_batch_budget')
         self.lab.kubectl.assert_not_called()
@@ -242,7 +248,7 @@ class BatchTests(unittest.TestCase):
         for key, value in [('uid', 'replacement'), ('labels', {OWNER: 'foreign', RUN: self.batch.record['run']})]:
             obj = self.resource()
             obj['metadata'][key] = value
-            with patch.object(self.batch, 'get', return_value=obj), self.assertRaises(BatchError):
+            with patch.object(self.batch, 'get', return_value=obj), self.assertRaises(ToolError):
                 self.batch.job(record)
 
     def test_workload_is_matched_by_job_uid_not_name(self):
@@ -254,7 +260,7 @@ class BatchTests(unittest.TestCase):
         self.assertIsNone(self.batch.workload(record))
         obj['metadata']['ownerReferences'][0]['uid'] = record['uid']
         self.lab.kubectl.return_value = json.dumps({'items': [obj, copy.deepcopy(obj)]})
-        with self.assertRaises(BatchError) as caught:
+        with self.assertRaises(ToolError) as caught:
             self.batch.workload(record)
         self.assertEqual(caught.exception.reason, 'duplicate_batch_workload')
 
@@ -268,11 +274,11 @@ class BatchTests(unittest.TestCase):
             changed = copy.deepcopy(pod)
             changed['spec'][key] = value
             self.lab.kubectl.return_value = json.dumps({'items': [changed]})
-            with self.subTest(field=key), self.assertRaises(BatchError):
+            with self.subTest(field=key), self.assertRaises(ToolError):
                 self.batch.pods(record)
         record['pod'] = {'uid': 'previous-pod'}
         self.lab.kubectl.return_value = json.dumps({'items': [pod]})
-        with self.assertRaises(BatchError):
+        with self.assertRaises(ToolError):
             self.batch.pods(record)
 
     def test_pending_job_cannot_count_as_waiting_if_a_pod_was_created(self):
@@ -281,7 +287,7 @@ class BatchTests(unittest.TestCase):
         job['spec'] = {'suspend': True}
         with patch.object(self.batch, 'job', return_value=job), patch.object(self.batch, 'workload', return_value=None), \
                 patch.object(self.batch, 'pods', return_value=[{'already': 'started'}]):
-            with self.assertRaises(BatchError) as caught:
+            with self.assertRaises(ToolError) as caught:
                 self.batch.pending(record)
         self.assertEqual(caught.exception.reason, 'unexpected_batch_admission')
 
@@ -315,7 +321,7 @@ class BatchTests(unittest.TestCase):
         record = self.job_record()
         with patch.object(self.batch, 'get', return_value=self.resource(uid='replacement')), \
                 patch.object(self.batch, 'delete') as delete:
-            with self.assertRaises(BatchError):
+            with self.assertRaises(ToolError):
                 self.batch.cleanup_job(record)
         delete.assert_not_called()
 
@@ -326,17 +332,17 @@ class BatchTests(unittest.TestCase):
         self.batch.runtime.processes.return_value = [{'pid': 123}]
         def wait(predicate, *args, **kwargs):
             self.assertFalse(predicate())
-            raise BatchError('batch_observation_timeout', 'runtime remains')
+            raise ToolError('batch_observation_timeout', 'runtime remains')
         with patch.object(self.batch, 'get', return_value=None), patch.object(self.batch, 'pods', return_value=[]), \
                 patch.object(self.batch, 'workloads', return_value=[]), patch.object(self.batch, 'wait', side_effect=wait):
-            with self.assertRaises(BatchError):
+            with self.assertRaises(ToolError):
                 self.batch.cleanup_job(record)
         self.assertFalse(record['cleanup_complete'])
 
     def test_bad_cleanup_report_is_rejected_before_cluster_access(self):
         path = self.output / 'bad-report.json'
         path.write_text(json.dumps(dict(self.batch.record, namespace='unrelated')))
-        with self.assertRaises(BatchError):
+        with self.assertRaises(ToolError):
             self.batch.cleanup(path)
         self.lab.owned.assert_not_called()
         self.lab.kubectl.assert_not_called()
@@ -344,13 +350,13 @@ class BatchTests(unittest.TestCase):
     def test_cleanup_report_cannot_expand_to_other_cluster_resources(self):
         value = copy.deepcopy(self.batch.record)
         value['resources'] = [{'kind': 'ClusterQueue', 'name': 'unrelated', 'uid': 'some-uid'}]
-        with self.assertRaises(BatchError):
+        with self.assertRaises(ToolError):
             validate_cleanup_record(value)
         value['resources'] = []
         record = self.job_record()
         record['manifest']['metadata']['namespace'] = 'unrelated'
         value['jobs'] = {'test': record}
-        with self.assertRaises(BatchError):
+        with self.assertRaises(ToolError):
             validate_cleanup_record(value)
 
     def test_cleanup_snapshots_sandbox_before_deletion_even_without_runtime_evidence(self):
