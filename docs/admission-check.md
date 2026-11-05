@@ -1,6 +1,6 @@
 # 保护交互体验的批任务 AdmissionCheck 设计
 
-更新：2026-10-26｜状态：设计，尚未实现。属于[总体设计](../DESIGN.md)的首个局部研发点，在 P4 实施；前置为 P1/P2 会话与产品闭环、P3 Job/Kueue 与静态基线。进度统一见[路线图](roadmap.md)。
+更新：2026-11-05｜状态：功能与真实故障验收已通过；R/B/A 性能尚未验收。属于[总体设计](../DESIGN.md)的首个局部研发点，在 P4 实施。功能开发前置为 P1/P2 会话与产品闭环、P3 Job/Kueue 功能底座；静态基线与收益对照留到功能收尾后的统一性能阶段。进度统一见[路线图](roadmap.md)。
 
 ## 1. 扩展边界
 
@@ -38,7 +38,7 @@
 | Protect | 在线质量持续恶化 | 不发许可 |
 | Degraded | 配置、权限或依赖故障 | 不发许可，报告原因 |
 
-状态转移按实际经过时间计算，不假设每次 reconcile 间隔相等。阈值、持续时间、最低样本量、最大年龄、放行间隔、最长检查等待和退避都显式配置；默认值须经 P3 静态预实验确定，不从本地 AIMD 复制。
+状态转移按实际经过时间计算，不假设每次 reconcile 间隔相等。阈值、持续时间、最低样本量、最大年龄、放行间隔、最长检查等待和退避都显式配置。功能开发使用明确的测试参数；实际实验/部署参数在后续 P3 静态预实验中确定，不将测试值宣称为已标定默认值，也不从本地 AIMD 复制。
 
 Kueue 对象状态的使用：
 
@@ -97,8 +97,21 @@ Controller 仅具有必要 AdmissionCheck、Workload/status 及配置读取权�
 
 ## 8. 验收
 
+功能/故障验收随 P4 实现完成，性能收益独立验收。未通过 R 容量资格时，可以用受控样本验证状态机、真实 Kueue 对象更新和恢复行为；正式 B/A 性能对照仍必须满足共同基线与测量有效性门槛。
+
 单元测试覆盖真实时间间隔、样本失效、滞回、低样本量、节奏与配置切换；API 集成测试覆盖冲突、重复 reconcile、UID 重建、已有检查项和接近 Admitted 时的 Retry 竞态。
 
 真实 Kueue/Job 验收：不健康保持等待、健康后逐步放行、长等待释放配额、控制器重启恢复、依赖不可用、已运行任务不被本扩展驱逐。原始事件证明没有第二份任务或隐藏重试。
 
 性能验收按[实验协议](validation.md#platform)进行 R/B/A 比较；B/A 保持相同池规模、会话/批模板、预算、位置与负载。必须同时报告首次可执行等待、后续命令及时成功、批任务等待/积压与有效产出、空闲池和控制器成本。长期阻止批任务不算成功；若收益不足，允许保留为可选扩展或停止深挖。
+
+
+## 9. 实现与配置映射
+
+实现位于 `internal/admission/`，独立入口为 `cmd/agentbox-admission`；健康 DTO/查询位于 `internal/admission/health`，客户端质量窗口复用 `internal/experiment/session`。健康窗口按全部计划到达记账，在窗口结束后再等待一整个命令截止才定稿；超时/未完成仍计分母，生成器掉队标记无效。反复读取同一窗口不能累积稳定时间，新 leader 不能借历史窗口恢复出启动前已经经过的健康时间。
+
+当前没有额外参数 CRD：管理员提供严格 YAML/JSON 策略文件，拒绝重复键、多文档、尾随对象、未知字段和可执行/别名节点。配置 `health.revision` 与 AdmissionCheck 注解绑定，范围改变须明确重新部署；同 revision 不接受不同配置。字段、显式 Pod 查询通道、最小权限与停用顺序见[准入运维](operations.md#health-admission)。
+
+Kueue v0.20.3 的 v1beta2 接线必须使用 `ClusterQueue.spec.admissionChecksStrategy.admissionChecks`，形如 `[{name: agentbox-health}]`；不使用已被移除的平铺 `spec.admissionChecks`。首版仅支持该检查对目标队列全部 flavor 生效的规则，不承诺跨健康域或 flavor 聚合。Retry 使用 Workload 自身检查项的 `requeueAfterSeconds`；`retryCount` 仍由 Kueue 维护。
+
+API 状态写入使用 UID/resourceVersion 的 JSON Patch test，并只替换本检查项；实际 API Server 集成测试与真实 Kueue 故障场景分别执行。最小 RBAC 中 Workload 只有读取与 status patch，没有 Job/Pod/Claim 操作或 Secret 读取。独立部署组合不会自动改变现有产品队列，不能将样例阈值视为已标定默认值。

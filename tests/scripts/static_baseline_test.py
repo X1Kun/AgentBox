@@ -201,6 +201,27 @@ class BaselineResults(unittest.TestCase):
         sleep.assert_called_once_with(.5)
         self.assertEqual(product.record['effective_queue']['status']['conditions'][0]['observedGeneration'], 2)
 
+    def test_quota_retries_definite_status_conflict_but_never_unknown_write(self):
+        from lib.core.errors import CommandError
+        product=object.__new__(BatchEnvironment)
+        product.state={'session':'owner'}
+        product.record={'namespace':'queue','run':'run','resources':[{'kind':'ClusterQueue','uid':'queue-uid'}]}
+        old={'metadata':{'name':'queue','uid':'queue-uid','generation':1,'resourceVersion':'10',
+              'labels':{'agentbox.dev/session':'owner','agentbox.dev/batch-run':'run'}},
+              'spec':{'resourceGroups':[{'flavors':[{'resources':[{'nominalQuota':'500m'},{'nominalQuota':'256Mi'}]}]}]}}
+        fresh=copy.deepcopy(old);fresh['metadata']['resourceVersion']='11'
+        ready=copy.deepcopy(fresh);ready['metadata']['generation']=2
+        ready['status']={'conditions':[{'type':'Active','status':'True','observedGeneration':2}]}
+        product.get=Mock(side_effect=[old,fresh,ready]);product.lab=Mock();product.save=Mock()
+        product.lab.kubectl.side_effect=[CommandError('command_failed','The request is invalid'),json.dumps(ready)]
+        product.quota(2)
+        self.assertEqual(product.lab.kubectl.call_count,2)
+        self.assertEqual(product.record['quota_cas_conflicts'],1)
+        product.get=Mock(return_value=old)
+        product.lab.kubectl=Mock(side_effect=CommandError('command_timeout','unknown write'))
+        with self.assertRaises(CommandError):product.quota(2)
+        self.assertEqual(product.lab.kubectl.call_count,1)
+
 
 if __name__ == '__main__':
     unittest.main()

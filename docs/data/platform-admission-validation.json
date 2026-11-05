@@ -1,0 +1,885 @@
+{
+  "baseline_commit": "495c250bcd3077f11dbffeb4fc76d05bf3a4ec0e",
+  "checks": {
+    "build": {
+      "passed": true,
+      "path": "artifacts/p4-final-validation-5501a9c30fa7/build.log",
+      "sha256": "991362b28e6455b96f794daf68ae6c85a6a78082043d6f614347f74f88c46108"
+    },
+    "make_check": {
+      "passed": true,
+      "path": "artifacts/p4-final-validation-5501a9c30fa7/make-check.log",
+      "sha256": "b4ffd020bddcb1ec9860f4e9b273e6eeae40f5b6452cafb987a7a35e4522f6bc"
+    }
+  },
+  "final_source_sha256": {
+    "cmd/agentbox-admission/main.go": "87bcf778d8839d72094be8114f3e4890ac55a3f70f582351af579031a23a0bf4",
+    "cmd/agentbox-admission/main_test.go": "a6bf75a6524855fd58dd932eb15e6f7898f08530facc216522ef5a9ddd726f3b",
+    "cmd/agentbox-agent/main.go": "2c38d350318a516a79deefe90f8c4533f61b3bbf6725206853b003854c5ea40c",
+    "cmd/agentbox-api/main.go": "f8aa2be5508285b106fa3eb26b6b9e1b91aa516fdb80689a09485fd36524af1f",
+    "cmd/agentbox-cleanup/main.go": "02c741c7e362fcfa5bc893c05bac6596f16eb06afd919575d95a928204315991",
+    "cmd/agentbox-cleanup/main_test.go": "450d955f5370bab697f47a5dd34e43271b153a42e4b18c3160bd0cdad0475af7",
+    "cmd/agentbox-mcp/main.go": "3c22bebcdb751a62ee58b96897d8f7389de79188c6732532c18e5d5c9be5bcca",
+    "cmd/agentbox-observer/main.go": "072161c6e401114627935bbf386f1c03f2d85314f5556ab403bbea8d13f8dc23",
+    "cmd/agentbox-session-experiment/main.go": "f30c8ea0ce568e6662eb0117ae271cdc259090babc71a1c73422232a0d0a4ed4",
+    "cmd/agentbox-session-smoke/fault.go": "4ba29c769f71ba6a10545ed75482c5f82e1a5c64d3224d4b70f71c8fdc784751",
+    "cmd/agentbox-session-smoke/fault_test.go": "b999f8426d99d84a6e22500c60e9e41088e4ce17d2f17c39bbf373f8630f6527",
+    "cmd/agentbox-session-smoke/main.go": "55a41cc5b0fa2796cacf3fc865916d5a4208b3645d6c3291770f854c9bea337f",
+    "cmd/agentbox-session-smoke/operations.go": "4bf2aa7cbe61022e2854dc81900449b25feb456cb7578a38b4ab5d32c428c01f",
+    "cmd/agentbox-session-smoke/operations_test.go": "0d9141460a7c4e998842de7b8371971047ec00f1d0f51bb81b66e5020cb35885",
+    "cmd/agentbox-session-smoke/warm.go": "60ef20cf38ad5d47cc7b74a74ca9ff40e6d3c68f7d1577394133edf26071428f",
+    "cmd/agentbox-session-smoke/warm_test.go": "b263569c077c88d32f151a44d721c19dc55dad5a2b5a5f1549b012b3e5249a12",
+    "cmd/mockcore/main.go": "ffb2cd1bc8ac2cd826c9602f4ec2972f169d39890edf6aaf07f86d41b161df5b",
+    "deploy/agentbox/admission/Dockerfile": "ebc1fd1f8a772cde01eb8243c735d142e890225cedf6d5be0b3d655fb56a8b57",
+    "deploy/agentbox/admission/check.yaml": "cf4d5684195e2fd09b81c0e4fb1d949ab090a129e90bb98cc55545b6f2ed84bc",
+    "deploy/agentbox/admission/deployment.yaml": "72fa53bab3a54e28cf1f81a524671218f4f1496ca1aeb2f56fbaebcc4113cca6",
+    "deploy/agentbox/admission/kustomization.yaml": "7fbca446e1d28c80384bb06324dc30bd37f41f817e8416edca91311d3393395d",
+    "deploy/agentbox/admission/namespace.yaml": "7be648a8b8eb14e19c427b53ec91e421102ee019ec6a433bf957dcb550bd799f",
+    "deploy/agentbox/admission/networkpolicy.yaml": "3e73a9f5705da1100109d9ab26dfb1e26611ad5ce3e891558b2b0b418b3d724a",
+    "deploy/agentbox/admission/policy.example.yaml": "6c946fbe533da50ae2f521c7384e8be7a0f73af0ec799778b8b5fbd80257db86",
+    "deploy/agentbox/admission/rbac.yaml": "55dfcf0ef43a89938e76b8d5af67f8e2054a4c0c3563a50495d5a9dd96e709db",
+    "deploy/agentbox/api/Dockerfile": "8907b2c1d9e7239d7d7a00c7f4762b4cc1d126155bad2473ec6f2969c14e42a0",
+    "deploy/agentbox/api/deployment.yaml": "346a3ff3c06b9fe56343e47ddb96e7c59d4191a7a8fa0e8fb61bacd56541271d",
+    "deploy/agentbox/api/kustomization.yaml": "9ec866f854c51a36ebaf0f9b71cbb2a79fb92bea659d7fbb7adaf18d6f8adb41",
+    "deploy/agentbox/api/namespace.yaml": "b00c814ea3c90d2c430410a701cdfa95116b3c0fecc2abd415625b97a4ee48a2",
+    "deploy/agentbox/api/network/kustomization.yaml": "bfa8cdb03ab0e8b5a288cf79c750cdf12bb7cbfa11e82197714de5dd334401d5",
+    "deploy/agentbox/api/network/policy.yaml": "7fd181e6a8664d74d80ef09efcabaf1689aa0fa84080d85160b4f1192426c507",
+    "deploy/agentbox/api/rbac.yaml": "00f9fd7e9f170a14a77f6e07b340f35ed70fc7893fcdd7eb071c352c95076d2e",
+    "deploy/agentbox/api/service.yaml": "d66a6463096db6fa5fc1a9070c17bed211f6448645ebdbbd3e4622c9d96cc804",
+    "deploy/agentbox/api/work-namespace.yaml": "3ab76aba085300f6cc424687bf2fb0dfc6e0aa1324faab07d6ff89d3472cc184",
+    "deploy/agentbox/batch-api/deployment.yaml": "0918471cacb5677815f81a732c1d5adc20935bd62c9bac1d73e516b77adad523",
+    "deploy/agentbox/batch-api/kustomization.yaml": "f67696ee96431ca2d63e2252c19abb7fc0ec9a166eaa21006ab37a12801b13ce",
+    "deploy/agentbox/batch-api/networkpolicy.yaml": "647af86aeb216972aba257938f8a88a0e124155e0cc792cfc1c079bfe675c70f",
+    "deploy/agentbox/batch-api/pvc.yaml": "4ac14c5639cf5843410ccd634fe2c9b91a9452d9d58ba001af6c7bdffa5a8331",
+    "deploy/agentbox/batch-api/quota.yaml": "dcc06bbd5a9c3c0fbf65fc3a13a20c074805388a75f87ce4814b4cc811071f50",
+    "deploy/agentbox/batch-api/rbac.yaml": "6566d1316612784e88c94e718c304b695299a400577e00850cfb60403433c09a",
+    "deploy/agentbox/batch-api/service.yaml": "4b60c8bae4942ddb25cf60b8925a92df86ebb010adaf493c9bd473a667566486",
+    "deploy/agentbox/batch-images/contract.yaml": "b26aa1612c1382e3afb9ba993fbf11417c5ac20ed7ce30845642ca40326ad413",
+    "deploy/agentbox/batch-images/dataset.yaml": "5be78b815c3477b3247881562aca0eb61596b051a7227d2d3f09d13ecec638fb",
+    "deploy/agentbox/batch-images/image-job.yaml": "dc0c3b545e6d4ba549234cf2178ef12e8c012bf5118daa43b8aeae5d1b06ae0f",
+    "deploy/agentbox/batch-images/kustomization.yaml": "93d511f49aa68578624c88d84f1f735597268f9eeda02cdcd431afb60b5b3ea2",
+    "deploy/agentbox/batch-images/versions.lock.yaml": "fd30ebdcfdb0c573365ffd4e1c1122173b2cb9059d89baa8988eb9394d386d2a",
+    "deploy/agentbox/batch-images/worker.Dockerfile": "54b5c5b8a6f2ab7cfb5a423d2dbb446fd9a7c4a45125f32cba9872c249ae204d",
+    "deploy/agentbox/batch/clusterqueue.yaml": "ad94eb71c998bd7d99a31b4565e8469034e7bd8da0438a25441ef67d850fc705",
+    "deploy/agentbox/batch/kustomization.yaml": "414043b3a4b5aacba0a54c57f9f7440a49cf1b94ab0682938908f8fd4bb5b8c5",
+    "deploy/agentbox/batch/localqueue.yaml": "eda8b9132818d28ed017e1a2ad9b7964392e2c34490a52aacaa0b5e4c33a47f5",
+    "deploy/agentbox/batch/namespace.yaml": "c8a7206c962e339a42531dad5eb478f12c536355c3fc3a58d2cb6acc309ae6eb",
+    "deploy/agentbox/batch/networkpolicy.yaml": "d99318313c4226c7652b5ea90fa7a9b3fd21a6d9daa7f6358ef2a629f674bf26",
+    "deploy/agentbox/batch/resourceflavor.yaml": "2ef4a12e039f7fa908aa38b685f2ad5022c6a63639719b160cc53a25901a50bb",
+    "deploy/agentbox/cleanup/kustomization.yaml": "1d43322ce5d3b9fc022c047c046a334d69711d1f6a60760998992c7d6767f3e3",
+    "deploy/agentbox/cleanup/rbac.yaml": "41f49c8afbe9256e4d5d1f9e8b4a82286821cf7ee19bc9c7c6ecacbc83997e2e",
+    "deploy/agentbox/overlays/lab/api-metrics-patch.yaml": "6fb2a067a93ae5e8e0e141dc7f8b083a8e26f5f4246b672fb8719f33ea0406dd",
+    "deploy/agentbox/overlays/lab/batch/inputs.example.yaml": "2c4b9cd3127500a7e585a18acfe24de9e27b4a76ca84164e894a73e7c5c10ad0",
+    "deploy/agentbox/overlays/lab/batch/kustomization.yaml": "0cc10f0f6a952072dae6e39e491654c7ec79978390d91cb452ea81cf9d055444",
+    "deploy/agentbox/overlays/lab/session/api-patch.yaml": "97965f89b76094f4053df99fad6b37e2dcae09ddef8a6a001471781a21199654",
+    "deploy/agentbox/overlays/lab/session/inputs.example.yaml": "62fd3901b39a25222364da10f65fd0b2d1d75a8a5bb43ca512a2a886dbd1abf7",
+    "deploy/agentbox/overlays/lab/session/kustomization.yaml": "306ad0858581579da5bff18e4dce82ff025b9bbd29ab52c1f879a3d06d82515d",
+    "deploy/agentbox/overlays/lab/session/quota.yaml": "0689f45c293459acde251768b353b3775efd7ff64ef31e452175218046710fdd",
+    "deploy/agentbox/overlays/lab/session/sandbox-patch.yaml": "d642c1475acfe00f94518e770d4813d43b25e1ccd440efea2d102204bcef697f",
+    "deploy/components/agent-sandbox/controller-lab-patch.yaml": "26fe7b18487f58956e2fd4eab3f723e211764dd75e9ba03fe0717c96cefebe23",
+    "deploy/components/agent-sandbox/kustomization.yaml": "4aa75335955c35390f687a1f1a56e24a53d599afe14421985f2adf8c94b2f986",
+    "deploy/components/agent-sandbox/runtime.Dockerfile": "7a2a450282d5dbb0d06d9457ef0acdd1a3eb120d407d564c8ab03fc1110124bc",
+    "deploy/components/agent-sandbox/template.yaml": "ebe338bf354cb0ccbb339be67b7779430f0fa3741a7f2ea972f520836250cb91",
+    "deploy/components/agent-sandbox/versions.lock.yaml": "7430ef24e369e4266246afbd63ffe99ed945ed20182d70b89c1e971b3771fc57",
+    "deploy/components/agent-sandbox/warm-pool-patch.yaml": "9ba1d4a78fa9e321f1817138a0b8dbee66fd4f003ecdcf31ff758af1cf0c3c6b",
+    "deploy/components/agent-sandbox/warmpool.yaml": "9a96191cf7099b6b36bd8a8c91b7cf8b925bffe758d000d02e71848ce2e8a5aa",
+    "deploy/components/calico/lab-patch.yaml": "6304dd6c5d7ec0ee7737ec63d270e61eb8580b2a494f5876adab0b0a0e783a33",
+    "deploy/components/calico/versions.lock.yaml": "a467394c777484348a7d78f3cf25b83e0ea53fd0315be0cb2322842e78415507",
+    "deploy/components/gvisor/kustomization.yaml": "822e156058107a54ce1f2d3f5f998dd61ebaff33e38dcf541b24197d08a624ee",
+    "deploy/components/gvisor/runsc.toml": "bfc2de0097e599042e6b0bf543cea76e70c38dda35fac92055fe8506b466a4db",
+    "deploy/components/gvisor/runtimeclass.yaml": "551349dca104de0f2913f0bebc452a62ed4b1e9dde33b217f4c3d099c828b0f5",
+    "deploy/components/gvisor/versions.lock.yaml": "5c992d8962a7eff72ceef4cde80a74f25669f0fad879ff6af0d8e50ddaa0a43a",
+    "deploy/components/kueue/controller-config.yaml": "fb1a9a4f58433fde8b8f449ec80af775ed8cf7d35f27e61cc505107d177cb1cc",
+    "deploy/components/kueue/controller-lab-patch.yaml": "fa31456bcce39c4828ce8327eefb7b4896253655b4b23d4a65896cdc77d2f3f9",
+    "deploy/components/kueue/mutating-lab-patch.yaml": "cfa628ce0658683719c2378dfbc1d4b96c268ce7fd271e94be73cbc9d30c13d7",
+    "deploy/components/kueue/validating-lab-patch.yaml": "a955ff81bce38a06c6fa355f3c19e51ecba7e032853eb054d52b569e70a3cb16",
+    "deploy/components/kueue/versions.lock.yaml": "049b1e726b102f37d34479e50a903597e5ad26edf1b709e262ec6dda3966abf1",
+    "deploy/components/observability/compose.yaml": "b40a8052b8486146e8ce100d4c2a63a435b3b2e214062c72e6a80ee1de13ceab",
+    "deploy/components/observability/dashboard.yaml": "b01b1ea83e5a2386f342a5105d9462daac02d35e07e7e8964aa2d7b51299cadb",
+    "deploy/components/observability/datasource.yaml": "37abb63057dfadad8dd45cba8b223db46b93289fd9e2ee1e656d41400d5ecd4c",
+    "deploy/components/observability/namespace-role.yaml": "1946fd3e13e12e02a9c76adf9544db69f7613643115db3726293967209e8d21c",
+    "deploy/components/observability/prometheus.yaml": "a3441d737f746e37d34f6be856a4f2f5c88079651ae7454d323f7176ed83f8b9",
+    "deploy/components/observability/provider.yaml": "8ca0ebf407f2697c6115cffb47726b3f093a272ec44de41a7d945bfd0598beea",
+    "deploy/components/observability/rules.yaml": "30b5c88803bb5f57e043d7cdab8be32e43506b38ac922936671d3e88acb17d41",
+    "deploy/components/observability/versions.lock.yaml": "ee193a81cf7ad9b00555ca69f151359d84fb66a14672d3ebf2ef1e8d1377be16",
+    "deploy/lab/format-compatibility.yaml": "3b32b5fe1333c69de0b2a11051a5c3204eb0cccd60528eb54a6ab7c3289949c5",
+    "deploy/lab/gvisor-patch.yaml": "2749df28836a1d46f2535b9d51574ef72379ce92bd126078d81fc2507364ece4",
+    "deploy/lab/image-sources.yaml": "ecd502f8d2c52746ed9786a81fcae50c11c0250a6a2271033799d9294c431eaa",
+    "deploy/lab/kind-calico.yaml": "40cc224d3999259995e8f460fc10324c287073ff93ce4d7abe098a92741aebe9",
+    "deploy/lab/kind.yaml": "d05a77df48d7cb236594932c65c7d4a31283a5d3c11ab9d68e6adfe4bb5181ab",
+    "deploy/lab/namespace.yaml": "f5aa4dcf9d58a2ddd3c678be3baf62a7f35062a4d8dc7b5978a2b923febfcfe4",
+    "deploy/lab/versions.lock.yaml": "1dc37d6c851ba0d6793beb19954cea56b36fe31130568ddf9d6a9b2739ede617",
+    "experiments/configs/session/baseline.yaml": "6fd05c5eee251bb3825dea897dfc56bdc432ba77403ccc3c4c4bbb796fe6b75a",
+    "experiments/configs/session/diagnostics.yaml": "9e694770d093a6b4911d7219d8a2b501f97fae487e58a4026721b68f5526b241",
+    "experiments/configs/session/matrix.yaml": "6fbeb7183aa309a4b06f41dbb6a5936541536eb3f27565dd4db7fa711915249b",
+    "experiments/configs/session/session.yaml": "c599d7ee541d679e9f6b5d33694c23d1efbcdf73c89d09a65b0175f2728ee80c",
+    "go.mod": "6e516060243812545aaffaf658e843c2954a4f7b079d51e2566ec0a799e53d4f",
+    "go.sum": "a7c5debcb697cf21973d6cfe8cbabcc047da7c4543ba01b0080b001fe15eedb1",
+    "internal/admission/api_integration_test.go": "e85cf05001f3d14d3577f3bf43f360930583425605df0157388637653e5fdff0",
+    "internal/admission/config.go": "e53bfceea7f514df2751ef645bc3b7977abeebd7e9a6413c2ee32596aec02b54",
+    "internal/admission/config_test.go": "1c2c831ba67a1b62c60d260f8b5054287dd8e94b1858575ed145b74d17553d0c",
+    "internal/admission/controller.go": "47e13ccdfe54765f233704bb3c4234db4b2e13e4d90a24f35658042468504c48",
+    "internal/admission/controller_test.go": "473e9430d1ea1169da943401298450f97160f3814cec2ed14982796b50fc62b1",
+    "internal/admission/engine.go": "1140587308f06f73e79e707d21bdaea0343b9543319ebfde58303dd3992a1366",
+    "internal/admission/engine_test.go": "4765cb63e600dc2f4737831acb17fe36eeef817217cd143eff947c2a86906e8a",
+    "internal/admission/health/prometheus.go": "931f3d97387289886c523da10d130eed34077dd2135b78371e09a61fa3d49528",
+    "internal/admission/health/prometheus_test.go": "735d9c9d2e6ef9c422c6d7d499e6cf8ca6b7ac007dcc930d2428e05b9f36eabb",
+    "internal/admission/health/sample.go": "9cc8e70354dbd55fa973267bff05518c41508ebe0c0253ab6a395789f11b80f4",
+    "internal/admission/manager.go": "c2c2c903f5c4854110e2a8641d56e3bddbf8d8ae35f7d0137a6cec9775292fca",
+    "internal/admission/metrics.go": "7290f2c24c5b94dd6d7d9b1d1504f3bd0a9f50ae7abc3293f7b400c6745bd3ed",
+    "internal/admission/template.go": "5ad3202e83ee705139349810eb062ea1254898857f845c4e611bc6af7b9abde5",
+    "internal/agent/runner.go": "afa60bff9fb763a154425ed8730df2b9a90127fee4f09826137cb4b605992af4",
+    "internal/agent/runner_test.go": "2a759b8c87ed652b0d8e88f1bed798e3da96bdc6dc64d8cf04872c1476758e98",
+    "internal/batch/artifacts.go": "099505ea41b5d36e2c04a65197baefd60859072ceeb4e73cc92698055eebe077",
+    "internal/batch/installation.go": "fdd2bf448b8e7d799d0471dd9c2420954c23b73775d30b97e3b1a09f9a6da0f3",
+    "internal/batch/maintenance.go": "e560bcc400f9af0c16964c9b78ccdb1b5c9d87f289c4d6c619aa1d0b8cf7a139",
+    "internal/batch/maintenance_test.go": "6d03d07c6d9eb463d149a76d7f73bc275dd5118fccd98eb097a0d6de047fd556",
+    "internal/batch/observation.go": "0973a62682491f743c85e52d639550b3325bfc4279bc6e8d3df60941d997955b",
+    "internal/batch/queries.go": "0e93f3fb6021d13bfcf233618f91c070097f8dfc7973f954f700a9926361c53b",
+    "internal/batch/reconcile.go": "81d3f74091ac319d4c400d1374799d47355cd05b07c885d1eca146049b40d385",
+    "internal/batch/recovery_test.go": "d26e8870903d1e0a5bbd4fc05b339789574d212e0e914182e0412748ed2fd65b",
+    "internal/batch/service.go": "85241240bde2401925c3a60ca0650752986b07e40a697cbe259ca940213c8616",
+    "internal/batch/service_test.go": "59fd90471dfe59e0b4544c4ca7f50a75a89538d019cf137b8304cfc7e7a3e99d",
+    "internal/batch/store.go": "8e2e773a1c2eb8c46b1061a612a62fab6e6189c1310f3b72e7f7ed1f39e2ee5d",
+    "internal/batch/submission.go": "b95e6c7d5b12f8484eac151c9ecc78827ba6d954f0dae35e9e5f1cd3bfb676e8",
+    "internal/batch/template.go": "6c3f84d7f103bc60ab5b8843e3452edbec727bf39cd9dc8d2cea05580e8e0b62",
+    "internal/batch/template_test.go": "6b845dcaace7a0d402937167418222b117e2e5ea6e93040a23aeb5bfe045751d",
+    "internal/batch/types.go": "e9a6e27a102830bc9e0825cfa3ad0bf2ba0171f24b7e4b24ebb43a8f95831296",
+    "internal/batchapi/readiness.go": "b6601b0f0925176d12c7c939ff44748f70acb5323929f03292b3506a6a70f825",
+    "internal/batchapi/readiness_test.go": "cf1b3ef58cbb323fe20d2098225e60e445c10ebd75a01c8baae31a233187a1ca",
+    "internal/batchapi/server.go": "c70339d98d2ca753ca736ee9f8564e387f76aef8af1b6da33106b5a21e5a1b3f",
+    "internal/batchapi/server_test.go": "b0e3f2fb28cc5eaac4e145a483cbdb8821872f530bb758471fd67e9706364e34",
+    "internal/batchprotocol/types.go": "9ba840bf6f23847bc946cee92feafd7bf65eee4eeabf59d66c87cf40fa04f6ca",
+    "internal/batchprotocol/values.go": "e054e3e931350c6cb039629ed39b2ef3c907c516cc8ddc146d0f4f3239c67a59",
+    "internal/deepseek/client.go": "da80176ee916e7d71e2c6a34fcda2830f552d9874f7b68a7c309164add6bcbf5",
+    "internal/deepseek/client_test.go": "ddf8ebfe239d8c9553bfe393216c2f1f4f95650f3230919146cd1210ac610af4",
+    "internal/experiment/session/health.go": "d4846cd92f758960eccd41a087390beacb85f589985a39220c159ccf7c8b74ca",
+    "internal/experiment/session/health_test.go": "e67a75f0f8845578d618433fa2b3c97c6c15e986a94b1f2f3e81a04257fc5499",
+    "internal/experiment/session/runner.go": "e12d35b3d667911887e21752cb37c6d2c9d43ccac68ba01779b25d4374530acc",
+    "internal/experiment/session/runner_test.go": "794824f83bf1914239539effd2563ce0acf39c6868b9e1a7485cb2495d6df4ea",
+    "internal/httpauth/auth.go": "dbd8afc6be320f742b8f2ee728a9a281fb1298b4867b8ff7c485d7714f523208",
+    "internal/httpauth/auth_test.go": "c4fa414f29b38bd936d8cb32bf9400d3402bc7f89395aceac04d903ea5200877",
+    "internal/mcpclient/client.go": "83664fbde30240bd1b537fc08849867246da3fd92cb8f047c5799fe734d00efc",
+    "internal/mcpclient/client_test.go": "f2511c27f5f8bc953d595090be66fb4b7733431b6ffcf5799181d91dca3a72af",
+    "internal/mcpserver/server.go": "7ac0947534c056fde0efd9a7287d065f0dc504fbaa431b01ed86360f4882c39f",
+    "internal/mcpserver/server_test.go": "9ec9cba4ec2d2963eb71b1dcab7bfbd819bea0764056f8dd3eac3985843184db",
+    "internal/mockcore/server.go": "82ef6611a1b69e979042753ba3609b8de842c4968e610751f4a1afb4486ded45",
+    "internal/mockcore/server_test.go": "369ea755c19b9e9466a38cbff9dbdbbc39fd424cd4e3fba3a765bb70a8c0ed7d",
+    "internal/observer/diagnostics.go": "151a3808f9a2c009cdcc524d88c452c20b1ea37d5a5f5bc55874860369f3eb78",
+    "internal/observer/diagnostics_test.go": "a73f37605655a48a286599d89f08029b9109ca37d0167f4120773d14b328d256",
+    "internal/observer/inventory.go": "bcd053db5735d8d05e334d51a6d4fdcfb059b1117fb5ac57d255b582351a3cf3",
+    "internal/observer/inventory_test.go": "1cd2448383113400d70e183fd787d24245b478b4e550edcff975025b934bf201",
+    "internal/observer/runtime.go": "a770758a92fa95de3dc300cbae8c2dacca0493abfa20b7afdb571d5cce3bb79d",
+    "internal/observer/runtime_test.go": "f99411f32a0b895cc8f85e0822e552c932395707980aadfcf00a5e5f459a8f10",
+    "internal/readiness/snapshot.go": "64506e0cb106bdc394735fe2ee20e5c5727e81e21c15d97c599bf15911fc5dc1",
+    "internal/requestid/requestid.go": "9c5a8238f809584208a1b4104d1e1b13bbcc7703834f1dbe1e60a89ac526f8f2",
+    "internal/session/backend_diagnostics.go": "a2c4a37f2c4db2f06c7faed280cd6cfcf6445b8127c436548c1c09c86e9a1b38",
+    "internal/session/backend_diagnostics_test.go": "41022fca0eb4a0b886c3e120ab52b1f288c1c37ac22ca04f594b6f909ecff4bf",
+    "internal/session/client/client.go": "0d69e14a654d42b142896b099ac9bf1c4363d7ce4c49a784d4def3330a9dad84",
+    "internal/session/client/client_test.go": "f9b1940285bc51f93e03f421e1366b3fc7bfe871c9e771a308eac55a035c8bf9",
+    "internal/session/diagnostics.go": "da4093bdca8b0bd62b19cf965d63fa74e5ffddbf4b9007e760067253038e4fdf",
+    "internal/session/httpapi/operations_test.go": "7e749c9a8b2a7f1d31e504ae66dc21775da3c4a010e8e7f36ce6b79a1bf6aaff",
+    "internal/session/httpapi/readiness.go": "b7533af2e4e810a7e45088b4ff0466334c4a9a3c9b0aaf1b81565da2ad0cf15d",
+    "internal/session/httpapi/readiness_test.go": "955375ae1434c1760f993df2a03e6c0f2d5dc138acf488ea8745b3e59acf0e07",
+    "internal/session/httpapi/server.go": "e2ba80631405dedacbd6d04fd0726d6be2be615d32112fa740d1610a49402329",
+    "internal/session/httpapi/server_test.go": "bfc22549de882d2b86c37e223e0cec63096ef2cbbed1460156cb51c49dc9f767",
+    "internal/session/identity.go": "d41289ff13866b7faa62158853d3a2f1d3537dc7b6d8c0f15aab0ab357947bbf",
+    "internal/session/lifecycle.go": "fbe03c306573e7241d221b5d5cd27577416901676b7078683f5116fd0904d467",
+    "internal/session/operations.go": "c8fbf5e4b2dca41022860e78e232b7c8b1cd41ec348e96ff14dfd2ab248aeb80",
+    "internal/session/operations_test.go": "8acd05fbfe9c082ed9f651deaba88c2794e6b3c98fa5b389de3f2152892eeab0",
+    "internal/session/protocol/types.go": "13135be7df5308c4ad3a375fddd2fb2e010ba92c948aad875887cca83da1b8d9",
+    "internal/session/protocol/validation.go": "af018ecc1855b2bc07a032ee3732e1d7d1c98c948f6401e65c9b11b523551a39",
+    "internal/session/protocol/values.go": "4e8c2049ce69c3d5001087595fac5e86dee4b3facbe5d7ab8a7748c03d2cd79d",
+    "internal/session/requests_test.go": "cbf7138c567391936f90c5da774796ac778a00d83fabc98bfec4e6ea5b430e04",
+    "internal/session/retention.go": "d722d7395860f00e7138ce321961c75ea4f2ccf2447957f8c209225afa57f9d2",
+    "internal/session/retention_backend_test.go": "2c8cf61e1557fc8e8d26e6120abd1efdb795d878c56c0959960779e62f7de5d7",
+    "internal/session/retention_test.go": "0a6a8e37208a82cc89ebefd4c6a7c470de054d182852310f29e1e2c5a18b49ed",
+    "internal/session/sandboxd/diagnostics.go": "4740635b634074ad5ebc3cd3d95c78782baca246e17169bc890b466a26fb87be",
+    "internal/session/sandboxd/diagnostics_test.go": "921745c4eb03b614cf8974f9987916431a3cbd5d8e293a2bf7a232acc248d7a2",
+    "internal/session/sandboxd/runtime.go": "40ac8a4fbaf0dfe58e886131a66243f063ce806003982bced115a8f53aa8d5f0",
+    "internal/session/sandboxd/runtime_test.go": "a076a5f0edb06d4c1fbfb0bb5bb6c7de33ab0c193964985977d3cdb9492c7f19",
+    "internal/session/service.go": "91b22eabca0d716f8fb474df1462d619451409a5c9cdf2191f0b91906bdf538b",
+    "internal/session/service_test.go": "c1c8d27fb3701e873a81503cc9264ef56f995f6f27b3a3fe9364ea965ac03c1f",
+    "internal/session/values.go": "4a39464fcba2ea33e41f6a3b110ebeddcad994469f4844c0636db959cb26d76c",
+    "internal/telemetry/metrics.go": "9802cd9c5dcaebe77a3ca034160934e0f0848bd43cc111fd84ccfbc3f245a341",
+    "internal/telemetry/metrics_test.go": "eb66cfc4988144fb227f60843a5a98909a588d909a70d60f2eeeaeba1b2e51b9",
+    "internal/toolcontract/session.go": "84d8b86138c6e8e3f0de9597306f6415da9439dc27b6ae5f566b9e1835c6400d",
+    "scripts/lib/acceptance/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/acceptance/admission.py": "702decff640e6d084ad63755bc5d6e571b7e83cf4b2676ace8fe51536714f2dc",
+    "scripts/lib/acceptance/admission_deployment.py": "18bd83e11c9095e64ee0be371aa6ec2009b327b29798cea0b0f0ece0b39307f2",
+    "scripts/lib/acceptance/agent.py": "9924e5245e0b58285d734ed5fc5b5b54d5c54b3095f726e4eb6daf92bbb8304e",
+    "scripts/lib/acceptance/api.py": "68b008d88840ff599cec7ae64944c54d41672ed2d806f36d41595d6a7f55ae02",
+    "scripts/lib/acceptance/api_execution.py": "0baf23c5adbc127ad13e9ba0fc429fbed3478e8a769d482c7d40265dcfd97c57",
+    "scripts/lib/acceptance/batch.py": "4923a7105724ea89340e9e67994101f9690bfd9871e4a69297c068a7f40ff415",
+    "scripts/lib/acceptance/batch_product.py": "b3bb931876c7667ca99045322c7d0aedb44584ccbdd1005c4c2ac0d0a265f2f8",
+    "scripts/lib/acceptance/clients/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/acceptance/clients/batch.py": "8bf3ca8baf591946638d382fd662a85f3ce73e26799d3d5239cec28c3433ea0a",
+    "scripts/lib/acceptance/clients/batch_environment.py": "148d745b165f6b5390c83e03517df91ec72a61bb63f6be318ff5777cb4c78c0a",
+    "scripts/lib/acceptance/clients/lifecycle.py": "6bf4e31e9817bacdf5e0b1d464f7ca5a313582913f9912254ec8f545d0c74394",
+    "scripts/lib/acceptance/clients/session.py": "ccb45a4e6d5234c54a55a417aedb77fc38a25853c121a9d9f233c6689dc42df1",
+    "scripts/lib/acceptance/diagnostics.py": "d213c3feba7159089f337384b9536101ece5baddb5eb072db91f0128eccf8aa9",
+    "scripts/lib/acceptance/gvisor.py": "58e5bf89fe65bf624efe1383f9d5734334aa1fabe118872db3c664fa242171a0",
+    "scripts/lib/acceptance/maintenance.py": "3ffc598b7457d1414c9976dbd8e9ac1ac7989ff1b85d2e9d0b29248681e61941",
+    "scripts/lib/acceptance/network.py": "4d0daa93a80965b452b606e1e78024307c3f1ee9c3e2d1989de2aeb96cf5c43a",
+    "scripts/lib/acceptance/observability.py": "c9a3dc06b3cc1cc2386c7983e54935ec6ddfb9dfcf050d59eb6acf0d3e9ea951",
+    "scripts/lib/acceptance/product_entry.py": "50a0a922529712da1b90898d84e6f286b68b8bad25d7eca931e8b77e5095be77",
+    "scripts/lib/acceptance/retention.py": "c557b552e3de7c954b1115c319105d5cb4b62bc6633cd6a89a5b291a38ead9ac",
+    "scripts/lib/acceptance/session.py": "6c37341dd165007ee24f1835d80551affc160757ee56ac4c9fce0be165a66368",
+    "scripts/lib/acceptance/session_faults.py": "914efa3e2c6d1830691abb8c90bb37b622370324b1acac4b80de067982fe4be4",
+    "scripts/lib/acceptance/smoke.py": "f0754dc2ac3147b323f27d9ce3cbb87967730c43fc3fb3077c89686b9e1ae28d",
+    "scripts/lib/core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/core/errors.py": "758acd984d6d50e7aabf9331da219a6f29633875ceff998901f8124bceaafdd1",
+    "scripts/lib/core/kubernetes.py": "970b89dfa87dc6c77a06b0f86c4e02faa1745c26ddc55bed1c46955d9f7b2a1f",
+    "scripts/lib/core/labels.py": "05584ac2650b0200e6c000936a163a2619262efff565b8fb8fcdc2e63928785c",
+    "scripts/lib/core/locking.py": "2186f6712eb78c938a47cf411a9fa0f727465dc7ac10eb3e29c1efb4d414a0e3",
+    "scripts/lib/core/paths.py": "1b7cb50893ccda4de8bf3fd1bbb17ac0127ec97b46d61ca240f5f676947fde42",
+    "scripts/lib/core/runner.py": "97e9e0380bc1ccd019a1aa0fd31334c3208e2be37161a7342de89a11ac213d2b",
+    "scripts/lib/core/state.py": "90d575fbfeeb2cb5564c4040d18e68b9f9eb8e817e0e9a5900ba6109577aa6ea",
+    "scripts/lib/core/validation.py": "8db9230b3973a944c9950f410bb4718c8a64ef6e49e940bd126ca51e5c1681b4",
+    "scripts/lib/experiments/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/experiments/results.py": "e24bb788790c0c81204fca5260e752a08dbaa955220cbd8f0b20a8532b80f8f2",
+    "scripts/lib/experiments/session_boundaries.py": "b2aa1c86e24633978162d0ac04f361cbdfaecc29629d38884b1377b140f4bee3",
+    "scripts/lib/experiments/static_baseline.py": "1357c68af6076cdbf84271eb3dbb951184e7173fd3b5f742144493f8b27be55e",
+    "scripts/lib/experiments/workloads.py": "ef2f35ae35d69a78f10ad2c630fd95d724169939b28311d0f3805ab144f99e3d",
+    "scripts/lib/manifests/__init__.py": "a94841339c9cc57ffb6855e549bbf1fa674bd9950d190c2f76f883ab3b8276d2",
+    "scripts/lib/manifests/config.py": "5b99a44287eb5631ebb5b71f697317a0f2713fac8e06b45d99ab829255c451e8",
+    "scripts/lib/manifests/identity.py": "e5b081a739f81de3c47676944deacb655b1b9030edd0d837130307c5e93e0506",
+    "scripts/lib/manifests/network.py": "cba7fee5d2e3fa3b1acc57c72c94c9b3e4ef267b282e139b86fab3859eb15bfc",
+    "scripts/lib/manifests/render.py": "e5faa82945cb589c011f43cd50031c7f0cf11e1dfb3cdb123aeccca320753356",
+    "scripts/lib/observability/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/observability/diagnostics.py": "ea2fe3a02811d03cd8e5bc4b9b7eb24f52679839665be2052f555edf75789608",
+    "scripts/lib/observability/environment.py": "e887cd580fa4218baaf4acc586f251a97f9d35f86155f8fdf8f1e8f7ee847720",
+    "scripts/lib/observability/session.py": "4ab4a84b3194516336e100f432c1d08026973580c6aa8fda83be58ee842715cd",
+    "scripts/lib/observability/stack.py": "f9077bf9e0968a7ec1bc54fe4c080c6ac91fd12ce45ce210cc09784fe3419201",
+    "scripts/lib/platform/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/platform/calico.py": "74bee08b051df2b86f9239b6e83352d3386058a1ec2c44337a06fdfb245a6684",
+    "scripts/lib/platform/gvisor.py": "93eac5de15a52d1f73b6a1ba9e1671b54141ba2ff982a9291d1d334560fec85b",
+    "scripts/lib/platform/kueue.py": "022766ddc359120e00c8dd62f5c165e3f45fdf4fc25306a2e9bd966f996366ad",
+    "scripts/lib/platform/lab.py": "36aff775188fde608f7d6061a4d3970edef64c9cb4824bc67947869d977aebcf",
+    "scripts/lib/platform/resources/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "scripts/lib/platform/sandbox.py": "514596340e5310dbd89631dede67d0de44b24055bd515d6c5436bc9532ff36bb",
+    "scripts/lib/product/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/product/admission.py": "e06c1bc26a484fc1fb4e09bc8cab01381140421e3e16bd51f84f7a9b1763d48f",
+    "scripts/lib/product/admission_image.py": "9802dd3e76ba264648a17d6c87159d1806abd2c6e210880b77f94109efbb740c",
+    "scripts/lib/product/api_image.py": "186a0296911422483dd67b191985d6636f12ff8c53de0b2d529f5ba3270a2b8a",
+    "scripts/lib/product/dataset.py": "01c0abdaaaa4f4a392825cdb885972463db2c03ea1e666471187c7838b77f643",
+    "scripts/lib/product/deployment.py": "4d82203f170817d57c04b8458f4b063b352497f9945bb69a00b5c1600d6ee1c1",
+    "scripts/lib/product/image_pipeline.py": "c39b517622f58bd889b7264d7e4a6100ff24b3c52ade7a8947f3b8fe9372484b",
+    "scripts/lib/product/images.py": "e41ba3d82277a659d7fd66dc867a3f9b4ec207d345d365e70613e41bc5cf7127",
+    "scripts/lib/product/worker_image.py": "edf36ff51884d949928dfdb63d237e08dcccfcb7d8202fc3606f0d683e28abff",
+    "scripts/observability.py": "ac84fb896952e2339759eb654ec2d643bc92a7fc00da6abb586598ff753d8451",
+    "scripts/platform_lab.py": "b12880509aa7908d72a936aa73b6c017d26c0a231d7b280c20bf55841fa2a23c",
+    "scripts/prepare_batch_images.py": "114ae0907eef23e5c813b5729e1fcb354de93cd35917373572d2ca0d2e5874d7",
+    "scripts/render_admission.py": "2068d2eec6f6b493c85fa9ba7123068feafb757255b99e9dfff855f9b049c00d",
+    "scripts/render_manifests.py": "1a8a9b6b8b5233aab345d4e0857779e0a73f16ffcb74c9acc046f73cce7ac45b",
+    "scripts/render_product.py": "badb0fcf3a76fd529f5a7e0a75d3a8e522653bc38d5626633ebed4940c513990",
+    "scripts/requirements-platform.txt": "41beda9b8fed65122e2955036d0a083280d7ecbf62eb8a7922604dc9d0a7ca80",
+    "scripts/retire_legacy.py": "9dd13592dc1d23c2484e1606569e8fb274293c5d6d90fba53863dc56cdb6d8b0",
+    "tests/fixtures/platform-manifests.yaml": "02480c44b2cc69229c1c21f360608d2641135105be1f835df2be6fa2bfd5b173",
+    "tests/fixtures/platform/batch/deadline-patch.yaml": "426d56aaf07e6054c329ee6635b1895bfbe4b283839ebcf00fcd4b10e58b3db0",
+    "tests/fixtures/platform/batch/job.yaml": "98428e7f80b9cfc7a322b14c8a9f2ea75708b809bef6966b54f20d1e7103d781",
+    "tests/fixtures/platform/batch/kustomization.yaml": "c732f144eac5aea7e5af099ee710af3739944cae1f998f0ffd0fda1eb6f16633",
+    "tests/fixtures/platform/batch/oversized-patch.yaml": "9d47c82003bd28c77f1988d78ec13f282bcc48dbb1046c0417a610a0c0815b45",
+    "tests/fixtures/platform/batch/resources/kustomization.yaml": "c3662c0c12e3fdbc6d3ac1183428edbe1a61f9696c634f3d3663289ae07f6c50",
+    "tests/fixtures/platform/batch/resources/quota.yaml": "c5602f3881e2cceb8dcf77aebb5bce337d637673e68d3323760050369ba5f881",
+    "tests/fixtures/platform/gvisor/job.yaml": "de253c372380d2f40668e7c1a0175e49249c6aeb47151bc6fba30073d67c191e",
+    "tests/fixtures/platform/gvisor/kustomization.yaml": "6c71f92b6b84439b1ce158a04b0f67b19717b2b0713913eb2dbe874bebd5d407",
+    "tests/fixtures/platform/gvisor/lab-patch.yaml": "cedfa8db97c910d9e694ebd17a2354b821bab440bd5a0988f615b3fd39264a2c",
+    "tests/fixtures/platform/network/control-patch.yaml": "94929e847c500de29fe54e6ce25b026fb349e9506dc1c23d872bd120ca7b6e18",
+    "tests/fixtures/platform/network/kustomization.yaml": "0baa7ad75183bee8d190d3c0d2afab482ad05b0b9c7f1209f8088c87a3a84f69",
+    "tests/fixtures/platform/network/namespace.yaml": "a70e58363944c88ce7b16e2abd0b9285272eafaa6fe56f8aea9036513d6618f2",
+    "tests/fixtures/platform/network/observer-patch.yaml": "9bb2aeea83487a482e7f003905841b7854e02a87229f6d87780538f579c34869",
+    "tests/fixtures/platform/network/pod.yaml": "1da5765a63417d047d5d3905742e3f219fb0cd20f205e24e0c1cade32b79e575",
+    "tests/fixtures/platform/network/policies.yaml": "e87390222bb2b4942ec6a60caaa144022632c38233ed5f9c4fb983807bb43b40",
+    "tests/fixtures/platform/network/worker-patch.yaml": "7eb7944b82fa781a4d0955e1ea89e579ee3979809487ddf1e24c49a9bdad5431",
+    "tests/fixtures/platform/sessions/client-job.yaml": "7385e6e7b226fd75acedc6c8a1e9044f0bc28195de68c79bef1afcb40a56b485",
+    "tests/fixtures/platform/sessions/client.Dockerfile": "d6d3509065f1f41fb9b7f1afeba3c0fe673ee156b4b6a105e56d05ae93e4f3b5",
+    "tests/fixtures/platform/sessions/kustomization.yaml": "0fecc304e21d405863bf54c43f3eb8008f5d0dd447c047487f0ab7d90db853ef",
+    "tests/fixtures/platform/sessions/quota.yaml": "c40424b51960222b14d2b8f182fcecf0f154e9b815528545792dcb7007d04ba4",
+    "tests/fixtures/platform/sessions/rbac.yaml": "5710eeb5b04136616f22622a98b05b8043862ec4756a3e2dfa5a9f501ded7935",
+    "tests/fixtures/platform/smoke/job.yaml": "10d52aa985b4e6aaf31c7706c11274a0a90d9c846778beafe307758b4732e598",
+    "tests/fixtures/platform/smoke/kustomization.yaml": "c732f144eac5aea7e5af099ee710af3739944cae1f998f0ffd0fda1eb6f16633",
+    "tests/fixtures/probes/batch_guest_probe.py": "5d691f20ad49f988508f77ce771ad2c74fb1fb7a858a0908875bb6bfae77714b",
+    "tests/fixtures/probes/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "tests/fixtures/probes/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+    "tests/fixtures/probes/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+    "workloads/images/worker.py": "a38ee195a0a00d2b8c711cfb5fa5b21712281c6a5b8e842ae8c5dca497869c30"
+  },
+  "history": [
+    {
+      "checks_passed": 8,
+      "cleanup_complete": true,
+      "ok": false,
+      "reason": "invalid_state",
+      "report": {
+        "path": "artifacts/platform-admission-test-326ed0ea9fa6/report.json",
+        "sha256": "76f6026d3dda7ba48aab4a9d8f3a4b833bd7d22d0aad48c568e71c33a5e5a792"
+      }
+    },
+    {
+      "checks_passed": 1,
+      "cleanup_complete": true,
+      "ok": false,
+      "reason": "admission_not_pending",
+      "report": {
+        "path": "artifacts/platform-admission-test-72ec1f1abfdd/report.json",
+        "sha256": "cfd34c35987e65b6db059ccf45ba2cc02e950a7dde9d75d89a1309c85a8242e2"
+      }
+    },
+    {
+      "checks_passed": 12,
+      "cleanup_complete": true,
+      "ok": true,
+      "reason": null,
+      "report": {
+        "path": "artifacts/platform-admission-test-74fceeef96cb/report.json",
+        "sha256": "37518cc38a9616a5c69d2f5de28aca2944581f7966f99106fdc9d84ba09e726b"
+      }
+    },
+    {
+      "checks_passed": 10,
+      "cleanup_complete": true,
+      "ok": false,
+      "reason": "command_failed",
+      "report": {
+        "path": "artifacts/platform-admission-test-96728e1bae09/report.json",
+        "sha256": "7d366d0ac76f4ffc5602d29cef86646adea548a1d8f996b69e8e04610a288447"
+      }
+    },
+    {
+      "checks_passed": 1,
+      "cleanup_complete": true,
+      "ok": false,
+      "reason": "command_failed",
+      "report": {
+        "path": "artifacts/platform-admission-test-9787a4019c61/report.json",
+        "sha256": "424a8c9cde74363cf2ac7e56a42bb1270868704fd3826cdd3806a3d20bd061c0"
+      }
+    },
+    {
+      "checks_passed": 1,
+      "cleanup_complete": true,
+      "ok": false,
+      "reason": "admission_controller_inactive",
+      "report": {
+        "path": "artifacts/platform-admission-test-aa674cc734f8/report.json",
+        "sha256": "1ea4d27676fc5367b1fe547b3f2638089934e57c0ca31da14f3cc97e7af56aa1"
+      }
+    },
+    {
+      "checks_passed": 3,
+      "cleanup_complete": true,
+      "ok": false,
+      "reason": "batch_product_state_timeout",
+      "report": {
+        "path": "artifacts/platform-admission-test-c597805669e4/report.json",
+        "sha256": "c15b82cffa5d578b0657e36b93fa96cb3a72cc670889e9f3ab7b427dc19b2574"
+      }
+    }
+  ],
+  "independent_audit": {
+    "all_reclaimed": true,
+    "control_targets_empty": true,
+    "known_scoped_resource_uids": 231,
+    "path": "artifacts/p4-independent-audit-abdbd2898694/audit.json",
+    "remaining_api_resources": [],
+    "remaining_cri_sandboxes": {
+      "agentbox-platform-lab-control-plane": [],
+      "agentbox-platform-lab-worker": []
+    },
+    "sha256": "889ae15f4bcb3718a5b3d498cf0b52030f9c100c732e742117758e93199d5bd0"
+  },
+  "limits": [
+    "Controlled kind single-worker domain; no production capacity, multi-node fairness or performance/SLO benefit claim.",
+    "Functional real-session signal used a 10-second deadline and test thresholds; it does not qualify the existing 3-second/95-percent R baseline.",
+    "Ready permits remain durable and can start after controller failure; Lease does not make cross-object decisions transactional.",
+    "Low/zero traffic and stale or invalid windows stop new permissions. Batch starvation is a policy cost to evaluate, not a claimed benefit.",
+    "Batch v2 durable record capacity/retention is unchanged; bounded record GC requires a separate protocol upgrade.",
+    "Earlier failed reports are retained. No workload timeout was relaxed to pass acceptance."
+  ],
+  "locks": {
+    "deploy/agentbox/batch-images/versions.lock.yaml": {
+      "sha256": "fd30ebdcfdb0c573365ffd4e1c1122173b2cb9059d89baa8988eb9394d386d2a",
+      "unchanged": true
+    },
+    "deploy/components/agent-sandbox/versions.lock.yaml": {
+      "sha256": "7430ef24e369e4266246afbd63ffe99ed945ed20182d70b89c1e971b3771fc57",
+      "unchanged": true
+    },
+    "deploy/components/calico/versions.lock.yaml": {
+      "sha256": "a467394c777484348a7d78f3cf25b83e0ea53fd0315be0cb2322842e78415507",
+      "unchanged": true
+    },
+    "deploy/components/gvisor/versions.lock.yaml": {
+      "sha256": "5c992d8962a7eff72ceef4cde80a74f25669f0fad879ff6af0d8e50ddaa0a43a",
+      "unchanged": true
+    },
+    "deploy/components/kueue/versions.lock.yaml": {
+      "sha256": "049b1e726b102f37d34479e50a903597e5ad26edf1b709e262ec6dda3966abf1",
+      "unchanged": true
+    },
+    "deploy/components/observability/versions.lock.yaml": {
+      "sha256": "ee193a81cf7ad9b00555ca69f151359d84fb66a14672d3ebf2ef1e8d1377be16",
+      "unchanged": true
+    },
+    "deploy/lab/versions.lock.yaml": {
+      "sha256": "1dc37d6c851ba0d6793beb19954cea56b36fe31130568ddf9d6a9b2739ede617",
+      "unchanged": true
+    }
+  },
+  "recorded_at": "2026-11-05T07:29:46.289746+00:00",
+  "runs": {
+    "api": {
+      "checks": [
+        {
+          "name": "three_real_apiserver_status_cas_runs",
+          "passed": true
+        }
+      ],
+      "cleanup_complete": true,
+      "report": {
+        "path": "artifacts/platform-admission-api-test-032c7497e417/report.json",
+        "sha256": "6721da00102e7bfca0f7191ccdfe4cc1e94147afa22094e569f29c4268b5b9c7"
+      },
+      "scenario": {
+        "path": "artifacts/platform-admission-api-test-032c7497e417/admission-test.json",
+        "sha256": "eed3346386d59b840b1817c8de7e3de8b47f1ea36897275db9034389ea787d4b"
+      },
+      "source_differences_since_start": {}
+    },
+    "host": {
+      "checks": [
+        {
+          "name": "separate_controller_identity_no_task_or_secret_permissions",
+          "passed": true
+        },
+        {
+          "name": "unhealthy_workload_reserves_quota_and_stays_suspended",
+          "passed": true
+        },
+        {
+          "name": "pending_timeout_native_retry_and_backoff",
+          "passed": true
+        },
+        {
+          "name": "healthy_recovery_real_image_job_and_eight_verified_pngs",
+          "passed": true
+        },
+        {
+          "name": "stale_source_does_not_mean_idle",
+          "passed": true
+        },
+        {
+          "name": "query_permission_failure_stops_new_permissions",
+          "passed": true
+        },
+        {
+          "name": "zero_requests_do_not_mean_healthy",
+          "passed": true
+        },
+        {
+          "name": "status_permission_loss_does_not_fail_open",
+          "passed": true
+        },
+        {
+          "name": "leader_takeover_rebuilds_health_and_recovers_same_workload",
+          "passed": true
+        },
+        {
+          "name": "health_deterioration_preserves_running_job_and_explicit_cancel_reclaims_runtime",
+          "passed": true
+        },
+        {
+          "name": "real_apiserver_status_concurrency_and_uid_protection",
+          "passed": true
+        },
+        {
+          "name": "real_followup_driver_prometheus_controller_job_and_pngs",
+          "passed": true
+        }
+      ],
+      "cleanup_complete": true,
+      "metrics": {
+        "path": "artifacts/platform-admission-test-cb1a41e4a6ba/admission-metrics.json",
+        "sha256": "9859ff3bc7974612e6d384ff34712fb86da8fe1bd2035211154beaccbe11e1d6"
+      },
+      "native_retry_observation": {
+        "apiVersion": "kueue.x-k8s.io/v1beta2",
+        "kind": "Workload",
+        "metadata": {
+          "creationTimestamp": "2026-11-05T07:02:34Z",
+          "finalizers": [
+            "kueue.x-k8s.io/resource-in-use"
+          ],
+          "generation": 1,
+          "labels": {
+            "kueue.x-k8s.io/job-uid": "c349d94a-6fc8-40a0-b308-b5f1f5eec2c9"
+          },
+          "name": "job-bat-41c82c3db1fcb9ff30502d0a99943c1b8d13d421-9a0ac",
+          "namespace": "agentbox-batch-product-be1e9b3188",
+          "ownerReferences": [
+            {
+              "apiVersion": "batch/v1",
+              "blockOwnerDeletion": true,
+              "controller": true,
+              "kind": "Job",
+              "name": "bat-41c82c3db1fcb9ff30502d0a99943c1b8d13d421",
+              "uid": "c349d94a-6fc8-40a0-b308-b5f1f5eec2c9"
+            }
+          ],
+          "resourceVersion": "1318928",
+          "uid": "5925f8f8-8585-4eee-ae16-c62bd5fa5ae7"
+        },
+        "spec": {
+          "active": true,
+          "podSets": [
+            {
+              "count": 1,
+              "name": "main",
+              "template": {
+                "metadata": {
+                  "labels": {
+                    "agentbox.dev/batch-role": "compute",
+                    "agentbox.dev/batch-run": "be1e9b3188",
+                    "agentbox.dev/session": "3b9e9943435049e6b72d2cccd7f3537e",
+                    "batch.kubernetes.io/job-name": "bat-41c82c3db1fcb9ff30502d0a99943c1b8d13d421"
+                  }
+                },
+                "spec": {
+                  "automountServiceAccountToken": false,
+                  "containers": [
+                    {
+                      "args": [
+                        "run"
+                      ],
+                      "env": [
+                        {
+                          "name": "JOB_UID",
+                          "valueFrom": {
+                            "fieldRef": {
+                              "apiVersion": "v1",
+                              "fieldPath": "metadata.labels['batch.kubernetes.io/controller-uid']"
+                            }
+                          }
+                        },
+                        {
+                          "name": "POD_UID",
+                          "valueFrom": {
+                            "fieldRef": {
+                              "apiVersion": "v1",
+                              "fieldPath": "metadata.uid"
+                            }
+                          }
+                        },
+                        {
+                          "name": "BATCH_REQUEST_SHA256",
+                          "value": "cf190e4c57acd063626b8c34fe747c2004115a78d609c27e1ce1bd368e8168d8"
+                        },
+                        {
+                          "name": "BATCH_PASSES",
+                          "value": "8"
+                        }
+                      ],
+                      "image": "agentbox/image-worker:3c0f7ed7de00b86f",
+                      "imagePullPolicy": "Never",
+                      "name": "image-worker",
+                      "resources": {
+                        "limits": {
+                          "cpu": "500m",
+                          "memory": "256Mi"
+                        },
+                        "requests": {
+                          "cpu": "500m",
+                          "memory": "256Mi"
+                        }
+                      },
+                      "securityContext": {
+                        "allowPrivilegeEscalation": false,
+                        "capabilities": {
+                          "drop": [
+                            "ALL"
+                          ]
+                        },
+                        "readOnlyRootFilesystem": true
+                      },
+                      "terminationMessagePath": "/dev/termination-log",
+                      "terminationMessagePolicy": "File",
+                      "volumeMounts": [
+                        {
+                          "mountPath": "/output",
+                          "name": "artifacts",
+                          "subPathExpr": "attempts/$(JOB_UID)/$(POD_UID)"
+                        },
+                        {
+                          "mountPath": "/tmp",
+                          "name": "scratch"
+                        }
+                      ]
+                    }
+                  ],
+                  "dnsPolicy": "ClusterFirst",
+                  "enableServiceLinks": false,
+                  "initContainers": [
+                    {
+                      "args": [
+                        "prepare"
+                      ],
+                      "env": [
+                        {
+                          "name": "JOB_UID",
+                          "valueFrom": {
+                            "fieldRef": {
+                              "apiVersion": "v1",
+                              "fieldPath": "metadata.labels['batch.kubernetes.io/controller-uid']"
+                            }
+                          }
+                        },
+                        {
+                          "name": "POD_UID",
+                          "valueFrom": {
+                            "fieldRef": {
+                              "apiVersion": "v1",
+                              "fieldPath": "metadata.uid"
+                            }
+                          }
+                        }
+                      ],
+                      "image": "agentbox/image-worker:3c0f7ed7de00b86f",
+                      "imagePullPolicy": "Never",
+                      "name": "prepare",
+                      "resources": {
+                        "limits": {
+                          "cpu": "500m",
+                          "memory": "256Mi"
+                        },
+                        "requests": {
+                          "cpu": "500m",
+                          "memory": "256Mi"
+                        }
+                      },
+                      "securityContext": {
+                        "allowPrivilegeEscalation": false,
+                        "capabilities": {
+                          "drop": [
+                            "ALL"
+                          ]
+                        },
+                        "readOnlyRootFilesystem": true
+                      },
+                      "terminationMessagePath": "/dev/termination-log",
+                      "terminationMessagePolicy": "File",
+                      "volumeMounts": [
+                        {
+                          "mountPath": "/data",
+                          "name": "artifacts"
+                        },
+                        {
+                          "mountPath": "/tmp",
+                          "name": "scratch"
+                        }
+                      ]
+                    }
+                  ],
+                  "restartPolicy": "Never",
+                  "runtimeClassName": "agentbox-gvisor",
+                  "schedulerName": "default-scheduler",
+                  "securityContext": {
+                    "fsGroup": 1000,
+                    "fsGroupChangePolicy": "OnRootMismatch",
+                    "runAsGroup": 1000,
+                    "runAsNonRoot": true,
+                    "runAsUser": 1000,
+                    "seccompProfile": {
+                      "type": "RuntimeDefault"
+                    }
+                  },
+                  "terminationGracePeriodSeconds": 3,
+                  "volumes": [
+                    {
+                      "name": "artifacts",
+                      "persistentVolumeClaim": {
+                        "claimName": "batch-artifacts"
+                      }
+                    },
+                    {
+                      "emptyDir": {
+                        "medium": "Memory",
+                        "sizeLimit": "16Mi"
+                      },
+                      "name": "scratch"
+                    }
+                  ]
+                }
+              },
+              "topologyRequest": {
+                "podIndexLabel": "batch.kubernetes.io/job-completion-index"
+              }
+            }
+          ],
+          "priority": 0,
+          "queueName": "batch"
+        },
+        "status": {
+          "admissionChecks": [
+            {
+              "lastTransitionTime": "2026-11-05T07:03:19Z",
+              "message": "Reset to Pending after eviction. Previously: Retry",
+              "name": "agentbox-health-be1e9b3188",
+              "requeueAfterSeconds": 5,
+              "retryCount": 1,
+              "state": "Pending"
+            }
+          ],
+          "conditions": [
+            {
+              "lastTransitionTime": "2026-11-05T07:03:19Z",
+              "message": "Evicted due to AdmissionCheck in Retry state: \"agentbox-health-be1e9b3188\" (revision=fixture-be1e9b3188 reason=check_wait_exceeded)",
+              "observedGeneration": 1,
+              "reason": "PendingEvaluation",
+              "status": "False",
+              "type": "QuotaReserved"
+            },
+            {
+              "lastTransitionTime": "2026-11-05T07:03:19Z",
+              "message": "Evicted due to AdmissionCheck in Retry state: \"agentbox-health-be1e9b3188\" (revision=fixture-be1e9b3188 reason=check_wait_exceeded)",
+              "observedGeneration": 1,
+              "reason": "AdmissionCheck",
+              "status": "True",
+              "type": "Evicted"
+            },
+            {
+              "lastTransitionTime": "2026-11-05T07:02:35Z",
+              "message": "The workload has no reservation",
+              "observedGeneration": 1,
+              "reason": "NoReservation",
+              "status": "False",
+              "type": "Admitted"
+            },
+            {
+              "lastTransitionTime": "2026-11-05T07:03:19Z",
+              "message": "The workload backoff was finished",
+              "observedGeneration": 1,
+              "reason": "BackoffFinished",
+              "status": "True",
+              "type": "Requeued"
+            },
+            {
+              "lastTransitionTime": "2026-11-05T07:02:35Z",
+              "message": "Not all pods are ready or succeeded",
+              "observedGeneration": 1,
+              "reason": "WaitForStart",
+              "status": "False",
+              "type": "PodsReady"
+            }
+          ],
+          "schedulingStats": {
+            "evictions": [
+              {
+                "count": 1,
+                "reason": "AdmissionCheck",
+                "underlyingCause": ""
+              }
+            ]
+          }
+        }
+      },
+      "real_health_signal": {
+        "contract": {
+          "deadline_seconds": 10,
+          "domain": "worker",
+          "profile": "short-followup",
+          "revision": "live-be1e9b3188",
+          "window_seconds": 10
+        },
+        "correct": 15,
+        "planned": 15,
+        "qualified_baseline": false,
+        "timely": 15
+      },
+      "recovery_grant_interval_seconds": 9.0,
+      "report": {
+        "path": "artifacts/platform-admission-test-cb1a41e4a6ba/report.json",
+        "sha256": "dccc11f9cb0c9a78ebab53f254e346dc98597219b192e26315ee76658e96d660"
+      },
+      "scenario": {
+        "path": "artifacts/platform-admission-test-cb1a41e4a6ba/admission-test.json",
+        "sha256": "c8f0f8814ea2bc77927d4e9840be64e1350df29260a6c08dc24ed367c7b3ce69"
+      },
+      "source_differences_since_start": {}
+    },
+    "pod": {
+      "checks": [
+        {
+          "name": "separate_controller_identity_no_task_or_secret_permissions",
+          "passed": true
+        },
+        {
+          "name": "actual_pod_incluster_identity_and_verified_https_ca_query",
+          "passed": true
+        },
+        {
+          "name": "deployed_controller_admits_real_job_and_validates_eight_pngs",
+          "passed": true
+        },
+        {
+          "name": "real_cni_query_block_stops_new_permissions",
+          "passed": true
+        },
+        {
+          "name": "cni_restore_rebuilds_health_and_recovers_same_job",
+          "passed": true
+        }
+      ],
+      "cleanup_complete": true,
+      "controller_cri_sandboxes_reclaimed": [
+        "0d41652beb0a104fff1c2c54ff663c350cd9fd31a05323a5ccc99a7c1a978c61"
+      ],
+      "controller_pod": {
+        "image": "docker.io/agentbox/admission@sha256:ae38cdc339a85613da75bf8d210b9705c45e0c4696de115e89b8ece6338438d9",
+        "name": "agentbox-admission-5d9987d6c9-k4dst",
+        "uid": "7830ab0b-0142-4ea7-b4f9-b6b951942ba9"
+      },
+      "image": {
+        "path": "artifacts/platform-admission-deployment-test-d6c299d79e13/admission-image.json",
+        "sha256": "e6c179922f6ee58b6217d1066d3184c3affb7b46ac15dd5120aef509b0e691a6"
+      },
+      "manifest": {
+        "path": "artifacts/platform-admission-deployment-test-d6c299d79e13/admission-pod-manifests.yaml",
+        "sha256": "62b67b0462377468969495f06625435aa484daa4f67f4cf321389c4b6c1e83e5"
+      },
+      "metrics": {
+        "path": "artifacts/platform-admission-deployment-test-d6c299d79e13/admission-metrics.json",
+        "sha256": "d347b4a377554db364d9e224f3fd0cb7d62d831f0b348b5f18cfd41f6407ae88"
+      },
+      "report": {
+        "path": "artifacts/platform-admission-deployment-test-d6c299d79e13/report.json",
+        "sha256": "537f50e2f7b01ff0fe47ea96defe27bf4bc4429f4846931eb5c037bcf764f1db"
+      },
+      "scenario": {
+        "path": "artifacts/platform-admission-deployment-test-d6c299d79e13/admission-test.json",
+        "sha256": "148e38c2df6950904de2a1c952ee9fb94f13219633c54bde5effa576eeaa6d09"
+      },
+      "source_differences_since_start": {}
+    }
+  },
+  "schema_version": 1,
+  "scope": "P4 single-domain health admission; functional and fault verification, not R/B/A performance qualification",
+  "state": {
+    ".local/platform/cluster.json": {
+      "after_sha256": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      "before_sha256": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      "unchanged": true
+    },
+    ".local/platform/session-bundle.json": {
+      "after_sha256": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e",
+      "before_sha256": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e",
+      "unchanged": true
+    }
+  },
+  "status": {
+    "P3_R_qualification": "incomplete",
+    "P4_performance_acceptance": "not measured",
+    "default_product_queue_activation": "explicit opt-in",
+    "functional": "passed"
+  }
+}

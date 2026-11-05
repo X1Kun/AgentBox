@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/X1Kun/AgentBox/internal/admission/health"
 	"github.com/X1Kun/AgentBox/internal/requestid"
 	"sort"
 	"sync"
@@ -35,12 +36,13 @@ type Request struct {
 	ExpectedExit    int    `json:"expected_exit"`
 }
 type Config struct {
-	StartAt     string    `json:"start_at,omitempty"`
-	Targets     []Target  `json:"targets"`
-	Requests    []Request `json:"requests"`
-	MaxInflight int       `json:"max_inflight"`
-	MaxLagMS    int       `json:"max_lag_ms"`
-	DeadlineMS  int       `json:"deadline_ms"`
+	Health      *health.Contract `json:"health,omitempty"`
+	StartAt     string           `json:"start_at,omitempty"`
+	Targets     []Target         `json:"targets"`
+	Requests    []Request        `json:"requests"`
+	MaxInflight int              `json:"max_inflight"`
+	MaxLagMS    int              `json:"max_lag_ms"`
+	DeadlineMS  int              `json:"deadline_ms"`
 }
 type Event struct {
 	StartedAt string `json:"trace_started_at"`
@@ -143,6 +145,12 @@ func classify(r Request, reply client.Reply) (string, string) {
 // Run never queues an overdue arrival behind active requests and never retries
 // a mutation. All planned arrivals receive a terminal ledger entry, including drops.
 func Run(ctx context.Context, c Config, b Backend, emit func(Event) error) (Summary, error) {
+	return RunObserved(ctx, c, b, emit, nil)
+}
+
+// RunObserved additionally reports actual dispatches for online measurement;
+// a dispatched request without completion must remain in the denominator.
+func RunObserved(ctx context.Context, c Config, b Backend, emit func(Event) error, arrival func(Event)) (Summary, error) {
 	if err := Validate(c); err != nil {
 		return Summary{}, err
 	}
@@ -222,6 +230,9 @@ func Run(ctx context.Context, c Config, b Backend, emit func(Event) error) (Summ
 			continue
 		}
 		e.SentMS = float64(time.Since(start)) / float64(time.Millisecond)
+		if arrival != nil {
+			arrival(e)
+		}
 		wg.Add(1)
 		go func(r Request, e Event) {
 			defer wg.Done()

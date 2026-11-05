@@ -73,3 +73,5 @@ kubectl --kubeconfig .local/platform/kubeconfig --context kind-agentbox-platform
 历史运行报告、缓存元数据和原始验收 JSON 不回写。Python 固定依赖见 `scripts/requirements-platform.txt`，产品使用及验证范围见[运维指南](../docs/operations.md)与[验收记录](../docs/validation.md)。
 
 宿主编排库按职责位于 `scripts/lib/{core,manifests,platform,product,acceptance,experiments,observability}/`。`workloads/images/worker.py` 是实际容器入口，共享图片算法由构建器复制为独立运行模块；`tests/fixtures/probes/` 保存 Pod 验收程序，节点进程诊断 Shell 保存在 `scripts/lib/platform/resources/`。平台安装与 SDK/批任务验收分别实现，CLI 按子命令加载，基础预检不加载 Pillow 或验收场景。
+
+健康准入组件位于 `agentbox/admission/`，独立于默认 session/batch 组合。完整输入通过 `scripts/render_admission.py` 渲染；自定义 Prometheus CA 使用 `--prometheus-ca-file`，输出包含可用的只读 CA 路径。组件不会自动附加现有 ClusterQueue；v1beta2 接线使用 admissionChecksStrategy，部署、升级和停用见[准入运维](../docs/operations.md#health-admission)。真实 Controller Pod 和网络故障入口为 `make platform-admission-deployment-test`。

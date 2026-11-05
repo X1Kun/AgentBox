@@ -7,7 +7,11 @@ import (
 	"fmt"
 	experiment "github.com/X1Kun/AgentBox/internal/experiment/session"
 	client "github.com/X1Kun/AgentBox/internal/session/client"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,7 +25,10 @@ func main() {
 	}
 }
 func run() error {
-	var config, ledger, base, ca, users string
+	var config, ledger, base, ca, users, metricsListen string
+	var healthLinger time.Duration
+	flag.StringVar(&metricsListen, "health-listen", "", "optional loopback endpoint for trusted follow-up quality windows")
+	flag.DurationVar(&healthLinger, "health-linger", 0, "keep final quality windows available after trace completion, at most 2m")
 	flag.StringVar(&config, "config", "", "private JSON trace compiled from YAML")
 	flag.StringVar(&ledger, "ledger", "", "new JSONL ledger")
 	flag.StringVar(&base, "api-url", "", "explicit API URL")
@@ -86,12 +93,67 @@ func run() error {
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, 200*time.Second)
 	defer cancel()
-	summary, err := experiment.Run(ctx, c, actors, func(e experiment.Event) error { return enc.Encode(e) })
+	var quality *experiment.Quality
+	if metricsListen != "" {
+		host, _, e := net.SplitHostPort(metricsListen)
+		if e != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() || c.Health == nil || c.StartAt == "" || healthLinger < 0 || healthLinger > 2*time.Minute {
+			return fmt.Errorf("health export requires loopback, explicit start, health contract and bounded linger")
+		}
+		start, e := time.Parse(time.RFC3339Nano, c.StartAt)
+		if e != nil {
+			return e
+		}
+		quality, e = experiment.NewQuality(c, *c.Health, start)
+		if e != nil {
+			return e
+		}
+		registry := prometheus.NewRegistry()
+		registry.MustRegister(quality)
+		listener, e := net.Listen("tcp", metricsListen)
+		if e != nil {
+			return e
+		}
+		server := &http.Server{Handler: promhttp.HandlerFor(registry, promhttp.HandlerOpts{Timeout: time.Second, MaxRequestsInFlight: 2}), ReadHeaderTimeout: time.Second, WriteTimeout: 2 * time.Second}
+		defer server.Close()
+		go func() {
+			if e := server.Serve(listener); e != nil && e != http.ErrServerClosed {
+				quality.Invalidate()
+				cancel()
+			}
+		}()
+	} else if c.Health != nil || healthLinger != 0 {
+		return fmt.Errorf("health contract and linger require health-listen")
+	}
+	var arrival func(experiment.Event)
+	if quality != nil {
+		arrival = quality.Arrival
+	}
+	summary, err := experiment.RunObserved(ctx, c, actors, func(e experiment.Event) error {
+		if e := enc.Encode(e); e != nil {
+			if quality != nil {
+				quality.Invalidate()
+			}
+			return e
+		}
+		if quality != nil {
+			quality.Record(e)
+		}
+		return nil
+	}, arrival)
 	if syncErr := out.Sync(); syncErr != nil {
 		return syncErr
 	}
 	if err != nil {
+		if quality != nil {
+			quality.Invalidate()
+		}
 		return err
+	}
+	if quality != nil && healthLinger > 0 {
+		select {
+		case <-time.After(healthLinger):
+		case <-ctx.Done():
+		}
 	}
 	return json.NewEncoder(os.Stdout).Encode(summary)
 }

@@ -25,3 +25,8 @@ scrape_configs:
   - files: [/etc/prometheus/targets.yaml]
     refresh_interval: 2s
   sample_limit: 10000
+- job_name: agentbox-control
+  file_sd_configs:
+  - files: [/etc/prometheus/control-targets.yaml]
+    refresh_interval: 2s
+  sample_limit: 10000

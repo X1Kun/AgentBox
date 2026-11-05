@@ -76,7 +76,7 @@ Job 固定 activeDeadlineSeconds=120、backoffLimit=0；--timeout（30～600s）
 
 旧单机安装、容器验证与实验脚本已经移出活动代码；仅在[历史版本](archive/legacy-runtime.md)按原环境复现。当前平台由本节已有入口管理。
 
-Makefile 的 benchmark、observe、static-experiment、qos-integration、systemd-integration 是对应入口的快捷方式，可用 PLATFORM=systrap 显式切换。环境准备和测试条件见[验证指南](validation.md)。
+旧 benchmark、observe、static-experiment、qos-integration、systemd-integration 入口仅在归档版本复现；当前测试入口见[验证指南](validation.md)。
 
 <a id="gvisor-runtime"></a>
 ## 独立 Worker 的 gVisor 运行时验收
@@ -450,7 +450,7 @@ CPU/working set 来自 kubelet `/metrics/resource`；补充 RSS/throttling/I/O �
 <a id="agent"></a>
 ## Agent/MCP 部署与真实验收
 
-`make build` 只构建 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent。管理员先安装受控平台与 API，再向调用方提供 API URL、可信 CA 和一个配置身份；不把 Kubernetes 或模型凭据放进执行 Pod。`make tools` 另行构建只读观察器、上游 SDK 验收客户端和可选 mockcore，不参与默认产品路径。
+`make build` 构建 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent、agentbox-admission。管理员先安装受控平台与 API，再向调用方提供 API URL、可信 CA 和一个配置身份；不把 Kubernetes 或模型凭据放进执行 Pod。`make tools` 另行构建只读观察器、上游 SDK 验收客户端和可选 mockcore，不参与默认产品路径。
 
 `make platform-agent-test` 或 `make integration` 在当前专用实验集群创建临时 API/执行 namespace，以确定性模型 HTTP 替身启动真实 Agent 与 stdio MCP 子进程。验证 CSV 写入、程序失败修正、报告导出、跨命令文件和新解释器；再验证命令超时，以及经可信 loopback 故障夹具转发一次成功执行后丢弃响应，确认 Agent 不重放、不执行批次后续命令，并在独立预算内关闭会话。API 事件核对实际执行次数，宿主确认三个 gVisor 环境的 CRI/进程回收，最后清理本轮 namespace，保留集群。该入口不调用付费模型。
 
@@ -600,3 +600,50 @@ platform 层不导入产品、验收或实验。验收/实验共享窄化客户�
 Sandbox 平台只构建/验证 controller 和 runtime。SDK 客户端镜像由 acceptance/session.py 单独准备，不重写已安装 bundle；已验证的 v1 runtime 缓存继续复用，新建平台 bundle 使用 runtime-only 输入。旧 bundle 中路径状字符串仍是协议键，不能据改目录盲目归一化；锁、输入内容或实际镜像 ID 不一致继续拒绝复用。集群和 gVisor 无需因目录整理重建。
 
 `make check` 包含脚本依赖约束、独立解释器的基本 CLI 导入检查、Pod 程序位置与无宿主依赖检查，以及既有行为回归。原有命令、专用 kubeconfig、UID/归属校验和回收门槛继续使用。
+
+
+<a id="health-admission"></a>
+## 健康感知批任务准入
+
+`agentbox-admission` 是独立 Go/controller-runtime 进程，只控制显式配置的单个 namespace/LocalQueue/ClusterQueue 和一个 AdmissionCheck。Kueue 固定 v0.20.3/v1beta2。它不写 Job suspend、不领取会话或调整预热池，不因健康恶化撤销已有 Ready。当前示例阈值仅用于功能验证，尚无 R/B/A 性能资格。
+
+先 `make build`。管理员从 `deploy/agentbox/admission/policy.example.yaml` 复制策略，填写真实归属、队列、检查项和健康契约；所有窗口、阈值与预算均为显式输入。首版仅支持现有单 Pod、500m/256Mi、gVisor 受控 Job 规格。健康采样来自已就绪并预执行成功后的固定后续命令；HTTP 200、程序退出 0 或节点 CPU 空闲均不能替代输出校验。
+
+本地 Controller 可以通过受限 kubeconfig 使用宿主 loopback Prometheus：
+
+```bash
+bin/agentbox-admission --config /private/policy.yaml \
+  --kubeconfig /private/admission.kubeconfig --lease-namespace <controller-namespace>
+```
+
+身份权限源位于 `deploy/agentbox/admission/rbac.yaml`，须按实际范围渲染。Controller namespace 与计算 namespace 分开；独立 ServiceAccount 只有计算域 Workload 读取/状态 patch、指定 LocalQueue/ClusterQueue/namespace 的读取、指定 AdmissionCheck 的读取/状态 patch，以及控制域专用 Lease/事件权限。AdmissionCheck 的 `agentbox.dev/lease-namespace` 必须与进程参数一致，防止同一检查项误用两个 leader 域。禁止使用默认管理员 kubeconfig 作为常驻产品凭据。
+
+Pod 部署通过 `scripts/render_admission.py --inputs /private/admission-inputs.yaml --output /private/admission.yaml` 生成新建的 0600 文件，随后由管理员应用。inputs 的五个字段是 `policy`（完整策略对象）、`image`（不可变镜像 digest）、`controller_namespace`、`api_server_endpoints` 和 `prometheus_endpoints`（后两者均为 address/port 列表）。渲染器生成独立 Namespace、身份/RBAC、策略 ConfigMap、AdmissionCheck、Deployment 和网络规则，不创建或修改任何现有队列。镜像用同一二进制及 `deploy/agentbox/admission/Dockerfile` 构建，BASE_IMAGE 使用项目已有锁定源；不在运行时下载。
+
+Pod 必须配置从 Pod 可达的 HTTPS Prometheus 原点、相应受限 IP 出口及可信 CA；不能填写宿主 127.0.0.1。示例的 `.invalid` 地址和镜像占位值不能通过完整渲染。非系统 CA 通过渲染器 `--prometheus-ca-file /private/prometheus-ca.pem` 嵌入策略 ConfigMap 并只读挂载到固定路径；只接受有界公共证书，拒绝私钥或缺失 CA 内容的清单。CA 轮换也需新 health.revision。查询客户端不使用环境代理、不跟随重定向，不允许 URL 内嵌凭据。当前实验监控栈仍使用宿主 loopback。独立 Pod 验收以 kind 私有桥接地址的临时 HTTPS 夹具转发到同一真实 Prometheus，验证自定义 CA、集群内身份及 CNI 阻断/恢复；实际部署仍须显式提供查询端点。
+
+启用顺序：先部署检查器并确认 AdmissionCheck Active=True，再由管理员将**指定**检查项加入目标 ClusterQueue 的 `spec.admissionChecksStrategy.admissionChecks`，保留已有检查项及原 UID/resourceVersion；v1beta2 不使用旧的平铺 admissionChecks 字段。Active 反映配置受支持；在线高压、缺测和查询故障通过 Workload 等待及 Controller 指标表达。默认 session/batch 部署组合不会自动挂此检查。
+
+策略文件原子替换后由 Controller 重新读取。参数修改必须使用新的 `health.revision`，同时更新 AdmissionCheck 的 `agentbox.dev/policy-revision`；不一致期间停止许可。范围/归属更换要求新的明确部署。配置变更、源重启、指标失效及控制器接管后重新积累健康窗口；已有 Ready 保留原决策。单 leader 串行发放，每次至多一个 Ready，重建已有 Ready 时间；未知写入先消耗间隔再重读，不盲目重放。Lease 不是跨对象事务；接管期间仍有一笔在途写入的边界。
+
+Pending 最长等待达到上限时，仅对新鲜观察中未准入的对象设置 Retry 和 `requeueAfterSeconds`，由 Kueue 释放/重排配额。Ready、Admitted、终态和取消对象均不因新压力改为 Retry/Rejected。许可到准入/启动之间存在异步窗口；停止 Controller 不会撤销已发许可。
+
+可信轨迹 JSON 可额外包含 `health` 契约（domain、revision、profile、window_seconds、deadline_seconds），并显式给出 start_at。运行 `agentbox-session-experiment --health-listen 127.0.0.1:<port> --health-linger 30s` 时暴露 `agentbox_session_health`。到达窗口再等待一整个命令截止后定稿，未完成/拒绝/错误仍进入分母；生成器掉队使窗口无效。相同窗口的结果不被后来的成功改写。该模式只接受预期成功的执行轨迹，生命周期准备及首条预执行由调用方完成并另行记录。
+
+Prometheus 的 `agentbox-control` job 读取单独的 `control-targets.yaml`，与 session/batch API 目标分开；验收结束清除此文件中的临时目标。Controller 额外指标包括 state、sample_valid、样本年龄、窗口请求数、及时成功率、决策原因、状态写入结果、检查等待和最近 reconcile 时间。判读时同时检查 up、sample_valid 和 reconcile 时间；对象 UID、请求 ID 和完整样本关联只进入 JSONL。查询成功但旧数据、空/部分结果、重复来源、非有限数和源时钟异常均不发许可。
+
+`make platform-admission-test` 使用原开发集群与独立临时队列，真实查询本地 Prometheus。受控信号的故障矩阵与真实会话驱动联通分别留证；功能通过不形成性能收益结论。报告位于新的 `artifacts/platform-admission-test-*/`，包含控制器日志、Workload 观察、样本、请求账本和图片产品回收记录。失败保留原记录，并逐项尝试清理；未确认回收不能标记通过。
+
+停用/升级时先显式关闭新提交并等待或取消未准入任务，保留并核对在途任务，再以原 UID/resourceVersion 修改目标 ClusterQueue 的检查列表，最后停止检查器和删除其专用资源。不能通过直接删除检查项绕过健康门控，也不能删除共享 Kueue CRD、运行时或监控卷。
+
+`make platform-admission-deployment-test` 独立构建并导入带输入指纹的不可变 Controller 镜像，以同一完整清单部署真实 Pod；默认部署组合和既有产品队列保持显式选择。它校验集群内身份、HTTPS CA、真实图片 Job/PNG、Calico 阻断查询后的等待及恢复，并确认控制面 Controller CRI sandbox 和 Worker 计算资源回收。临时 TLS 私钥仅在宿主私有目录，Pod 只得到公共 CA。两组原生验收分别记录，不能拼接为容量成绩。
+
+升级已有监控栈的静态查询配置时，先运行 `make observability-up` 渲染配置，再以原 Compose 项目发送 SIGHUP 使 Prometheus 重读；不需要删除时序卷：
+
+```bash
+docker compose --project-name agentbox-observability \
+  --env-file .local/observability/private.env \
+  -f deploy/components/observability/compose.yaml kill -s SIGHUP prometheus
+```
+
+`make platform-admission-api-test` 单独在有归属的临时 namespace 连续三次验证真实 Workload/status 的 resourceVersion/UID 条件更新，不创建计算任务。它与完整业务矩阵分开，便于诊断控制面竞态；测试前置竞争写入只在服务端明确拒绝后重读，实际控制器仍不盲目重放旧状态 patch。

@@ -1,6 +1,6 @@
 # AgentBox 系统设计
 
-版本：V3.6｜更新：2026-11-04｜会话代码按功能聚合并保留协议/HTTP/客户端/sandboxd 边界；维护与分页修复已实现，性能基线与资源策略仍为后续阶段。
+版本：V3.7｜更新：2026-11-05｜增加独立健康 AdmissionCheck、可信窗口和显式部署；功能/故障验收与后续 R/B/A 性能资格分别记录。
 
 AgentBox 面向 AI Agent 提供隔离会话与受控批任务。目标在同一 Kubernetes 平台上复用 **Agent Sandbox 管理会话和预热池，Job＋Kueue 管理批任务，containerd＋gVisor 承担实际运行与隔离**。Go 产品层提供 API/MCP 适配，首个局部研发点是保护交互体验的健康感知批任务 AdmissionCheck。
 

@@ -1,6 +1,6 @@
 # 使用指南
 
-当前产品链路为 Agent → stdio MCP v2 → Go Session API → 上游 sandboxd/gVisor。生命周期、执行、文件和管理员记录清理已实现；批任务接口仍为计划。旧 Gateway、Daemon 及旧 MCP 工具已移出活动代码，历史复现见[归档](archive/legacy-runtime.md)。
+当前产品链路为 Agent → stdio MCP v2 → Go Session API → 上游 sandboxd/gVisor。生命周期、执行、文件、管理员记录清理和图片批 HTTP API 已实现。旧 Gateway、Daemon 及旧 MCP 工具已移出活动代码，历史复现见[归档](archive/legacy-runtime.md)。
 
 <a id="session-api"></a>
 ## Go 会话 API v2
@@ -157,7 +157,7 @@ MCP 请求取消向 HTTP API 传播，API 对可能仍运行的操作保留互�
 <a id="target"></a>
 ## 会话与后续批任务边界
 
-Go 产品层适配上游 Agent Sandbox 与 Kubernetes Job，不调用 agentboxd。会话 API/MCP 已实现，P3 再增加批任务工具；以下批任务一列仍为计划。
+Go 产品层适配上游 Agent Sandbox 与 Kubernetes Job，不调用 agentboxd。会话 API/MCP 与图片批 HTTP API 已实现；批任务尚未向模型注册 MCP 工具。
 
 | 能力 | 会话 Session | 批任务 BatchTask |
 | --- | --- | --- |
@@ -176,3 +176,5 @@ Go 产品层适配上游 Agent Sandbox 与 Kubernetes Job，不调用 agentboxd�
 
 
 旧运行路径的源码、部署方式和实验仅在[历史版本](archive/legacy-runtime.md)中复现。
+
+健康感知准入由管理员单独启用，不改变图片批 HTTP API，也不增加模型可选策略参数。处于健康检查 Pending/Retry 的任务继续通过原 batch_id 查询或显式取消；排队不等于程序已经执行。配置、部署和停用见[健康准入运维](operations.md#health-admission)。

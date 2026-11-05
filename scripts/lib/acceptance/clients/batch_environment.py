@@ -3,6 +3,7 @@
 import json
 import secrets
 import time
+from lib.core.errors import CommandError
 
 from lib.observability.environment import instrument
 from lib.core.kubernetes import delete_resource
@@ -50,12 +51,33 @@ class BatchEnvironment(BatchClient):
         queue = self.get('clusterqueue', namespace)
         identity(queue, next(r['uid'] for r in self.record['resources'] if r['kind'] == 'ClusterQueue'),
                  self.state['session'], self.record['run'])
-        patch = [{'op': 'test', 'path': '/metadata/resourceVersion', 'value': queue['metadata']['resourceVersion']}]
-        for index, value in enumerate((str(max(1, slots)*500)+'m', str(max(1, slots)*256)+'Mi')):
-            patch.append({'op': 'replace', 'path': f'/spec/resourceGroups/0/flavors/0/resources/{index}/nominalQuota', 'value': value})
-        updated = json.loads(self.lab.kubectl('patch', 'clusterqueue', namespace, '--type=json', '-p', json.dumps(patch), '-o', 'json', announce=False))
-        generation = updated['metadata']['generation']
         until = time.monotonic()+45
+        desired=(str(max(1,slots)*500)+'m',str(max(1,slots)*256)+'Mi')
+        for attempt in range(5):
+            groups=queue.get('spec',{}).get('resourceGroups',[])
+            resources=groups[0]['flavors'][0]['resources'] if groups else []
+            if len(resources)==2 and tuple(r['nominalQuota'] for r in resources)==desired:
+                updated=queue
+                break
+            patch = [{'op':'test','path':'/metadata/uid','value':queue['metadata']['uid']},
+                     {'op':'test','path':'/metadata/resourceVersion','value':queue['metadata']['resourceVersion']}]
+            for index,value in enumerate(desired):
+                patch.append({'op':'replace','path':f'/spec/resourceGroups/0/flavors/0/resources/{index}/nominalQuota','value':value})
+            try:
+                updated=json.loads(self.lab.kubectl('patch','clusterqueue',namespace,'--type=json','-p',json.dumps(patch),'-o','json',announce=False))
+                break
+            except CommandError as error:
+                # Only a definite server rejection can be retried. A timeout or
+                # lost response remains unknown; never blindly replay a write.
+                definite=error.reason=='command_failed' and ('(Conflict)' in str(error) or 'request is invalid' in str(error))
+                if not definite or attempt==4 or time.monotonic()>=until:raise
+                fresh=self.get('clusterqueue',namespace)
+                identity(fresh,queue['metadata']['uid'],self.state['session'],self.record['run'])
+                require(fresh.get('spec')==queue.get('spec') and fresh['metadata']['resourceVersion']!=queue['metadata']['resourceVersion'],
+                        'baseline_quota_changed','only unrelated status/metadata CAS conflicts may be retried')
+                self.record['quota_cas_conflicts']=self.record.get('quota_cas_conflicts',0)+1
+                queue=fresh
+        generation = updated['metadata']['generation']
         while True:
             current = self.get('clusterqueue', namespace)
             identity(current, queue['metadata']['uid'], self.state['session'], self.record['run'])

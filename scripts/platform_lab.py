@@ -31,7 +31,7 @@ def source_inventory(root):
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-image-build", "batch-product-test", "batch-product-cleanup", "observability-test", "maintenance-test", "session-boundary-test", "session-matrix-test", "static-baseline", "static-baseline-cleanup", "diagnostics-test", "product-entry-test", "product-images"))
+    parser.add_argument("action", choices=("preflight", "create", "smoke", "delete", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-build", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-image-build", "batch-product-test", "batch-product-cleanup", "observability-test", "maintenance-test", "session-boundary-test", "session-matrix-test", "static-baseline", "static-baseline-cleanup", "diagnostics-test", "product-entry-test", "product-images", "admission-test", "admission-deployment-test", "admission-api-test"))
     parser.add_argument("--baseline-config", type=Path, default=ROOT / "experiments/configs/session/baseline.yaml", help="frozen R/B baseline YAML")
     parser.add_argument("--baseline-report", type=Path, help="original static-baseline.json for scoped cleanup recovery")
     parser.add_argument("--baseline-stage", choices=("calibration", "comparison"), default="calibration", help="R calibration first; R/B comparison requires a matching reference")
@@ -221,6 +221,15 @@ def main(argv=None):
             report["ok"] = True
         elif args.action == "product-entry-test":
             report["result"] = load('acceptance.product_entry', 'ProductEntryAcceptance')(lab).test()
+            report["ok"] = True
+        elif args.action == "admission-test":
+            report["result"] = load('acceptance.admission', 'AdmissionAcceptance')(lab).test()
+            report["ok"] = True
+        elif args.action == "admission-deployment-test":
+            report["result"] = load('acceptance.admission_deployment', 'AdmissionDeploymentAcceptance')(lab).test()
+            report["ok"] = True
+        elif args.action == "admission-api-test":
+            report["result"] = load('acceptance.admission','AdmissionAcceptance')(lab).api_test()
             report["ok"] = True
         elif args.action == "session-boundary-test":
             report["result"] = load('experiments.session_boundaries', 'SessionBoundaries')(lab).test()

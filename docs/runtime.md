@@ -27,7 +27,7 @@ flowchart LR
 
 上游管理 Claim/Sandbox/Pod/WarmPool；原生 scheduler/kubelet/containerd 管理调度与运行；官方 runsc handler/gVisor 承担内核运行隔离。API/MCP 只做配置身份、原 UID 绑定、预算和协议适配，没有宿主 socket 或 cgroup 写权限。执行 Pod 不得到模型 key、API token 或 Kubernetes 凭据。
 
-固定预热池的空闲、领取、创建、终止成员共同计入 Worker 和 namespace 预算。API 配额、池规模和实际资源分别核对，不用更多隐藏库存推导性能收益。Kueue/健康 AdmissionCheck 尚未接入，会话命令不以一次性 Job 实现。
+固定预热池的空闲、领取、创建、终止成员共同计入 Worker 和 namespace 预算。API 配额、池规模和实际资源分别核对，不用更多隐藏库存推导性能收益。Kueue 已管理图片批 Job；健康 AdmissionCheck 是显式选择的批准入扩展，不管理会话命令或补池。会话命令不以一次性 Job 实现。
 
 <a id="cleanup"></a>
 ## 取消、关闭与保留
