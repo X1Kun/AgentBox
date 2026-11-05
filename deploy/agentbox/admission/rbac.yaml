@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agentbox-admission
+  namespace: agentbox-admission
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agentbox-admission
+  namespace: agentbox-batch
+rules:
+- apiGroups: [kueue.x-k8s.io]
+  resources: [workloads]
+  verbs: [get, list, watch]
+- apiGroups: [kueue.x-k8s.io]
+  resources: [workloads/status]
+  verbs: [patch]
+- apiGroups: [kueue.x-k8s.io]
+  resources: [localqueues]
+  resourceNames: [batch]
+  verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agentbox-admission
+  namespace: agentbox-batch
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: agentbox-admission}
+subjects:
+- {kind: ServiceAccount, name: agentbox-admission, namespace: agentbox-admission}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agentbox-admission
+rules:
+- apiGroups: ['']
+  resources: [namespaces]
+  resourceNames: [agentbox-batch]
+  verbs: [get]
+- apiGroups: [kueue.x-k8s.io]
+  resources: [clusterqueues]
+  resourceNames: [agentbox-batch]
+  verbs: [get]
+- apiGroups: [kueue.x-k8s.io]
+  resources: [admissionchecks]
+  resourceNames: [agentbox-health]
+  verbs: [get, list, watch]
+- apiGroups: [kueue.x-k8s.io]
+  resources: [admissionchecks/status]
+  resourceNames: [agentbox-health]
+  verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agentbox-admission
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: agentbox-admission}
+subjects:
+- {kind: ServiceAccount, name: agentbox-admission, namespace: agentbox-admission}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agentbox-admission-leader
+  namespace: agentbox-admission
+rules:
+- apiGroups: [coordination.k8s.io]
+  resources: [leases]
+  verbs: [create]
+- apiGroups: [coordination.k8s.io]
+  resources: [leases]
+  resourceNames: [agentbox-health]
+  verbs: [get, update, patch]
+- apiGroups: ['']
+  resources: [events]
+  verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agentbox-admission-leader
+  namespace: agentbox-admission
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: agentbox-admission-leader}
+subjects:
+- {kind: ServiceAccount, name: agentbox-admission, namespace: agentbox-admission}

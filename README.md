@@ -2,7 +2,7 @@
 
 面向 AI Agent 的隔离会话项目。当前产品链路为 **Agent → stdio MCP v2 → Go Session API → 上游 Agent Sandbox/sandboxd → containerd/gVisor**。会话支持多次 Python 命令和文件读写；每次是新解释器，工作目录跨调用保存。
 
-旧 agentboxd、专用 Gateway、直接宿主 runsc 后端及旧调度/QoS 控制已清退。默认构建、文档和测试统一走新路径。Job/Kueue 固定配额批任务已增加真实图片处理、独立 PVC 产物及 Go 提交/查询/取消/下载接口；R/B 静态基线和健康感知 AdmissionCheck 仍为后续阶段。
+旧 agentboxd、专用 Gateway、直接宿主 runsc 后端及旧调度/QoS 控制已清退。默认构建、文档和测试统一走新路径。Job/Kueue 固定配额批任务已增加真实图片处理、独立 PVC 产物及 Go 提交/查询/取消/下载接口；健康感知 AdmissionCheck 已增加独立实现与显式部署入口，功能验收与 R/B/A 性能资格分别记录。
 
 ## 构建与使用
 
@@ -11,7 +11,7 @@ make build
 make check
 ```
 
-构建产物为 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent。需要 Linux、Go 1.26+；项目固定 toolchain go1.27.1，依赖和工具链需提前准备。普通检查使用本地模型/API 替身与离线 Kustomize 渲染，不调用付费模型或连接 Kubernetes；平台检查需可用 kubectl 和 scripts/requirements-platform.txt 中的 YAML 依赖。部署已有 API 后，由调用方配置独立 API 身份和模型凭据，按[使用指南](docs/usage.md#agent)运行 Agent。
+构建产物为 agentbox-api、agentbox-cleanup、agentbox-mcp、agentbox-agent、agentbox-admission。需要 Linux、Go 1.26+；项目固定 toolchain go1.27.1，依赖和工具链需提前准备。普通检查使用本地模型/API 替身与离线 Kustomize 渲染，不调用付费模型或连接 Kubernetes；平台检查需可用 kubectl 和 scripts/requirements-platform.txt 中的 YAML 依赖。部署已有 API 后，由调用方配置独立 API 身份和模型凭据，按[使用指南](docs/usage.md#agent)运行 Agent。
 
 Agent 自动创建并绑定一个会话，仅向模型开放查询/执行/文件工具；结束或异常退出时在独立预算内请求关闭并确认。创建恢复使用相同 request_id；未知执行/写入不重放。MCP 子进程只获得 API token，模型和集群凭据不进入 MCP 或执行 Pod。
 
@@ -60,3 +60,5 @@ P3c 增加 [Prometheus/Grafana 与只读观察器](docs/operations.md#observabil
 固定轨迹行为边界入口为 `make platform-session-boundary-test`，覆盖长短任务干扰、同会话冲突、突发池耗尽、低高低恢复、超时/关闭竞争及观察失联。逐请求结果与质量目标独立报告，见[实验记录](docs/validation.md#session-boundaries)。
 
 多 Pod/真实用户/代码负载组合使用 `make platform-session-matrix-test`，支持 2/4 个执行会话、Alice/Bob 独立凭据、CPU/内存/文件/输出/预期失败，以及空闲、关闭和客户端截止。选择独立诊断批次、预算与证据见[矩阵实验](docs/operations.md#session-matrix)。
+
+P4 准入扩展使用独立 `agentbox-admission`，健康窗口由可信的后续命令驱动校验并经 Prometheus 查询，控制新增批 Job 的许可。`make platform-admission-test` 验证独立队列中的等待、Retry、恢复、权限及 leader 故障，`make platform-admission-deployment-test` 独立验证真实 Controller Pod 的集群内 HTTPS/CA 和网络故障；部署和启停见[健康准入运维](docs/operations.md#health-admission)。默认会话/批任务组合不会自动启用它，性能收益仍待共同 R/B/A 评估。

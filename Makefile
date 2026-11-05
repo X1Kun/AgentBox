@@ -11,6 +11,7 @@ build:
 	go build -trimpath -o bin/agentbox-cleanup ./cmd/agentbox-cleanup
 	go build -trimpath -o bin/agentbox-mcp ./cmd/agentbox-mcp
 	go build -trimpath -o bin/agentbox-agent ./cmd/agentbox-agent
+	go build -trimpath -o bin/agentbox-admission ./cmd/agentbox-admission
 
 tools:
 	mkdir -p bin
@@ -146,3 +147,15 @@ platform-diagnostics-test:
 .PHONY: platform-product-entry-test
 platform-product-entry-test:
 	python3 scripts/platform_lab.py product-entry-test
+
+.PHONY: platform-admission-test
+platform-admission-test:
+	python3 scripts/platform_lab.py admission-test
+
+.PHONY: platform-admission-deployment-test
+platform-admission-deployment-test:
+	python3 scripts/platform_lab.py admission-deployment-test
+
+.PHONY: platform-admission-api-test
+platform-admission-api-test:
+	python3 scripts/platform_lab.py admission-api-test

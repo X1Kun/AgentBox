@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentbox-admission
+  namespace: agentbox-admission
+  labels:
+    agentbox.dev/session: development
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentbox-admission
+  template:
+    metadata:
+      labels:
+        app: agentbox-admission
+        agentbox.dev/session: development
+    spec:
+      serviceAccountName: agentbox-admission
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: controller
+        image: agentbox/admission:REQUIRED
+        imagePullPolicy: IfNotPresent
+        args:
+        - --config=/etc/agentbox/policy.yaml
+        - --lease-namespace=agentbox-admission
+        - --metrics-listen=0.0.0.0:9091
+        - --probe-listen=0.0.0.0:8081
+        ports:
+        - {name: metrics, containerPort: 9091}
+        - {name: probes, containerPort: 8081}
+        readinessProbe:
+          httpGet: {path: /readyz, port: probes}
+          periodSeconds: 5
+        livenessProbe:
+          httpGet: {path: /healthz, port: probes}
+          periodSeconds: 10
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 192Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: [ALL]}
+        volumeMounts:
+        - {name: policy, mountPath: /etc/agentbox, readOnly: true}
+      volumes:
+      - name: policy
+        configMap:
+          name: agentbox-health-policy

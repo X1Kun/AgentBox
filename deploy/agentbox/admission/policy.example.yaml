@@ -1,0 +1,26 @@
+# Functional example only; thresholds have no R/B/A performance qualification.
+schema_version: 1
+namespace: agentbox-batch
+local_queue: batch
+cluster_queue: agentbox-batch
+admission_check: agentbox-health
+owner: development
+health:
+  domain: worker
+  revision: functional-example-v1
+  profile: short-followup
+  window_seconds: 10
+  deadline_seconds: 3
+# Explicit deployment input: this example service is not installed by this bundle.
+prometheus_url: https://prometheus.example.invalid:9090
+minimum_samples: 2
+healthy_ratio: 0.95
+protect_ratio: 0.8
+max_age_seconds: 30
+stable_seconds: 20
+protect_seconds: 10
+permit_interval_seconds: 10
+max_wait_seconds: 120
+retry_seconds: 30
+poll_seconds: 2
+request_timeout_seconds: 5

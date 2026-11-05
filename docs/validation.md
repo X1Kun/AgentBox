@@ -442,7 +442,7 @@ P3 完成 R/B 和多档静态批配额扫描；P4 比较 B/A；P5 仅在必要�
 
 新增冻结 YAML 的 R 标定、受证据门槛约束的 R/B1/B2 对照、共享绝对时间轴、逐请求账本、图片产物校验及独立清理恢复入口。R 从低峰值负载开始，每档计划五轮；对照只接受相同配置、原平台和镜像、已回收且具备五轮有效达标证据的 R 档位，另运行 R 控制组并交错组序。配额变化先等待 Kueue Active 条件确认本代 generation；未知批提交未获得确定身份时停止后续组合。空样本不补零，窗口外 drain 不计窗口吞吐，缺测与错误结果分别判定。操作见[基线运维](operations.md#static-baseline)。
 
-**本次 P3 性能验收未完成，P4 未启动。** 最终 R 标定使用 30s 窗口、两个已领取会话和固定预热目标 2，最低档每 3s 发出一条后续命令，目标为全部计划请求至少 95% 在 3s 内正确完成。前三轮各 10 条请求全部正确，及时成功率分别为 60%、70%、90%，生成器与观测有效；第四轮为 8 条正确、2 条会话忙拒绝，两个 inventory 域出现 unknown，按规则停止且不启动 B 对照。该轮请求账本保留，但不能计入完整性能证据；没有五轮有效达标档位，CLI 对照门槛实际拒绝了该报告。
+**该次 P3 性能验收未完成；当时 P4 尚未启动，当前功能进度见后文准入验收。** 最终 R 标定使用 30s 窗口、两个已领取会话和固定预热目标 2，最低档每 3s 发出一条后续命令，目标为全部计划请求至少 95% 在 3s 内正确完成。前三轮各 10 条请求全部正确，及时成功率分别为 60%、70%、90%，生成器与观测有效；第四轮为 8 条正确、2 条会话忙拒绝，两个 inventory 域出现 unknown，按规则停止且不启动 B 对照。该轮请求账本保留，但不能计入完整性能证据；没有五轮有效达标档位，CLI 对照门槛实际拒绝了该报告。
 
 一条慢请求已通过 request ID 对齐：客户端约 5.76s，服务端获取互斥约 1.35s、执行链路约 4.22s、释放约 0.12s，最终输出正确。执行链路包含 sandboxd 通信和进程启动，不能直接当作 Python 计算耗时。项目位于 ext4 机械盘，另有高 I/O PSI、磁盘等待及实验进程等待日志提交的现场样本；可读取的进程计数同时观察到 gopls 读取。上述证据不足以将全部延迟归因于磁盘、索引器或某一个组件。
 
@@ -477,3 +477,25 @@ Pod 探针迁至 tests/fixtures/probes，节点 Shell 迁至 platform/resources�
 真实验证通过：完整产品入口完成会话执行/文件和 8 份 PNG 产物校验，冷会话 SDK 的 13 项行为与回收检查通过，诊断故障验收完成请求阶段关联、单域失效与失败归档。诊断首次实测发现拆出的 query 方法遗漏 urllib.parse 导入，修复后增加静态符号和直接查询回归，原失败报告保留。最终 make check 与 209 项 Python 测试通过。
 
 独立复核确认本轮 namespace、队列、临时卷、CRI sandbox 和 Worker gVisor 进程均已回收；cluster.json 与 session-bundle.json 校验和未变，七份锁未变。批 worker 构建记录按本次源码更新。未重跑全部控制器重启、OOM 或性能矩阵，P3/P4 结论保持原口径。源码、原始报告、探针字节/算法对照和回收记录见[脚本重构记录](data/script-layout-validation.json)，组织约束见[运维指南](operations.md#script-layout)。
+
+
+<a id="health-admission"></a>
+## P4：健康 AdmissionCheck 功能与故障验收
+
+新增独立 `agentbox-admission`、可信会话质量窗口、Prometheus 读取、滞回状态机、保守许可节奏与 leader 接管、v1beta2 状态适配、最小 RBAC 和完整部署渲染。功能入口为 `make platform-admission-test`、`make platform-admission-deployment-test`，真实 API 竞态入口为 `make platform-admission-api-test`。这些验收不要求 R 性能资格，也不产生已调优部署默认值。
+
+宿主矩阵使用两个真实 controller-runtime manager、独立身份和 Lease，以及原集群中的临时队列。覆盖不健康等待、预留超时后的原生 Retry/退避与配额释放、健康恢复后真实图片 Job、指标陈旧、查询权限失败、零请求、状态写入权限拒绝、leader 接管与恢复节奏、已运行任务保持原许可、显式取消和独立运行时回收。相同 Job/Workload 身份被连续跟踪，不能以重新提交另一份任务代替恢复。
+
+真实 API Server 的独立检查使用无 Job owner、无可运行队列的临时 Workload，只测试 status 子资源。先提交一个竞争的 Admitted 更新，再确认旧 resourceVersion 的 Retry 被服务端拒绝；另以当前版本和错误 UID 验证原对象条件。前置竞争写入也可能与 Kueue 自身更新冲突，因此仅对明确的 CAS 拒绝有界重读。该入口连续执行三次，测试后按原 namespace UID 删除；不启动计算或持久占用业务队列。
+
+真实会话信号另用两个已经就绪并预执行成功的会话，固定发送 15 条后续命令。客户端按退出码和完整输出独立验证，窗口在截止后定稿，经真实 Prometheus 被 Controller 消费，再放行真实图片任务并校验 8 份 PNG。此功能场景使用显式 10s 截止和测试阈值，不能替代既有 3s/95% 的 R 资格，更不能从单轮及时结果推导容量或收益。
+
+独立 Pod 验收用同一完整清单渲染器、自定义公共 CA 和不可变镜像部署 Controller，验证集群内 ServiceAccount、限定 API 出口、真实 HTTPS 查询和图片产物。临时 HTTPS 夹具只绑定本项目 kind 的私有桥接地址，将请求转发至原 loopback Prometheus；它不是另一个虚构查询服务。Calico 撤销该查询出口后，Controller 进入 Degraded、未准入 Job 保持挂起；按原 UID/resourceVersion 恢复后重新积累健康并继续原任务。最终分别检查 Controller CRI sandbox、Worker 计算资源、namespace/队列/flavor、转发和临时目标回收。
+
+开发中的失败记录保留：入口重复注册 kubeconfig flag、v1beta2 旧检查列表被裁剪、指标夹具缺失 Content-Type、过早将 Pending 当作已预留、配额辅助写入的 resourceVersion 冲突，以及 API 测试前置写入的自然竞态。修复分别增加参数隔离、策略持久核对、标准指标响应头、配额条件等待和有界 CAS 回归；未知提交/执行不因此获得重放许可，也未放宽工作负载期限。
+
+单元/race 覆盖旧窗口不能累积稳定时间、重启后不能借历史窗口恢复健康、样本缺失/不足/倒序/重置、源权限失败、同间隔并发、成功回执丢失、慢回执冷却、UID 替换、原检查项保留及配置修订。窗口统计保留全部计划请求，迟到结果不改写已关闭窗口，生成器掉队使窗口无效；HTTPS 回归还验证未信任证书会被拒绝。
+
+源码、成功与失败报告摘要、原始账本/样本/控制器日志、镜像和独立回收证据见[准入验收记录](data/platform-admission-validation.json)。图表或性能收益不在本轮结论内；R/B/A 仍按原资格与冻结规则推进。
+
+最终代码的完整 `make check` 与五个二进制构建均通过；宿主矩阵 12 项、真实 Controller Pod 部署/网络矩阵 5 项，以及独立真实 API CAS 三次重复均通过。最终真实会话轨迹 15/15 正确及时；接管后的两次许可间隔为 9s，满足本轮至少 6s 的配置。独立复核全部历史轮次的已记录 UID，API 临时资源和两个原节点的相关 CRI sandbox 均无残留，control-targets 已清空；原 cluster.json、session-bundle.json 与七份版本锁校验和保持。以上只确认功能、故障行为和有界清理，不改变 R/B/A 性能资格。

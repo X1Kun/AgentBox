@@ -75,6 +75,9 @@ class Observability:
         targets = self.config / 'prometheus/targets.yaml'
         if not targets.exists():
             targets.write_text('[]\n')
+        control = self.config / 'prometheus/control-targets.yaml'
+        if not control.exists():
+            control.write_text('[]\n')
         password = self.directory / 'grafana-password'
         if not password.exists():
             password.write_text(secrets.token_urlsafe(32) + '\n')
@@ -150,6 +153,24 @@ class Observability:
     @staticmethod
     def ticks(pid):
         return (Path('/proc') / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()[19]
+
+    def control_targets(self, targets):
+        values = []
+        for role, address in targets.items():
+            match = re.fullmatch(r'127\.0\.0\.1:([0-9]{1,5})', address)
+            require(role in ('health', 'admission-0', 'admission-1') and match is not None and 0 < int(match[1]) <= 65535,
+                    'invalid_metrics_target', 'explicit bounded local control targets required')
+            values.append({'targets':[address], 'labels':{'instance':role}})
+        path = self.config/'prometheus/control-targets.yaml'
+        temporary = path.with_suffix('.tmp')
+        temporary.write_text(yaml.safe_dump(values, sort_keys=False))
+        temporary.replace(path)
+
+    def reload_prometheus(self):
+        state = self.state()
+        self._owned_containers(state['owner'])
+        # Compose selects only this owned project's Prometheus; no stack restart.
+        self.lab.runner.run(self._compose('kill', '-s', 'SIGHUP', 'prometheus'), timeout=20)
 
     def stop_observer(self):
         state = self.state()

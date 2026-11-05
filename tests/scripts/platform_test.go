@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+func TestAdmission(t *testing.T) {
+	cmd := exec.Command("python3", "admission_test.py", "-v")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("admission regressions: %v\n%s", err, output)
+	}
+}
+
 func TestStaticBaseline(t *testing.T) {
 	cmd := exec.Command("python3", "static_baseline_test.py", "-v")
 	if output, err := cmd.CombinedOutput(); err != nil {

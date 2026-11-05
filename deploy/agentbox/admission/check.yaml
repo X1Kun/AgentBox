@@ -1,0 +1,11 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: AdmissionCheck
+metadata:
+  name: agentbox-health
+  labels:
+    agentbox.dev/session: development
+  annotations:
+    agentbox.dev/policy-revision: functional-example-v1
+    agentbox.dev/lease-namespace: agentbox-admission
+spec:
+  controllerName: agentbox.dev/health-admission
