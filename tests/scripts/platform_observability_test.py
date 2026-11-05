@@ -9,9 +9,9 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.platform_batch import BatchError
-from lib.platform_manifests import read_yaml
-from lib.platform_observability import Observability, OWNER
+from lib.core.errors import ToolError
+from lib.manifests import read_yaml
+from lib.observability.stack import Observability, OWNER
 
 
 class ObservationTests(unittest.TestCase):
@@ -25,10 +25,10 @@ class ObservationTests(unittest.TestCase):
 
     def test_foreign_containers_and_volumes_are_never_adopted(self):
         self.lab.runner.run.side_effect = ['container-id', json.dumps({OWNER: 'someone-else'})]
-        with self.assertRaisesRegex(BatchError, 'another project'):
+        with self.assertRaisesRegex(ToolError, 'another project'):
             self.stack._owned_containers('owner')
         self.lab.runner.run.side_effect = ['', 'volume-name', json.dumps({OWNER: 'someone-else'})]
-        with self.assertRaisesRegex(BatchError, 'another session'):
+        with self.assertRaisesRegex(ToolError, 'another session'):
             self.stack._owned_containers('owner')
 
     def test_repeated_up_preserves_running_observer_and_rbac_identities(self):
@@ -51,12 +51,12 @@ class ObservationTests(unittest.TestCase):
                       {'session': 'agentbox-test', 'batch': 'agentbox-test'}):
             with self.subTest(scope=scope), patch.object(self.stack, 'state', return_value={'owner': 'owner'}), \
                     patch.object(self.stack, 'stop_observer') as stop:
-                with self.assertRaises(BatchError):
+                with self.assertRaises(ToolError):
                     self.stack.watch(scope)
                 stop.assert_not_called()
         self.lab.kubectl.return_value = json.dumps({'metadata': {'labels': {OWNER: 'someone-else'}}})
         with patch.object(self.stack, 'state', return_value={'owner': 'owner'}), patch.object(self.stack, 'stop_observer') as stop:
-            with self.assertRaises(BatchError):
+            with self.assertRaises(ToolError):
                 self.stack.watch({'session': 'agentbox-test'})
             stop.assert_not_called()
         self.assertTrue(all(c.args[:2] == ('get', 'namespace') for c in self.lab.kubectl.call_args_list))
@@ -65,8 +65,8 @@ class ObservationTests(unittest.TestCase):
         state = {'observer': {'pid': 123, 'start_ticks': 'old'}}
         with patch.object(self.stack, 'state', return_value=state), patch.object(Path, 'exists', return_value=True), \
                 patch.object(Path, 'read_bytes', return_value=b'unrelated\0'), patch.object(self.stack, 'ticks', return_value='new'), \
-                patch('lib.platform_observability.os.kill') as kill:
-            with self.assertRaisesRegex(BatchError, 'replaced process'):
+                patch('lib.observability.stack.os.kill') as kill:
+            with self.assertRaisesRegex(ToolError, 'replaced process'):
                 self.stack.stop_observer()
             kill.assert_not_called()
 
@@ -76,7 +76,7 @@ class ObservationTests(unittest.TestCase):
         path = self.stack.config / 'prometheus/targets.yaml'
         previous = path.read_bytes()
         for address in ('localhost:9091', '0.0.0.0:9091', '127.0.0.1:9091/path', '127.0.0.1:0', '127.0.0.1:65536'):
-            with self.subTest(address=address), self.assertRaises(BatchError):
+            with self.subTest(address=address), self.assertRaises(ToolError):
                 self.stack.targets({'session': address})
             self.assertEqual(path.read_bytes(), previous)
 

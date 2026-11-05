@@ -10,7 +10,10 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.platform_sessions import Sessions, SessionError, checked_source, render_controller, OWNER, RUN, ROLE
+from lib.platform.sandbox import RUNTIME_BUILD_INPUTS, Sessions, checked_source, render_controller, OWNER, RUN, ROLE
+from lib.core.errors import SessionError
+
+from lib.acceptance.session import SessionAcceptance
 
 
 class SessionTests(unittest.TestCase):
@@ -26,6 +29,7 @@ class SessionTests(unittest.TestCase):
         self.lab.runner.output = self.root
         self.lab.operation_lock.return_value = nullcontext()
         self.sessions = Sessions(self.lab)
+        self.fixture = SessionAcceptance(self.lab, platform=self.sessions)
         self.sessions.state = {'session': 'a' * 32, 'cluster': 'owned'}
 
     def test_runtime_bundle_reuse_does_not_claim_client_sources_are_fresh(self):
@@ -39,13 +43,13 @@ class SessionTests(unittest.TestCase):
                 patch.object(self.sessions, 'docker_image', return_value={'Id': 'id'}):
             self.assertEqual(self.sessions.bundle(require_client=False), bundle)
             with self.assertRaises(SessionError):
-                self.sessions.bundle()
+                self.sessions.bundle(require_client=True)
             current['go.sum'] = 'different-dependencies'
             with self.assertRaises(SessionError):
                 self.sessions.bundle(require_client=False)
 
     def test_fresh_acceptance_client_never_overwrites_installed_runtime_bundle(self):
-        inputs = self.sessions.build_inputs()
+        inputs = self.fixture.client_inputs()
         before = dict(inputs, **{'cmd/agentbox-session-smoke/main.go': 'old'})
         image = 'registry/python@sha256:' + 'a' * 64
         installed = {'inputs': before, 'fingerprint': 'installation', 'go_version': 'go version ' + self.sessions.lock['go_toolchain'] + ' linux/amd64',
@@ -58,9 +62,9 @@ class SessionTests(unittest.TestCase):
         directory.mkdir()
         (directory / 'agentbox-session-smoke').write_bytes(b'new-client')
         with patch.object(self.sessions, 'docker_image', side_effect=[{'RepoDigests': [image]}, {'Id': 'new-client'}]), \
-                patch.object(self.sessions, 'build_inputs', return_value=inputs), \
-                patch.object(self.sessions, 'load_images') as load, patch('lib.platform_sessions.digest', return_value='binary-sha'):
-            result = self.sessions.current_client_bundle(installed)
+                patch.object(self.fixture, 'client_inputs', return_value=inputs), \
+                patch.object(self.sessions, 'load_images') as load, patch('lib.acceptance.session.digest', return_value='binary-sha'):
+            result = self.fixture.current_client_bundle(installed)
         self.assertEqual(result['images']['runtime'], installed['images']['runtime'])
         self.assertEqual(result['images']['client']['id'], 'new-client')
         self.assertEqual(result['binary_sha256']['agentbox-session-smoke'], 'binary-sha')
@@ -125,7 +129,7 @@ class SessionTests(unittest.TestCase):
         bundle = {'images': {'controller': {'name': 'local'}}, 'fingerprint': 'f'}
         with patch.object(self.sessions, 'attach'), patch.object(self.sessions, 'bundle', return_value=bundle), \
                 patch.object(self.sessions, 'load_images'), \
-                patch('lib.platform_sessions.render_controller', return_value={'kind': 'List', 'items': []}):
+                patch('lib.platform.sandbox.render_controller', return_value={'kind': 'List', 'items': []}):
             with self.assertRaises(SessionError) as caught:
                 self.sessions.install(path)
         self.assertEqual(caught.exception.reason, 'unowned_session_resource')
@@ -135,22 +139,22 @@ class SessionTests(unittest.TestCase):
     def test_bundle_rejects_changed_inputs_before_image_use(self):
         self.sessions.bundle_path.write_text(json.dumps({'inputs': {'changed': 'hash'}}))
         with self.assertRaises(SessionError) as caught:
-            self.sessions.bundle()
+            self.sessions.bundle(require_client=False)
         self.assertEqual(caught.exception.reason, 'session_bundle_changed')
         self.lab.docker_info.assert_not_called()
 
     def test_bundle_rejects_daemon_or_image_replacement(self):
-        bundle = {'inputs': {}, 'docker_id': 'owned', 'images': {'client': {'name': 'client', 'id': 'sha256:original'}}}
+        bundle = {'inputs': {k:'fixed' for k in RUNTIME_BUILD_INPUTS}, 'docker_id': 'owned', 'images': {'runtime': {'name': 'runtime', 'id': 'sha256:original'}}}
         self.sessions.bundle_path.write_text(json.dumps(bundle))
-        with patch.object(self.sessions, 'build_inputs', return_value={}):
+        with patch.object(self.sessions, 'build_inputs', return_value={k:'fixed' for k in RUNTIME_BUILD_INPUTS}):
             self.lab.docker_info.return_value = {'ID': 'other'}
             with self.assertRaises(SessionError) as caught:
-                self.sessions.bundle()
+                self.sessions.bundle(require_client=False)
             self.assertEqual(caught.exception.reason, 'session_bundle_daemon_changed')
             self.lab.docker_info.return_value = {'ID': 'owned'}
             with patch.object(self.sessions, 'docker_image', return_value={'Id': 'sha256:replaced'}):
                 with self.assertRaises(SessionError) as caught:
-                    self.sessions.bundle()
+                    self.sessions.bundle(require_client=False)
             self.assertEqual(caught.exception.reason, 'session_image_changed')
 
     def test_namespace_uid_checked_before_deletion(self):
@@ -172,7 +176,7 @@ class SessionTests(unittest.TestCase):
         identity = {'claim': 'claim', 'claim_uid': 'original', 'sandbox': 'sandbox', 'sandbox_uid': 's',
                     'pod': 'pod', 'pod_uid': 'p', 'service': 'service', 'service_uid': 'svc'}
         with self.assertRaises(SessionError) as caught:
-            self.sessions.inspect_identity(identity, 'ns', 'run', runtime)
+            self.fixture.inspect_identity(identity, 'ns', 'run', runtime)
         self.assertEqual(caught.exception.reason, 'session_identity_changed')
         runtime.runtime_evidence.assert_not_called()
 
@@ -183,10 +187,10 @@ class SessionTests(unittest.TestCase):
                 {'id': 'target:8080', 'kind': 'socket_error'}, {'id': 'target:9090', 'kind': 'connect_timeout'}],
                 'session_ingress_not_isolated')]:
             self.lab.kubectl.return_value = json.dumps({'pod_uid': 'source', 'run': 'run', 'results': results})
-            with patch('lib.platform_sessions.time.monotonic', side_effect=[0, 0, 46]), \
-                    patch('lib.platform_sessions.time.sleep'):
+            with patch('lib.platform.sandbox.time.monotonic', side_effect=[0, 0, 46]), \
+                    patch('lib.platform.sandbox.time.sleep'):
                 with self.assertRaises(SessionError) as caught:
-                    self.sessions.outsider_blocked(observer, [identity], 'run', {})
+                    self.fixture.outsider_blocked(observer, [identity], 'run', {})
             self.assertEqual(caught.exception.reason, reason)
 
     def test_template_uses_managed_custom_policy_and_cold_pool(self):
@@ -226,13 +230,13 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(quota['spec']['hard']['pods'], '3')
         self.assertEqual(quota['spec']['hard']['limits.cpu'], '1500m')
         self.assertEqual(quota['spec']['hard']['limits.memory'], '1536Mi')
-        from lib.platform_manifests import render
+        from lib.manifests import render
         original = render(ROOT/'deploy','session')
         self.assertEqual(original['items'][1]['spec']['replicas'], 0)
 
     def test_invalid_profile_rejected_before_external_operations(self):
         with self.assertRaises(SessionError) as caught:
-            self.sessions.test('dynamic')
+            self.fixture.test('dynamic')
         self.assertEqual(caught.exception.reason, 'invalid_session_profile')
         self.lab.operation_lock.assert_not_called()
         self.lab.kubectl.assert_not_called()
@@ -241,21 +245,21 @@ class SessionTests(unittest.TestCase):
         self.lab.kubectl.side_effect = [json.dumps({'metadata': {'uid': 'replaced'}}), json.dumps({'metadata': {'uid': 'pod'}})]
         runtime = Mock()
         with self.assertRaises(SessionError) as caught:
-            self.sessions.inspect_supply([{'sandbox': 's', 'sandbox_uid': 'original', 'pod': 'p', 'pod_uid': 'pod'}],
+            self.fixture.inspect_supply([{'sandbox': 's', 'sandbox_uid': 'original', 'pod': 'p', 'pod_uid': 'pod'}],
                                          'pool', 'work', 'run', runtime, {'runtime_evidence': {}})
         self.assertEqual(caught.exception.reason, 'warm_supply_identity_changed')
         runtime.runtime_evidence.assert_not_called()
 
     def test_timeout_without_quota_proof_cannot_pass_exhaustion(self):
         with self.assertRaises(SessionError) as caught:
-            self.sessions.verify_exhaustion_rollback('work', {}, {})
+            self.fixture.verify_exhaustion_rollback('work', {}, {})
         self.assertEqual(caught.exception.reason, 'warm_quota_rejection_missing')
         self.lab.kubectl.assert_not_called()
 
     def test_extra_claim_replay_rejected(self):
         self.lab.kubectl.return_value = json.dumps({'items': [{'metadata': {'uid': 'extra1'}}, {'metadata': {'uid': 'extra2'}}]})
         with self.assertRaises(SessionError) as caught:
-            self.sessions.observe_exhaustion('work', 'run', [], {})
+            self.fixture.observe_exhaustion('work', 'run', [], {})
         self.assertEqual(caught.exception.reason, 'warm_attempt_replayed')
 
     def test_failed_claim_identity_replacement_never_counted_as_cleanup(self):
@@ -264,13 +268,13 @@ class SessionTests(unittest.TestCase):
                                         json.dumps({'metadata': {'uid': 'replaced'}})]
         proof = {'claim': {'name': 'claim', 'uid': 'original'}, 'sandbox': {'name': 's', 'uid': 's'}}
         with self.assertRaises(SessionError) as caught:
-            self.sessions.verify_exhaustion_rollback('work', {'warm': {'quota_uid': 'q'}}, {'quota_rejection': proof})
+            self.fixture.verify_exhaustion_rollback('work', {'warm': {'quota_uid': 'q'}}, {'quota_rejection': proof})
         self.assertEqual(caught.exception.reason, 'warm_attempt_identity_changed')
 
     def test_foreign_pool_never_deleted(self):
         self.lab.kubectl.return_value = json.dumps({'metadata': {'uid': 'foreign', 'labels': {OWNER: 'a'*32}}})
         with self.assertRaises(SessionError) as caught:
-            self.sessions.stop_warm_pool('work', {'warm': {'pool_uid': 'owned'}})
+            self.fixture.stop_warm_pool('work', {'warm': {'pool_uid': 'owned'}})
         self.assertEqual(caught.exception.reason, 'unowned_warm_pool')
         self.assertFalse(any('delete' in call.args for call in self.lab.kubectl.call_args_list))
 
@@ -350,7 +354,7 @@ class SessionTests(unittest.TestCase):
         self.lab.runner.run.return_value = 'systemd\ncontainerd\n'
         with patch.object(self.sessions, 'node_images_match', side_effect=[False, False, True]) as matching, \
                 patch.object(self.sessions, 'image_archive', return_value=self.root/'images.tar'), \
-                patch('lib.platform_sessions.time.sleep'):
+                patch('lib.platform.sandbox.time.sleep'):
             self.sessions.load_images({'images': {}})
         self.assertEqual(matching.call_count, 3)
         self.assertEqual(sum('image-archive' in call.args[0] for call in self.lab.runner.run.call_args_list), 1)
@@ -360,8 +364,8 @@ class SessionTests(unittest.TestCase):
         self.lab.runner.run.return_value = 'systemd\ncontainerd\n'
         with patch.object(self.sessions, 'node_images_match', return_value=False), \
                 patch.object(self.sessions, 'image_archive', return_value=self.root/'images.tar'), \
-                patch('lib.platform_sessions.time.monotonic', side_effect=[0, 0, 61]), \
-                patch('lib.platform_sessions.time.sleep'):
+                patch('lib.platform.sandbox.time.monotonic', side_effect=[0, 0, 61]), \
+                patch('lib.platform.sandbox.time.sleep'):
             with self.assertRaises(SessionError) as caught:
                 self.sessions.load_images({'images': {}})
         self.assertEqual(caught.exception.reason, 'session_image_load_incomplete')
@@ -374,7 +378,7 @@ class SessionTests(unittest.TestCase):
         for marker in ('warm-finish', 'fault-finish'):
             self.lab.kubectl.reset_mock()
             record = {'cleanup_complete':False}
-            self.sessions.send_marker('client', 'pod', marker, record)
+            self.fixture.send_marker('client', 'pod', marker, record)
             self.lab.kubectl.assert_called_once()
             self.assertFalse(record['cleanup_complete'])
             self.assertEqual(record['final_marker_transport_error']['exit_code'],137)
@@ -386,7 +390,7 @@ class SessionTests(unittest.TestCase):
         for marker,code in [('warm-finish',1),('warm-start',137),('warm-release',137)]:
             self.lab.runner.commands = [{'exit_code':code}]
             with self.subTest(marker=marker,code=code), self.assertRaises(RuntimeError):
-                self.sessions.send_marker('client','pod',marker,{})
+                self.fixture.send_marker('client','pod',marker,{})
 
     def test_runtime_reuse_requires_pinned_inputs_and_checksum(self):
         keys=('go.mod','go.sum','deploy/platform/session.lock.json','deploy/platform/sandbox-runtime.Dockerfile')
@@ -408,15 +412,15 @@ class SessionTests(unittest.TestCase):
 
 class FaultTests(unittest.TestCase):
     def setUp(self):
-        from lib.session_faults import FaultActions
+        from lib.acceptance.session_faults import FaultActions
         self.lab = Mock()
         self.sessions = Mock()
         self.sessions.lab = self.lab
-        self.sessions.state = {'session':'owner','sessions':{'controller_uid':'deployment'}}
+        self.sessions.platform.state = {'session':'owner','sessions':{'controller_uid':'deployment'}}
         self.actions = FaultActions(self.sessions,Mock(),'work','run','controller-image')
 
     def test_fault_target_requires_uid_owner_and_run(self):
-        from lib.session_faults import require_identity
+        from lib.acceptance.session_faults import require_identity
         good={'metadata':{'name':'pod','uid':'uid','labels':{OWNER:'owner',RUN:'run'}}}
         require_identity(good,'uid','owner','run')
         for uid,owner,run in [('other','owner','run'),('uid','other','run'),('uid','owner','other')]:

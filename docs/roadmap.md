@@ -105,6 +105,8 @@ P3c 分三步交付：当前先实现 API 指标、只读 Kubernetes/运行时�
 
 已补充 domain/source 独立预算、逐读取原因/耗时、sandboxd 八阶段关联、宿主与控制面时序及失败归档，诊断入口为 `make platform-diagnostics-test`。真实权限故障验收独立于 R 容量资格；新日志不能倒推此前已回收轮次的细分根因，范围见[诊断细节验收](validation.md#diagnostic-details)。
 
+宿主脚本与容器/Pod 程序已按执行职责分离，平台安装、产品准备、验收和实验边界由回归约束；CLI 使用按命令加载。该结构重构已通过完整产品、冷 SDK 和诊断验收，原集群/runtime 身份保持，范围见[脚本重构验收](validation.md#script-layout)。它不替代尚未完成的 R/B 性能标定。
+
 容量实验前先补齐维护与分层：后台 reconcile 独立于 readiness，统一快照新鲜度/退出失效，修正自然到期观测、提交锁范围及分页进度；抽离轻量 DTO/工具契约并拆分相关职责。验证入口为 `make platform-maintenance-test`，边界见[维护验收](validation.md#maintenance)。记录容量回收先按[后续契约](usage.md#batch-record-evolution)设计，当前 v2 不自动删记录；该有限容量平台不作为长期连续运行已经完成的证明。
 
 会话相关适配器已聚合到 `internal/session/` 的 protocol/httpapi/client/sandboxd 子包，业务主包按文件拆职责；单一 smoke 命令使用的验收场景回到命令目录。包边界和依赖方向继续由回归检查，已有运行时与当前验收客户端分别验证，见[目录整理验收](validation.md#session-layout)。

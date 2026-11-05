@@ -16,10 +16,11 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.image_worker import outputs, transform, sha
-from lib.platform_manifests import read_yaml, canonical, render, objects
-from lib.platform_batch import BatchError
-from lib.platform_batch_product import ProductAcceptance, cleanup_product, build_worker
+from lib.product.image_pipeline import outputs, transform, sha
+from lib.manifests import read_yaml, canonical, render, objects
+from lib.core.errors import ToolError
+from lib.acceptance.batch_product import ProductAcceptance, cleanup_product
+from lib.product.worker_image import build_worker
 
 
 class ImageBatchTests(unittest.TestCase):
@@ -107,7 +108,7 @@ class ImageBatchTests(unittest.TestCase):
         path = self.directory / 'bad.json'
         path.write_text(json.dumps({'schema_version': 1, 'run': 'a' * 10, 'namespace': 'unrelated'}))
         lab = Mock()
-        with self.assertRaises(BatchError):
+        with self.assertRaises(ToolError):
             cleanup_product(lab, path)
         lab.owned.assert_not_called()
         lab.kubectl.assert_not_called()
@@ -122,7 +123,7 @@ class ImageBatchTests(unittest.TestCase):
             'resources': [{'kind': 'Namespace', 'uid': 'original'}], 'jobs': {}}
         with patch.object(fixture, 'get', return_value={'metadata': {'name': fixture.record['namespace'], 'uid': 'replacement',
                 'labels': {'agentbox.dev/session': 'a' * 32, 'agentbox.dev/batch-run': run}}}):
-            with self.assertRaises(BatchError):
+            with self.assertRaises(ToolError):
                 fixture.cleanup()
         lab.kubectl.assert_not_called()
 
@@ -136,7 +137,7 @@ class ImageBatchTests(unittest.TestCase):
         second.getresponse.return_value.read.return_value = b'{"batch_id":"same"}'
         fixture.http = first
         body = {'request_id': 'stable', 'dataset_id': 'image-small-v1'}
-        with patch.object(fixture, 'connection', side_effect=[first, second]), patch('lib.platform_batch_product.time.sleep'):
+        with patch.object(fixture, 'connection', side_effect=[first, second]), patch('lib.acceptance.clients.batch.time.sleep'):
             status, raw = fixture.request('POST', '/v2/batches', 'private', body)
         self.assertEqual(status, 200)
         self.assertEqual(first.request.call_args.args[2], second.request.call_args.args[2])

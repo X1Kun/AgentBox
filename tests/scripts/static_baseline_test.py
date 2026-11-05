@@ -9,10 +9,11 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'scripts'))
-from lib import baseline_results as results
-from lib.platform_manifests import read_yaml
-from lib.static_baseline import BaselineProduct, StaticBaseline
-from lib.platform_batch import BatchError
+from lib.experiments import results
+from lib.manifests import read_yaml
+from lib.experiments.static_baseline import StaticBaseline
+from lib.acceptance.clients.batch_environment import BatchEnvironment
+from lib.core.errors import ToolError
 
 
 class BaselineResults(unittest.TestCase):
@@ -84,7 +85,7 @@ class BaselineResults(unittest.TestCase):
         self.assertIsNone(results.percentile([], 99))
 
     def test_batch_diagnostic_failure_still_deletes_all_owned_resources(self):
-        product = object.__new__(BaselineProduct)
+        product = object.__new__(BatchEnvironment)
         product.state = {'session': 'owner'}
         refs = [{'kind': kind, 'name': kind.lower(), 'uid': 'uid-'+kind}
                 for kind in ('Namespace', 'ClusterQueue', 'ResourceFlavor')]
@@ -97,11 +98,11 @@ class BaselineResults(unittest.TestCase):
         product.lab = Mock()
         product.get = Mock(side_effect=lambda kind, name: {'metadata': {
             'name': name, 'uid': 'uid-'+kind, 'labels': {'agentbox.dev/session': 'owner', 'agentbox.dev/batch-run': 'run'}}})
-        with patch('lib.static_baseline.BatchAcceptance') as deletion:
-            with self.assertRaises(BatchError):
+        with patch('lib.acceptance.clients.batch_environment.delete_resource') as deletion:
+            with self.assertRaises(ToolError):
                 product.teardown()
-            self.assertEqual(deletion.return_value.delete.call_count, 3)
-            self.assertEqual([c.args[0] for c in deletion.return_value.delete.call_args_list],
+            self.assertEqual(deletion.call_count, 3)
+            self.assertEqual([c.args[1] for c in deletion.call_args_list],
                              ['Namespace', 'ClusterQueue', 'ResourceFlavor'])
         self.assertFalse(product.record['cleanup_complete'])
         self.assertNotIn('private details', json.dumps(product.record))
@@ -130,7 +131,7 @@ class BaselineResults(unittest.TestCase):
         self.assertFalse(costs[0]['covers_window'])
 
     def test_batch_teardown_waits_for_async_cri_reclamation(self):
-        product = object.__new__(BaselineProduct)
+        product = object.__new__(BatchEnvironment)
         product.state = {'session': 'owner'}
         product.record = {'namespace': 'owned', 'resources': [], 'run': 'run'}
         product.runtime = Mock()
@@ -140,7 +141,7 @@ class BaselineResults(unittest.TestCase):
         product.stop = Mock()
         product.save = Mock()
         product.get = Mock(return_value=None)
-        with patch('lib.static_baseline.time.sleep') as sleep:
+        with patch('lib.experiments.static_baseline.time.sleep') as sleep:
             product.teardown()
         self.assertTrue(product.record['cleanup_complete'])
         self.assertEqual(product.runtime.node.call_count, 3)
@@ -168,7 +169,7 @@ class BaselineResults(unittest.TestCase):
             report.write_text(json.dumps(record))
             harness = object.__new__(StaticBaseline)
             harness.lab = Mock()
-            with self.assertRaises(BatchError):
+            with self.assertRaises(ToolError):
                 harness.cleanup(report)
             harness.lab.operation_lock.assert_not_called()
             record['namespaces'] = {}
@@ -176,12 +177,12 @@ class BaselineResults(unittest.TestCase):
             (Path(tmp)/'batch-product-test.json').write_text(json.dumps({
                 'run': 'a'*10, 'owner': 'owner', 'namespace': 'agentbox-batch-product-'+'a'*10,
                 'resources': [{'kind': 'ClusterQueue', 'name': 'unrelated-queue', 'uid': 'uid'}]}))
-            with self.assertRaises(BatchError):
+            with self.assertRaises(ToolError):
                 harness.cleanup(report)
             harness.lab.operation_lock.assert_not_called()
 
     def test_quota_change_waits_for_controller_observed_generation(self):
-        product = object.__new__(BaselineProduct)
+        product = object.__new__(BatchEnvironment)
         product.state = {'session': 'owner'}
         product.record = {'namespace': 'queue', 'run': 'run', 'resources': [{'kind': 'ClusterQueue', 'uid': 'queue-uid'}]}
         old = {'metadata': {'name': 'queue', 'uid': 'queue-uid', 'generation': 1, 'resourceVersion': '10',
@@ -195,7 +196,7 @@ class BaselineResults(unittest.TestCase):
         product.lab = Mock()
         product.lab.kubectl.return_value = json.dumps(updated)
         product.save = Mock()
-        with patch('lib.static_baseline.time.sleep') as sleep:
+        with patch('lib.experiments.static_baseline.time.sleep') as sleep:
             product.quota(2)
         sleep.assert_called_once_with(.5)
         self.assertEqual(product.record['effective_queue']['status']['conditions'][0]['observedGeneration'], 2)

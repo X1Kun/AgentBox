@@ -10,9 +10,9 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'scripts'))
-from lib.experiment_diagnostics import archive_observer, archive_metrics, bounded_command, ExperimentDiagnostics, MetricsArchiveError
-from lib.diagnostics_acceptance import DiagnosticsAcceptance, batch_fault_isolated
-from lib.platform_batch import BatchError
+from lib.observability.diagnostics import archive_observer, archive_metrics, bounded_command, ExperimentDiagnostics, MetricsArchiveError
+from lib.acceptance.diagnostics import DiagnosticsAcceptance, batch_fault_isolated
+from lib.core.errors import ToolError
 
 
 class ExperimentEvidence(unittest.TestCase):
@@ -71,7 +71,7 @@ class ExperimentEvidence(unittest.TestCase):
 
     def test_controlplane_capture_filters_metrics_and_hides_native_errors(self):
         sampler = self.sampler()
-        with patch('lib.experiment_diagnostics.bounded_command', side_effect=[
+        with patch('lib.observability.diagnostics.bounded_command', side_effect=[
                 'apiserver_request_duration_seconds_count{verb="GET"} 4\nunrelated_secret_metric 1\n',
                 TimeoutError('Bearer private-token')]):
             sampler.capture_controlplane()
@@ -121,7 +121,7 @@ class ExperimentEvidence(unittest.TestCase):
                 self.assertEqual(operations[-1]['value'], original)
                 product.get.return_value['rules'] = [{'verbs': ['delete']}]
                 harness.lab.kubectl.reset_mock()
-                with self.assertRaises(BatchError):
+                with self.assertRaises(ToolError):
                     harness.restore_observer_role(product, 'namespace', {'name': 'observer', 'uid': 'uid'}, original)
                 harness.lab.kubectl.assert_not_called()
 

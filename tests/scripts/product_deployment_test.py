@@ -12,12 +12,12 @@ from types import SimpleNamespace
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
-from lib.product_deployment import compose, credentials, validate_inputs, validate_cluster, write_bundle
-from lib.platform_manifests import ManifestError
-from lib.api_network import endpoint_rules
-from lib.product_images import bind_digest
-from lib.platform_batch import BatchError
-from lib.platform_sessions import Sessions, RUNTIME_BUILD_INPUTS
+from lib.product.deployment import compose, credentials, validate_inputs, validate_cluster, write_bundle
+from lib.manifests import ManifestError
+from lib.manifests.network import endpoint_rules
+from lib.product.images import bind_digest
+from lib.core.errors import ToolError
+from lib.platform.sandbox import Sessions, RUNTIME_BUILD_INPUTS
 import hashlib
 import shutil
 from unittest.mock import Mock
@@ -68,7 +68,7 @@ class ProductDeployment(unittest.TestCase):
         changes=[{'images':{'api':'example/api:latest','runtime':self.value['images']['runtime']}},
                  {'namespaces':{'work':'same','api':'same'}},{'api_server_endpoints':[]},
                  {'api_server_endpoints':[{'address':'0.0.0.0/0','port':443}]}]
-        with patch('lib.product_deployment.render_product_template',side_effect=AssertionError('built')):
+        with patch('lib.product.deployment.render_product_template',side_effect=AssertionError('built')):
             for change in changes:
                 with self.subTest(change=change),self.assertRaises(ManifestError):compose(ROOT/'deploy',{**self.value,**change},self.private)
             value=self.batch();value['worker_manifest_digest']='sha256:'+'5'*64
@@ -83,7 +83,7 @@ class ProductDeployment(unittest.TestCase):
         self.assertEqual(path.read_bytes(),before)
 
     def test_foreign_namespace_is_rejected_using_only_explicit_context(self):
-        with patch('lib.product_deployment.subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps({'metadata':{'labels':{}}}))) as command:
+        with patch('lib.product.deployment.subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps({'metadata':{'labels':{}}}))) as command:
             with self.assertRaises(ManifestError):validate_cluster(ROOT/'deploy',self.value,'/explicit/config','explicit-context')
             self.assertEqual(command.call_count,1)
             self.assertIn('/explicit/config',command.call_args.args[0]);self.assertIn('explicit-context',command.call_args.args[0])
@@ -107,7 +107,7 @@ class ProductDeployment(unittest.TestCase):
         for name in ('go.mod','go.sum'):shutil.copyfile(ROOT/name,self.directory/name)
         lab=Mock();lab.root=self.directory;lab.config=ROOT/'deploy';lab.state_dir=self.directory
         session=Sessions(lab)
-        with patch('lib.platform_sessions.FIXTURES',self.directory/'missing-acceptance'):
+        with patch('lib.manifests.config.FIXTURES',self.directory/'missing-acceptance'):
             self.assertEqual(set(session.build_inputs(runtime_only=True)),set(RUNTIME_BUILD_INPUTS))
 
     def test_runtime_bundle_does_not_require_cached_acceptance_image(self):
@@ -148,7 +148,7 @@ class ProductDeployment(unittest.TestCase):
         self.assertEqual(result['reference'],reference)
         self.assertEqual(tagged,[reference])
         tagged.clear()
-        with self.assertRaises(BatchError):bind_digest(lab,'owned-node','agentbox/runtime:content','sha256:'+'6'*64)
+        with self.assertRaises(ToolError):bind_digest(lab,'owned-node','agentbox/runtime:content','sha256:'+'6'*64)
         self.assertEqual(tagged,[])
 
 

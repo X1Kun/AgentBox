@@ -466,3 +466,14 @@ P3 完成 R/B 和多档静态批配额扫描；P4 比较 B/A；P5 仅在必要�
 真实 `platform-product-entry-test` 最终通过：12 对象会话产品完成执行、文件写读与关闭；15 对象图片产品完成一次真实处理并逐项验证 8 份 PNG 字节/像素；Kueue、运行时、证书和 API 出口由实际输入满足。早期尝试分别发现 runtime 缓存只有 tag、worker 旧 RepoDigests 的歧义，以及批模板只接受 tag 的校验限制；均保留失败，修复后通过，不以放宽隔离/资源约束代替修复。
 
 完整 make check 和 203 项 Python 回归通过。验收仅创建临时实例并按原 UID 回收，显式部署的长期入口由管理员应用私有清单使用；不宣称已运行生产常驻实例或形成新的 P3 性能结论。原始报告、输入、目录与身份兼容检查见[部署入口验收记录](data/product-entry-layout-validation.json)。
+
+<a id="script-layout"></a>
+## 脚本职责与执行位置重构
+
+宿主库已按 core/manifests/platform/product/acceptance/experiments/observability 分类，平铺旧模块移除。Runner、状态与锁、公共校验独立；Sandbox/Kueue/Calico/gVisor 安装与验收分离。CLI 仅在选定子命令时导入场景，基础命令在独立解释器禁用 Pillow 时仍可离线预检。实验依赖窄化客户端及共享环境，不再继承完整验收流程；依赖方向和静态未绑定全局符号由架构回归检查。
+
+Pod 探针迁至 tests/fixtures/probes，节点 Shell 迁至 platform/resources，字节保持一致。图片入口迁至 workloads/images/worker.py，共享算法由宿主准备库引用并在 Docker 镜像内安装为独立模块；算法 AST 与固定像素契约保持一致，worker 源码/构建上下文变化已产生新镜像 fingerprint，未覆盖旧镜像。平台 runtime-only 构建/校验与 SDK 客户端构建分开，原已安装 runtime bundle 继续复用。
+
+真实验证通过：完整产品入口完成会话执行/文件和 8 份 PNG 产物校验，冷会话 SDK 的 13 项行为与回收检查通过，诊断故障验收完成请求阶段关联、单域失效与失败归档。诊断首次实测发现拆出的 query 方法遗漏 urllib.parse 导入，修复后增加静态符号和直接查询回归，原失败报告保留。最终 make check 与 209 项 Python 测试通过。
+
+独立复核确认本轮 namespace、队列、临时卷、CRI sandbox 和 Worker gVisor 进程均已回收；cluster.json 与 session-bundle.json 校验和未变，七份锁未变。批 worker 构建记录按本次源码更新。未重跑全部控制器重启、OOM 或性能矩阵，P3/P4 结论保持原口径。源码、原始报告、探针字节/算法对照和回收记录见[脚本重构记录](data/script-layout-validation.json)，组织约束见[运维指南](operations.md#script-layout)。

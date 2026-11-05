@@ -14,9 +14,17 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from lib.platform_network import Network, NetworkError, checked_manifest, image_sources, kubectl_objects, observation_matches, render_calico
-from lib import network_client
+from lib.platform.calico import Network, checked_manifest, image_sources, kubectl_objects, render_calico
+from lib.core.errors import NetworkError
+from lib.acceptance.network import observation_matches
+import importlib.util
+spec=importlib.util.spec_from_file_location("network_client",ROOT/"tests/fixtures/probes/network_client.py")
+network_client=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(network_client)
 import platform_lab
+
+from lib.acceptance.network import NetworkAcceptance
+from lib.acceptance.smoke import SmokeAcceptance
 
 
 class NetworkTests(unittest.TestCase):
@@ -30,6 +38,7 @@ class NetworkTests(unittest.TestCase):
         self.lab.runner.output = self.root
         self.lab.operation_lock.return_value = nullcontext()
         self.net = Network(self.lab)
+        self.fixture = NetworkAcceptance(self.lab, platform=self.net)
         self.net.state = {'session': 'a' * 32}
 
     def test_manifest_checksum_is_checked_before_any_cluster_operation(self):
@@ -98,8 +107,8 @@ class NetworkTests(unittest.TestCase):
     def test_install_refuses_foreign_calico_resources_before_apply(self):
         self.lab.kubectl.side_effect = ['', '{"kind":"List","items":[]}', json.dumps({
             'kind':'List','items':[{'metadata':{'name':'calico-node','labels':{'agentbox.dev/session':'foreign'}}}]})]
-        with patch.object(self.net, 'attach'), patch('lib.platform_network.checked_manifest', return_value=b''), \
-                patch('lib.platform_network.render_calico', return_value={'kind':'List','items':[]}):
+        with patch.object(self.net, 'attach'), patch('lib.platform.calico.checked_manifest', return_value=b''), \
+                patch('lib.platform.calico.render_calico', return_value={'kind':'List','items':[]}):
             with self.assertRaises(NetworkError) as caught:
                 self.net.install(self.root/'unused')
         self.assertEqual(caught.exception.reason, 'unowned_calico_resource')
@@ -130,21 +139,21 @@ class NetworkTests(unittest.TestCase):
     def test_convergence_requires_two_consecutive_complete_matches(self):
         record={'phases':{}}
         values=[[{'matches':True}],[{'matches':False}],[{'matches':True}],[{'matches':True}]]
-        with patch.object(self.net, 'observe', side_effect=values) as observe, patch.object(self.net,'save'), \
-                patch('lib.platform_network.time.sleep'):
-            self.net.converge({}, [], 'allow', 'run', record)
+        with patch.object(self.fixture, 'observe', side_effect=values) as observe, patch.object(self.net,'save'), \
+                patch('lib.platform.calico.time.sleep'):
+            self.fixture.converge({}, [], 'allow', 'run', record)
         self.assertEqual(observe.call_count, 4)
 
     def test_namespace_cleanup_refuses_replaced_uid(self):
         self.lab.kubectl.return_value=json.dumps({'metadata':{'uid':'replaced','labels':{}}})
         with self.assertRaises(NetworkError):
-            self.net.cleanup_namespaces({'sandbox':{'name':'sandbox','uid':'original'}}, 'run')
+            self.fixture.cleanup_namespaces({'sandbox':{'name':'sandbox','uid':'original'}}, 'run')
         self.assertEqual(self.lab.kubectl.call_count, 1)
 
     def test_policy_matrix_covers_both_runtimes_with_same_cases(self):
         keys=('sandbox-runc','sandbox-gvisor','caller','intruder','foreign-caller','approved','blocked','foreign-data')
         pods={k:{'name':k,'uid':k+'-uid','ip':'10.244.1.2'} for k in keys}
-        cases=self.net.matrix(pods,'10.96.0.1')
+        cases=self.fixture.matrix(pods,'10.96.0.1')
         self.assertEqual(len(cases),22)
         for runtime in ('sandbox-runc','sandbox-gvisor'):
             selected=[c for c in cases if c['id'].startswith(runtime+':')]
@@ -159,7 +168,7 @@ class NetworkTests(unittest.TestCase):
                                                   (None,socket.timeout(),'read_timeout'),
                                                   (ConnectionRefusedError(111,'refused'),None,'socket_error')]:
             sock=Mock(); sock.connect.side_effect=connect_error; sock.recv.side_effect=recv_error
-            with patch('lib.network_client.socket.socket') as factory:
+            with patch.object(network_client.socket,'socket') as factory:
                 factory.return_value.__enter__.return_value=sock
                 self.assertEqual(network_client.run([case])[0]['kind'],expected)
 
@@ -250,7 +259,7 @@ class NetworkTests(unittest.TestCase):
     def test_image_preparation_rejects_unconfirmed_pull_without_applying_manifest(self):
         self.net.state['node_ids'] = ['owned-node'];self.lab.tools = {'docker': 'docker'}
         self.lab.runner.run.return_value = '{"images":[]}'
-        with patch('lib.platform_network.time.monotonic', side_effect=[0, 0, 31]), self.assertRaises(NetworkError) as caught:
+        with patch('lib.platform.calico.time.monotonic', side_effect=[0, 0, 31]), self.assertRaises(NetworkError) as caught:
             self.net.prepare_images(image_sources(self.net.lock, None))
         self.assertEqual(caught.exception.reason, 'calico_image_not_ready')
         self.lab.kubectl.assert_not_called()

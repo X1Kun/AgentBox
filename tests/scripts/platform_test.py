@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 spec = importlib.util.spec_from_file_location("platform_lab", ROOT / "scripts/platform_lab.py")
 labmod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(labmod)
+from lib.acceptance.smoke import SmokeAcceptance
 
 
 class FakeRunner:
@@ -191,10 +192,10 @@ class PlatformTests(unittest.TestCase):
 
     def smoke_responses(self, output='{"result":333833500}', node=None, job_failed=False):
         session = "a"*32
-        job = {"metadata": {"uid": "job-uid", "labels": {labmod.OWNER_LABEL: session}},
+        job = {"metadata": {"uid": "job-uid", "labels": {"agentbox.dev/session": session}},
                "status": {"conditions": [{"type": "Failed", "status": "True"}]} if job_failed else
                          {"succeeded": 1, "conditions": [{"type": "Complete", "status": "True"}]}}
-        pod = {"metadata": {"name": "smoke-pod", "uid": "pod-uid", "labels": {labmod.OWNER_LABEL: session},
+        pod = {"metadata": {"name": "smoke-pod", "uid": "pod-uid", "labels": {"agentbox.dev/session": session},
                             "ownerReferences": [{"kind": "Job", "uid": "job-uid", "controller": True}]},
                "spec": {"nodeName": node or labmod.CLUSTER+"-worker",
                         "containers": [{"name": "compute", "image": self.lab.python_image()}]},
@@ -219,8 +220,8 @@ class PlatformTests(unittest.TestCase):
 
     def test_success_requires_worker_correct_output_and_cleanup(self):
         state, handler = self.smoke_responses()
-        with patch.object(self.lab, "owned", return_value=(state, [])), patch.object(self.lab, "node_report", return_value=[]), patch.object(self.lab, "namespace"), patch.object(self.lab, "kubectl", side_effect=handler):
-            result = self.lab.smoke()
+        with patch.object(self.lab, "owned", return_value=(state, [])), patch.object(self.lab, "node_report", return_value=[]), patch.object(SmokeAcceptance, "namespace"), patch.object(self.lab, "kubectl", side_effect=handler):
+            result = SmokeAcceptance(self.lab).test()
         self.assertTrue(result["cleanup_complete"])
         self.assertEqual(result["job_uid"], "job-uid")
         self.assertEqual(result["pod_uid"], "pod-uid")
@@ -238,8 +239,8 @@ class PlatformTests(unittest.TestCase):
                 if cleanup_polls == 1:
                     return json.dumps({"items": [{"metadata": {"name": "terminating"}}]})
             return handler(*args, **kwargs)
-        with patch.object(self.lab, "owned", return_value=(state, [])), patch.object(self.lab, "node_report", return_value=[]), patch.object(self.lab, "namespace"), patch.object(self.lab, "kubectl", side_effect=delayed), patch.object(labmod.time, "sleep"):
-            result = self.lab.smoke()
+        with patch.object(self.lab, "owned", return_value=(state, [])), patch.object(self.lab, "node_report", return_value=[]), patch.object(SmokeAcceptance, "namespace"), patch.object(self.lab, "kubectl", side_effect=delayed), patch.object(__import__("time"), "sleep"):
+            result = SmokeAcceptance(self.lab).test()
         self.assertTrue(result["cleanup_complete"])
         self.assertEqual(cleanup_polls, 2)
 
@@ -253,9 +254,9 @@ class PlatformTests(unittest.TestCase):
             elif deleted and "get" in args and "pods" in args:
                 return json.dumps({"items": [{"metadata": {"name": "stuck"}}]})
             return handler(*args, **kwargs)
-        with patch.object(self.lab, "owned", return_value=(state, [])), patch.object(self.lab, "node_report", return_value=[]), patch.object(self.lab, "namespace"), patch.object(self.lab, "kubectl", side_effect=stuck), patch.object(labmod.time, "monotonic", side_effect=[0, 0, 61]):
+        with patch.object(self.lab, "owned", return_value=(state, [])), patch.object(self.lab, "node_report", return_value=[]), patch.object(SmokeAcceptance, "namespace"), patch.object(self.lab, "kubectl", side_effect=stuck), patch.object(__import__("time"), "monotonic", side_effect=[0, 0, 61]):
             with self.assertRaises(labmod.LabError) as caught:
-                self.lab.smoke()
+                SmokeAcceptance(self.lab).test()
         self.assertEqual(caught.exception.reason, "cleanup_incomplete")
 
     def test_wrong_output_wrong_node_or_failed_job_never_passes(self):
@@ -263,9 +264,9 @@ class PlatformTests(unittest.TestCase):
                                 ({"node": "other-worker"}, "pod_validation_failed"),
                                 ({"job_failed": True}, "job_failed")]:
             state, handler = self.smoke_responses(**options)
-            with self.subTest(options=options), patch.object(self.lab, "owned", return_value=(state, [])), patch.object(self.lab, "node_report", return_value=[]), patch.object(self.lab, "namespace"), patch.object(self.lab, "kubectl", side_effect=handler) as calls:
+            with self.subTest(options=options), patch.object(self.lab, "owned", return_value=(state, [])), patch.object(self.lab, "node_report", return_value=[]), patch.object(SmokeAcceptance, "namespace"), patch.object(self.lab, "kubectl", side_effect=handler) as calls:
                 with self.assertRaises(labmod.LabError) as caught:
-                    self.lab.smoke()
+                    SmokeAcceptance(self.lab).test()
                 self.assertEqual(caught.exception.reason, reason)
                 self.assertFalse(any("delete" in c.args for c in calls.call_args_list))
 
@@ -305,7 +306,7 @@ class PlatformTests(unittest.TestCase):
                                  "import os,json; print(json.dumps([os.environ.get('HTTP_PROXY'),os.environ.get('NO_PROXY')]))"],
                                 clear_proxy=True)
             self.assertEqual(json.loads(output), ["", "*"])
-            self.assertEqual(labmod.os.environ["HTTP_PROXY"], proxy)
+            self.assertEqual(__import__("os").environ["HTTP_PROXY"], proxy)
         self.assertEqual(runner.commands[0]["node_proxy_forwarding"], "disabled")
 
     def test_valid_version_with_wrong_binary_checksum_fails_preflight(self):
@@ -354,7 +355,7 @@ class PlatformTests(unittest.TestCase):
             if isinstance(reply, Exception): raise reply
             return reply
         self.runner.handler = handler
-        with patch.object(labmod.time, "monotonic", side_effect=lambda: elapsed[0]), patch.object(labmod.time, "sleep", side_effect=sleep):
+        with patch.object(__import__("time"), "monotonic", side_effect=lambda: elapsed[0]), patch.object(__import__("time"), "sleep", side_effect=sleep):
             self.assertEqual(self.lab.kubectl("get", "nodes", timeout=6), "ok")
         self.assertEqual(len(self.runner.calls), 2)
         self.assertLess(self.runner.calls[1][1]["timeout"], self.runner.calls[0][1]["timeout"])
@@ -389,8 +390,8 @@ class PlatformTests(unittest.TestCase):
             return json.dumps(nodes if "nodes" in args else pods)
         with patch.object(self.lab, "owned", return_value=(state, state["node_ids"])), \
              patch.object(self.lab, "node_report"), patch.object(self.lab, "kubectl", side_effect=observe), \
-             patch.object(labmod.time, "monotonic", side_effect=lambda: elapsed[0]), \
-             patch.object(labmod.time, "sleep", side_effect=lambda seconds: elapsed.__setitem__(0, elapsed[0]+seconds)):
+             patch.object(__import__("time"), "monotonic", side_effect=lambda: elapsed[0]), \
+             patch.object(__import__("time"), "sleep", side_effect=lambda seconds: elapsed.__setitem__(0, elapsed[0]+seconds)):
             result = self.lab.wait_ready(timeout=30)
         self.assertTrue(result["ready"])
         self.assertEqual(api_samples[0], 5)
@@ -404,8 +405,8 @@ class PlatformTests(unittest.TestCase):
             return "ok" if "--raw=/readyz" in args else json.dumps(nodes if "nodes" in args else pods)
         with patch.object(self.lab, "owned", return_value=(state, state["node_ids"])), \
              patch.object(self.lab, "node_report"), patch.object(self.lab, "kubectl", side_effect=observe), \
-             patch.object(labmod.time, "monotonic", side_effect=lambda: elapsed[0]), \
-             patch.object(labmod.time, "sleep", side_effect=lambda seconds: elapsed.__setitem__(0, elapsed[0]+seconds)):
+             patch.object(__import__("time"), "monotonic", side_effect=lambda: elapsed[0]), \
+             patch.object(__import__("time"), "sleep", side_effect=lambda seconds: elapsed.__setitem__(0, elapsed[0]+seconds)):
             with self.assertRaises(labmod.LabError) as caught: self.lab.wait_ready(timeout=4)
             self.assertEqual(caught.exception.reason, "control_plane_not_ready")
             elapsed[0] = 0
@@ -429,8 +430,8 @@ class PlatformTests(unittest.TestCase):
         def health(**kwargs): stages.append("health")
         with patch.object(self.lab, "owned", return_value=(state, state["node_ids"])), \
              patch.object(self.lab, "wait_ready", side_effect=health), \
-             patch.object(labmod, "Network") as network, patch.object(labmod, "GVisor") as runtime, \
-             patch.object(labmod, "Sessions") as sessions, patch.object(self.lab, "create") as create:
+             patch('lib.platform.calico.Network') as network, patch('lib.platform.gvisor.GVisor') as runtime, \
+             patch('lib.platform.sandbox.Sessions') as sessions, patch.object(self.lab, "create") as create:
             asset = self.root / "cached"
             asset.touch()
             sessions.return_value.bundle_path = asset

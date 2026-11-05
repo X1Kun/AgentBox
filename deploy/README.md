@@ -71,3 +71,5 @@ kubectl --kubeconfig .local/platform/kubeconfig --context kind-agentbox-platform
 七份版本锁保持原值。`lab/format-compatibility.yaml` 继续支持精确的旧锁、缓存和安装身份映射；v1 bundle 中旧路径字符串是协议键，不是物理文件读取路径。平台 session 指纹只包含上游锁和控制器运行补丁；SDK Job/RBAC/客户端 Dockerfile 单独计算验收指纹，应用模板按产品组合记录。SDK 或实验配置修改不会要求重建健康平台；平台运行配置变更仍使旧身份校验失败。
 
 历史运行报告、缓存元数据和原始验收 JSON 不回写。Python 固定依赖见 `scripts/requirements-platform.txt`，产品使用及验证范围见[运维指南](../docs/operations.md)与[验收记录](../docs/validation.md)。
+
+宿主编排库按职责位于 `scripts/lib/{core,manifests,platform,product,acceptance,experiments,observability}/`。`workloads/images/worker.py` 是实际容器入口，共享图片算法由构建器复制为独立运行模块；`tests/fixtures/probes/` 保存 Pod 验收程序，节点进程诊断 Shell 保存在 `scripts/lib/platform/resources/`。平台安装与 SDK/批任务验收分别实现，CLI 按子命令加载，基础预检不加载 Pillow 或验收场景。

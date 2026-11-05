@@ -6,8 +6,11 @@ from pathlib import Path
 import sys
 import uuid
 
-from platform_lab import ROOT, Lab, Runner, utc, file_hash
-from lib.platform_observability import Observability
+from lib.core.paths import ROOT
+from lib.core.state import utc, file_hash
+from lib.core.runner import Runner
+from lib.platform.lab import Lab
+from lib.observability.stack import Observability
 
 
 def main():
@@ -24,7 +27,7 @@ def main():
     runner = Runner(output)
     report = {'schema_version': 1, 'started_at': utc(), 'action': args.action, 'ok': False,
               'source_sha256': {str(p.relative_to(ROOT)): file_hash(p) for p in
-                [ROOT / 'scripts/observability.py', ROOT / 'scripts/lib/platform_observability.py',
+                [ROOT / 'scripts/observability.py', ROOT / 'scripts/lib/observability/stack.py',
                  *sorted((ROOT / 'deploy/components/observability').glob('*.yaml'))]}}
     try:
         lab = Lab(ROOT, runner)

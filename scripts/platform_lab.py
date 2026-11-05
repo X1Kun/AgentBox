@@ -1,617 +1,32 @@
 #!/usr/bin/env python3
-"""Manage one owned kind functional lab; never uses the caller's kubeconfig."""
-
+"""Command routing for the owned platform; scenarios load only when selected."""
 import argparse
-import contextlib
-from datetime import datetime, timezone
-import fcntl
-import hashlib
+import importlib
 import json
-import os
 from pathlib import Path
 import platform
-import re
-import shutil
-import signal
-import subprocess
 import sys
-import tempfile
-import threading
-import time
 import uuid
 
-from lib.platform_manifests import load_lock, read_yaml, render as render_manifest, lock_identity, python_image_source
-from lib.platform_gvisor import CASES, GVisor, GVisorError
-from lib.platform_network import Network, NetworkError
-from lib.platform_sessions import Sessions, SessionError, checked_source as session_source
-from lib.platform_api import APIAcceptance
-from lib.platform_agent import AgentAcceptance
-from lib.platform_retention import APIRetentionAcceptance
-from lib.platform_api_execution import APIExecutionAcceptance
-from lib.platform_batch import Kueue, BatchAcceptance, BatchError, controller_source as kueue_image_source
-from lib.platform_batch_product import build_worker, ProductAcceptance, cleanup_product
-from lib.observability_acceptance import ObservationAcceptance
-from lib.maintenance_acceptance import MaintenanceAcceptance
-from lib.session_boundaries import SessionBoundaries, SessionMatrix
-from lib.static_baseline import StaticBaseline
-from lib.diagnostics_acceptance import DiagnosticsAcceptance
-from lib.product_entry_acceptance import ProductEntryAcceptance
-from lib.product_images import prepare_product_images
+from lib.core.paths import ROOT, CLUSTER, CONTEXT, GVISOR_CASES as CASES
+from lib.core.errors import ToolError, LabError, CommandError
+from lib.core.runner import Runner
+from lib.core.state import utc, file_hash, atomic_json
+from lib.manifests import load_lock, read_yaml, lock_identity, python_image_source
+from lib.platform.lab import Lab, pinned_source
 
 sys.dont_write_bytecode = True
-ROOT = Path(__file__).resolve().parents[1]
-CLUSTER = "agentbox-platform-lab"
-CONTEXT = "kind-" + CLUSTER
-NAMESPACE = "agentbox-platform"
-OWNER_LABEL = "agentbox.dev/session"
-HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
+def load(module, name):
+    return getattr(importlib.import_module('lib.'+module), name)
 
-class LabError(Exception):
-    def __init__(self, reason, detail):
-        super().__init__(detail)
-        self.reason = reason
-
-
-class CommandError(LabError):
-    pass
-
-
-def utc():
-    return datetime.now(timezone.utc).isoformat()
-
-
-def file_hash(path):
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def atomic_json(path, value):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as stream:
-            json.dump(value, stream, indent=2, sort_keys=True)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-
-
-def pinned_source(canonical, supplied):
-    """Mirrors may change repository only, never the expected content digest."""
-    value = supplied or canonical
-    if "://" in value or not re.fullmatch(r"[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}", value):
-        raise LabError("invalid_image", "image source must be a digest-pinned repository")
-    if value.rsplit("@", 1)[1] != canonical.rsplit("@", 1)[1]:
-        raise LabError("image_digest_mismatch", "mirror digest differs from versions.lock.yaml")
-    return value
-
-
-class Runner:
-    def __init__(self, output):
-        self.output = output
-        self.commands = []
-
-    def run(self, args, timeout=30, input_text=None, announce=True, clear_proxy=False):
-        args = [str(x) for x in args]
-        if announce:
-            print("[platform] " + " ".join(args), flush=True)
-        begin = time.monotonic()
-        record = {"argv": args, "started_at": utc()}
-        self.commands.append(record)
-        env = dict(os.environ, KIND_EXPERIMENTAL_PROVIDER="docker")
-        if clear_proxy:
-            # A host loopback proxy is unreachable inside a kind node.
-            # Only this child environment changes; never edit host settings.
-            for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
-                env[key] = ""
-            env["NO_PROXY"] = env["no_proxy"] = "*"
-            record["node_proxy_forwarding"] = "disabled"
-        try:
-            proc = subprocess.Popen(args, stdin=subprocess.PIPE if input_text is not None else subprocess.DEVNULL,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                    env=env, start_new_session=True)
-        except OSError as error:
-            record.update(reason="tool_unavailable", detail=str(error))
-            raise CommandError("tool_unavailable", f"{args[0]}: {error}") from error
-        try:
-            stdout, stderr = proc.communicate(input_text, timeout=timeout)
-        except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-            stdout, stderr = proc.communicate()
-            if isinstance(error, KeyboardInterrupt):
-                record["reason"] = "command_interrupted"
-                raise
-            record.update(reason="command_timeout", timeout_seconds=timeout)
-            raise CommandError("command_timeout", f"{Path(args[0]).name} exceeded {timeout}s")
-        finally:
-            record["elapsed_seconds"] = round(time.monotonic() - begin, 3)
-            if "stdout" in locals():
-                record.update(exit_code=proc.returncode, stdout=stdout[-65536:], stderr=stderr[-65536:])
-        if proc.returncode:
-            raise CommandError("command_failed",
-                               f"{Path(args[0]).name} exited {proc.returncode}: {stderr[-2000:].strip()}")
-        return stdout
-
-
-class Lab:
-    def __init__(self, root, runner):
-        self._lock_owner = None
-        self.root = Path(root).resolve()
-        self.runner = runner
-        self.config = self.root / "deploy"
-        self.state_dir = self.root / ".local/platform"
-        self.state_path = self.state_dir / "cluster.json"
-        self.kubeconfig = self.state_dir / "kubeconfig"
-        self.lock = load_lock(self.config, 'versions')
-        if self.lock.get("schema_version") != 1:
-            raise LabError("invalid_lock", "unsupported versions.lock.yaml schema")
-        for name in ("kind", "kubectl"):
-            if not HEX64.fullmatch(self.lock[name].get("sha256", "")):
-                raise LabError("invalid_lock", "tool checksum is missing")
-        for image in (self.lock["kubernetes"]["node_image"], self.lock["smoke"]["image"]):
-            pinned_source(image, None)
-        self.tools = {name: self.tool(name) for name in ("kind", "kubectl", "docker")}
-
-    write_json = staticmethod(atomic_json)
-
-    def write_state(self, state):
-        atomic_json(self.state_path, state)
-
-    def tool(self, name):
-        override = os.environ.get("AGENTBOX_" + name.upper())
-        local = self.root / ".local/platform-tools" / name
-        return override or (str(local) if local.is_file() else shutil.which(name) or name)
-
-    @staticmethod
-    def transient_read_error(error):
-        message = str(error).lower()
-        if any(x in message for x in ("x509", "certificate", "unauthorized", "forbidden", "credential")):
-            return False
-        return error.reason == "command_timeout" or (error.reason == "command_failed" and any(
-            x in message for x in ("deadline exceeded", "timed out", "timeout", "connection refused",
-                "connection reset", "unable to connect", "serviceunavailable", "internalerror", "too many requests", " eof")))
-
-    def kubectl(self, *args, timeout=30, input_text=None, announce=True, request_timeout=15):
-        # Retry only explicit GET/version operations within the original total
-        # subprocess budget. Never replay create/apply/patch/delete/exec.
-        read_only = bool(args) and (args[0] in ("get", "version") or
-            (len(args) >= 3 and args[0] in ("-n", "--namespace") and args[2] == "get"))
-        deadline = time.monotonic() + timeout
-        attempts = 0
-        while True:
-            remaining = max(.001, deadline - time.monotonic())
-            budget = round(max(.001, min(request_timeout, remaining)), 3) if attempts else request_timeout
-            try:
-                return self.runner.run([self.tools["kubectl"], "--kubeconfig", self.kubeconfig,
-                    "--context", CONTEXT, f"--request-timeout={budget}s", *args],
-                    timeout=remaining, input_text=input_text, announce=announce)
-            except CommandError as error:
-                if not read_only or not self.transient_read_error(error) or deadline - time.monotonic() <= 1:
-                    raise
-                attempts += 1
-                print("[platform] transient Kubernetes read failure; retrying within the same budget", flush=True)
-                time.sleep(1)
-
-    def docker_info(self):
-        try:
-            data = json.loads(self.runner.run([self.tools["docker"], "info", "--format", "{{json .}}"]))
-        except CommandError as error:
-            reason = "docker_unreachable" if error.reason == "command_failed" else error.reason
-            raise LabError(reason, str(error)) from error
-        return {key: data.get(key) for key in ("ID", "ServerVersion", "OSType", "Architecture",
-                                              "CgroupVersion", "CgroupDriver", "NCPU", "MemTotal")}
-
-    def preflight(self):
-        checks = []
-
-        def add(name, ok, observed, reason="requirement_failed"):
-            checks.append({"name": name, "ok": bool(ok), "observed": observed,
-                           "reason": "ok" if ok else reason})
-
-        add("host_platform", platform.system() == "Linux" and platform.machine() == "x86_64",
-            platform.system() + "/" + platform.machine())
-        add("python", sys.version_info >= (3, 10), platform.python_version())
-        add("host_cgroup_v2", Path("/sys/fs/cgroup/cgroup.controllers").is_file(), "cgroup v2")
-        for name in ("kind", "kubectl"):
-            args = [self.tools[name], "version"]
-            if name == "kubectl":
-                args += ["--client", "-o", "json"]
-            try:
-                output = self.runner.run(args, timeout=15)
-                version = (json.loads(output)["clientVersion"]["gitVersion"] if name == "kubectl"
-                           else re.search(r"\bv\d+\.\d+\.\d+\b", output).group())
-                add(name, version == self.lock[name]["version"], version, "version_mismatch")
-                executable = shutil.which(self.tools[name])
-                checksum = file_hash(executable) if executable else None
-                add(name + "_checksum", checksum == self.lock[name]["sha256"],
-                    checksum, "checksum_mismatch")
-            except (LabError, OSError, ValueError, KeyError, AttributeError) as error:
-                add(name, False, str(error), getattr(error, "reason", "invalid_version_output"))
-        info = None
-        try:
-            info = self.docker_info()
-            requirements = self.lock["docker"]
-            add("docker_identity", isinstance(info["ID"], str) and bool(info["ID"]), info["ID"])
-            add("docker_version", int(info["ServerVersion"].split(".")[0]) >= requirements["minimum_major"],
-                info["ServerVersion"])
-            add("docker_linux", info["OSType"] == "linux" and info["Architecture"] in ("x86_64", "amd64"),
-                {"os": info["OSType"], "architecture": info["Architecture"]})
-            add("docker_cgroup_v2", info["CgroupVersion"] == "2", info["CgroupVersion"])
-            add("docker_capacity", info["NCPU"] >= requirements["minimum_cpus"] and
-                info["MemTotal"] >= requirements["minimum_memory_bytes"],
-                {"cpus": info["NCPU"], "memory_bytes": info["MemTotal"]})
-        except (LabError, ValueError, TypeError, KeyError) as error:
-            add("docker", False, str(error), getattr(error, "reason", "invalid_docker_info"))
-        return {"ok": all(c["ok"] for c in checks), "checks": checks, "docker": info,
-                "psi_available": {n: Path("/proc/pressure", n).is_file() for n in ("cpu", "memory", "io")},
-                "kvm_visible": Path("/dev/kvm").exists(),
-                "node_proxy_forwarding": "disabled for kind create; use digest-preserving registry sources",
-                "scope": "kind functional baseline; KVM/host containerd/helm/k6 are not required"}
-
-    @contextlib.contextmanager
-    def operation_lock(self):
-        # The unified installer holds this lock across all stages. Nested
-        # operations on the same CLI thread reuse it; other processes/threads
-        # must still acquire the OS lock and are rejected while it is held.
-        owner = threading.get_ident()
-        if self._lock_owner == owner:
-            yield
-            return
-        self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if self.state_dir.is_symlink():
-            raise LabError("invalid_state", "state directory must not be a symlink")
-        with (self.state_dir / "operation.lock").open("a+") as stream:
-            try:
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as error:
-                raise LabError("operation_in_progress", "another platform operation holds the lock") from error
-            self._lock_owner = owner
-            try:
-                yield
-            finally:
-                self._lock_owner = None
-
-    def node_ids(self):
-        output = self.runner.run([self.tools["docker"], "ps", "-aq", "--no-trunc",
-                                  "--filter", "label=io.x-k8s.kind.cluster=" + CLUSTER])
-        return sorted(output.split())
-
-    def read_state(self):
-        try:
-            state = json.loads(self.state_path.read_text())
-        except (OSError, ValueError) as error:
-            raise LabError("unowned_cluster", "no valid local ownership record") from error
-        if (state.get("schema_version") != 1 or state.get("project") != str(self.root) or
-                state.get("cluster") != CLUSTER or not re.fullmatch(r"[0-9a-f]{32}", state.get("session", ""))):
-            raise LabError("unowned_cluster", "ownership record does not match this project")
-        return state
-
-    def owned(self, complete=False):
-        state = self.read_state()
-        if state["docker_id"] != self.docker_info()["ID"]:
-            raise LabError("docker_identity_changed", "ownership belongs to another Docker daemon")
-        actual = self.node_ids()
-        expected = state.get("node_ids", [])
-        if any(not HEX64.fullmatch(x) for x in expected) or not set(actual).issubset(expected):
-            raise LabError("node_identity_changed", "cluster contains nodes not recorded by this session")
-        if complete and (state.get("phase") != "ready" or len(actual) != 2 or actual != expected):
-            raise LabError("cluster_not_ready", "both original nodes and a ready ownership record are required")
-        if self.kubeconfig.exists() and file_hash(self.kubeconfig) != state.get("kubeconfig_sha256"):
-            raise LabError("kubeconfig_changed", "dedicated kubeconfig differs from the recorded file")
-        if complete and (not self.kubeconfig.is_file() or state["lock_sha256"] !=
-                         lock_identity(self.config, "versions")):
-            raise LabError("baseline_changed", "kubeconfig is missing or the version lock changed; recreate the lab")
-        if complete and state.get("kind_config_sha256"):
-            config = self.config / ("lab/kind-calico.yaml" if state.get("network_profile") == "calico" else "lab/kind.yaml")
-            if file_hash(config) != state["kind_config_sha256"]:
-                raise LabError("baseline_changed", "kind configuration changed; recreate the lab")
-        return state, actual
-
-    def node_report(self, require_ready=True, data=None):
-        if data is None:
-            data = json.loads(self.kubectl("get", "nodes", "-o", "json"))
-        items = data["items"]
-        expected = {CLUSTER + "-control-plane", CLUSTER + "-worker"}
-        if {n["metadata"]["name"] for n in items} != expected:
-            raise LabError("unexpected_nodes", "expected exactly the control-plane and worker nodes")
-        result = []
-        for node in items:
-            info = node["status"]["nodeInfo"]
-            ready = any(c["type"] == "Ready" and c["status"] == "True"
-                        for c in node["status"].get("conditions", []))
-            if ((require_ready and not ready) or info["kubeletVersion"] != self.lock["kubernetes"]["version"] or
-                    not info["containerRuntimeVersion"].startswith("containerd://")):
-                raise LabError("node_baseline_mismatch", "node readiness/version/runtime differs from the baseline")
-            result.append({"name": node["metadata"]["name"], "uid": node["metadata"]["uid"],
-                           "labels": node["metadata"].get("labels", {}), "node_info": info})
-        worker = next(n for n in result if n["name"].endswith("-worker"))
-        if worker["labels"].get("agentbox.dev/lab") != CLUSTER or worker["labels"].get("agentbox.dev/role") != "worker":
-            raise LabError("worker_labels_mismatch", "dedicated worker labels are missing")
-        return result
-
-    def wait_ready(self, timeout=180, require_nodes=True):
-        """Bounded read-only convergence; no replay of writes or component restart."""
-        state, actual = self.owned()
-        if (len(actual) != 2 or actual != state.get("node_ids") or
-                state.get("phase") not in ("network_pending", "ready")):
-            raise LabError("cluster_not_ready", "finish owned cluster creation before health observation")
-        deadline = time.monotonic() + timeout
-        attempts, consecutive = [], 0
-        expected = {"etcd", "kube-apiserver", "kube-controller-manager", "kube-scheduler"}
-        def read(*args):
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise LabError("control_plane_not_ready", "health observation deadline reached")
-            budget = round(min(5, remaining), 3)
-            return self.kubectl(*args, request_timeout=budget, timeout=budget + 1, announce=False)
-        print("[platform] waiting for API/etcd, native control plane" +
-              (" and Nodes" if require_nodes else " (CNI pending)") + f"; budget {timeout}s", flush=True)
-        while time.monotonic() < deadline:
-            sample = {"elapsed_seconds": round(timeout - (deadline - time.monotonic()), 3)}
-            try:
-                api = read("get", "--raw=/readyz").strip() == "ok"
-                node_data = json.loads(read("get", "nodes", "-o", "json"))
-                self.node_report(require_ready=False, data=node_data)
-                objects = json.loads(read("-n", "kube-system", "get", "pods", "-l",
-                    "component in (etcd,kube-apiserver,kube-controller-manager,kube-scheduler)",
-                    "--field-selector", "spec.nodeName=" + CLUSTER + "-control-plane", "-o", "json"))["items"]
-                components = [{"component": p["metadata"].get("labels", {}).get("component"),
-                    "ready": not p["metadata"].get("deletionTimestamp") and
-                         p.get("status", {}).get("phase") == "Running" and any(
-                         c.get("type") == "Ready" and c.get("status") == "True"
-                         for c in p.get("status", {}).get("conditions", []))} for p in objects]
-                # node_report already validates original names, versions and Worker labels.
-                nodes_ready = all(any(c.get("type") == "Ready" and c.get("status") == "True"
-                    for c in p.get("status", {}).get("conditions", [])) for p in node_data["items"])
-                healthy = api and len(components) == 4 and {c["component"] for c in components} == expected and all(c["ready"] for c in components)
-                sample.update(api_ready=api, nodes_ready=nodes_ready, components=components)
-                consecutive = consecutive + 1 if healthy and (nodes_ready or not require_nodes) else 0
-            except CommandError as error:
-                if not self.transient_read_error(error):
-                    raise
-                consecutive = 0
-                sample["reason"] = "api_temporarily_unavailable"
-            attempts.append(sample)
-            value = {"ready": consecutive >= 3, "required_consecutive_samples": 3,
-                     "budget_seconds": timeout, "attempts": attempts}
-            atomic_json(self.runner.output / "control-plane-readiness.json", value)
-            if value["ready"]:
-                return value
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                time.sleep(min(2, remaining))
-        raise LabError("control_plane_not_ready", "API/etcd, native control plane or Nodes did not stabilize; see control-plane-readiness.json")
-
-    def up(self, calico_source=None, calico_prefix=None, gvisor_archive=None, session_source=None, node_source=None):
-        """Install/resume one owned lab in dependency order, retaining healthy stages."""
-        stages = []
-        network, runtime, sessions = Network(self), GVisor(self), Sessions(self)
-        calico_source = calico_source or self.root / ".local/platform-tools" / network.lock["manifest"]
-        gvisor_archive = gvisor_archive or self.root / ".local/platform-tools" / runtime.lock["archive"]
-        session_source = session_source or self.root / ".local/platform-tools" / sessions.lock["manifest"]
-        # Avoid creating a cold cluster only to discover missing local assets.
-        for asset in (calico_source, gvisor_archive, session_source, sessions.bundle_path):
-            if not Path(asset).is_file():
-                raise LabError("missing_bootstrap_asset", "prepare pinned platform assets and run session-build before up")
-        with self.operation_lock():
-            state = self.read_state() if self.state_path.exists() else None
-            if state is None or state.get("phase") == "deleted":
-                self.create(node_source, "calico")
-            else:
-                state, _ = self.owned()
-                if state.get("network_profile") != "calico" or state.get("phase") not in ("network_pending", "ready"):
-                    raise LabError("cluster_not_ready", "up only resumes an owned Calico lab after successful create")
-            def stage(name, operation):
-                print("[platform] bootstrap stage: " + name, flush=True)
-                result = operation()
-                stages.append(name)
-                atomic_json(self.runner.output / "bootstrap.json", {"completed_stages": stages})
-                return result
-            stage("control-plane", lambda: self.wait_ready(require_nodes=self.read_state().get("phase") == "ready"))
-            stage("calico", lambda: network.install(calico_source, calico_prefix))
-            stage("nodes", self.wait_ready)
-            stage("gvisor", lambda: runtime.install(gvisor_archive))
-            stage("control-plane-after-runtime", self.wait_ready)
-            stage("sessions", lambda: sessions.install(session_source))
-            return {"completed_stages": stages, "cluster_retained": True}
-
-    def prepare_image(self, image):
-        args = [self.tools["docker"], "image", "inspect", image, "--format", "{{json .RepoDigests}}"]
-        try:
-            output = self.runner.run(args)
-        except CommandError:
-            # Keep image transfer separate from the cluster bootstrap budget.
-            self.runner.run([self.tools["docker"], "pull", "--platform", "linux/amd64", image], timeout=600)
-            output = self.runner.run(args)
-        digests = json.loads(output) or []
-        if not any(d.endswith("@" + image.rsplit("@", 1)[1]) for d in digests):
-            raise LabError("image_digest_mismatch", "Docker did not confirm the requested repository digest")
-
-    def create(self, source=None, network_profile="kindnet"):
-        image = pinned_source(self.lock["kubernetes"]["node_image"], source)
-        if network_profile not in ("kindnet", "calico"):
-            raise LabError("invalid_network_profile", "select kindnet or calico")
-        kind_config = self.config / ("lab/kind-calico.yaml" if network_profile == "calico" else "lab/kind.yaml")
-        with self.operation_lock():
-            preflight = self.preflight()
-            if not preflight["ok"]:
-                raise LabError("preflight_failed", json.dumps(preflight["checks"]))
-            previous = self.read_state() if self.state_path.exists() else None
-            if previous and previous.get("phase") != "deleted":
-                raise LabError("existing_state", "use smoke or delete; create never replaces an existing session")
-            clusters = self.runner.run([self.tools["kind"], "get", "clusters"]).split()
-            if CLUSTER in clusters or self.node_ids() or self.kubeconfig.exists():
-                raise LabError("unowned_cluster", "refusing to adopt or replace an existing cluster/kubeconfig")
-            state = {"schema_version": 1, "project": str(self.root), "cluster": CLUSTER,
-                     "session": uuid.uuid4().hex, "phase": "preparing_image", "created_at": utc(),
-                     "docker_id": preflight["docker"]["ID"], "node_ids": [], "node_image_source": image,
-                     "lock_sha256": lock_identity(self.config, "versions"),
-                     "network_profile": network_profile, "kind_config_sha256": file_hash(kind_config)}
-            if network_profile == "calico":
-                state["network_definition"] = Network(self).definition()
-            atomic_json(self.state_path, state)
-            try:
-                self.prepare_image(image)
-                state["phase"] = "creating"
-                atomic_json(self.state_path, state)
-                shutil.copyfile(kind_config, self.runner.output / "kind.yaml")
-                self.runner.run([self.tools["kind"], "create", "cluster", "--name", CLUSTER,
-                                 "--config", kind_config, "--image", image,
-                                 "--kubeconfig", self.kubeconfig, "--retain", "--wait",
-                                 "0s" if network_profile == "calico" else "180s"],
-                                timeout=420, clear_proxy=True)
-                self.kubeconfig.chmod(0o600)
-                if network_profile == "kindnet":
-                    self.kubectl("wait", "--for=condition=Ready", "nodes", "--all", "--timeout=120s", timeout=140)
-                state["kubernetes_version"] = json.loads(self.kubectl("version", "-o", "json"))
-                if state["kubernetes_version"].get("serverVersion", {}).get("gitVersion") != self.lock["kubernetes"]["version"]:
-                    raise LabError("server_version_mismatch", "API server version differs from the locked baseline")
-                state["nodes"] = self.node_report(require_ready=network_profile == "kindnet")
-                state["phase"] = "network_pending" if network_profile == "calico" else "ready"
-            except BaseException:
-                state["phase"] = "failed"
-                raise
-            finally:
-                state["node_ids"] = self.node_ids()
-                if self.kubeconfig.exists():
-                    self.kubeconfig.chmod(0o600)
-                    state["kubeconfig_sha256"] = file_hash(self.kubeconfig)
-                atomic_json(self.state_path, state)
-            return {"state": state, "preflight": preflight}
-
-    def namespace(self, state):
-        output = self.kubectl("get", "namespace", NAMESPACE, "--ignore-not-found", "-o", "json")
-        if output.strip():
-            obj = json.loads(output)
-            if obj["metadata"].get("labels", {}).get(OWNER_LABEL) != state["session"]:
-                raise LabError("unowned_namespace", "refusing to use another session's namespace")
-        else:
-            obj = render_manifest(self.config, 'platform-namespace', {'NAME': NAMESPACE, 'OWNER': state['session']})
-            self.kubectl("create", "-f", "-", input_text=json.dumps(obj))
-
-    def python_image(self, source=None):
-        return pinned_source(self.lock["smoke"]["image"], source or python_image_source(self.config))
-
-    def smoke(self, source=None, timeout=180):
-        image = self.python_image(source)
-        with self.operation_lock():
-            state, _ = self.owned(complete=True)
-            nodes = self.node_report()
-            self.namespace(state)
-            run_id = uuid.uuid4().hex[:12]
-            name = "agentbox-smoke-" + run_id
-            obj = render_manifest(self.config, 'smoke', {'OWNER': state['session'], 'RUN_ID': run_id, 'SMOKE_IMAGE': image})
-            manifest = json.dumps(obj)
-            (self.runner.output / "smoke-job.json").write_text(manifest)
-            self.kubectl("-n", NAMESPACE, "create", "-f", "-", input_text=manifest)
-            print(f"[platform] awaiting Job {NAMESPACE}/{name} (budget {timeout}s)", flush=True)
-            deadline = time.monotonic() + timeout
-            while True:
-                job = json.loads(self.kubectl("-n", NAMESPACE, "get", "job", name, "-o", "json", announce=False))
-                if job["metadata"].get("labels", {}).get(OWNER_LABEL) != state["session"]:
-                    raise LabError("job_identity_changed", "Job ownership no longer matches this session")
-                status = job.get("status", {})
-                if any(c["type"] == "Failed" and c["status"] == "True" for c in status.get("conditions", [])):
-                    raise LabError("job_failed", json.dumps(status))
-                if status.get("succeeded") == 1 and any(
-                        c["type"] == "Complete" and c["status"] == "True"
-                        for c in status.get("conditions", [])):
-                    break
-                if time.monotonic() >= deadline:
-                    raise LabError("job_timeout", "Job did not succeed within the smoke budget")
-                time.sleep(2)
-            pods = json.loads(self.kubectl("-n", NAMESPACE, "get", "pods", "-l", "job-name=" + name, "-o", "json"))["items"]
-            if len(pods) != 1:
-                raise LabError("unexpected_attempts", "smoke requires exactly one Pod attempt")
-            pod = pods[0]
-            containers = pod["spec"].get("containers", [])
-            if (pod["spec"].get("nodeName") != CLUSTER + "-worker" or
-                    pod["status"].get("phase") != "Succeeded" or
-                    pod["metadata"].get("labels", {}).get(OWNER_LABEL) != state["session"] or
-                    len(containers) != 1 or containers[0].get("name") != "compute" or
-                    containers[0].get("image") != image):
-                raise LabError("pod_validation_failed", "wrong node, phase, session or pinned image")
-            if not any(o.get("uid") == job["metadata"]["uid"] and o.get("kind") == "Job" and
-                       o.get("controller") is True for o in pod["metadata"].get("ownerReferences", [])):
-                raise LabError("pod_validation_failed", "Pod is not controlled by this Job UID")
-            logs = self.kubectl("-n", NAMESPACE, "logs", pod["metadata"]["name"], "-c", "compute", "--limit-bytes=4096")
-            if json.loads(logs) != {"result": self.lock["smoke"]["expected_result"]}:
-                raise LabError("incorrect_result", "Job completed but output failed validation")
-            result = {"job_uid": job["metadata"]["uid"], "pod_uid": pod["metadata"]["uid"],
-                      "job": name, "pod": pod["metadata"]["name"], "node": pod["spec"]["nodeName"],
-                      "image_source": image, "container_statuses": pod["status"].get("containerStatuses", []),
-                      "output": logs, "nodes": nodes}
-            atomic_json(self.runner.output / "smoke.json", result)
-            self.kubectl("-n", NAMESPACE, "delete", "job", name, "--cascade=foreground",
-                         "--wait=true", "--timeout=60s", timeout=80)
-            cleanup_deadline = time.monotonic() + 60
-            while True:
-                remaining = json.loads(self.kubectl("-n", NAMESPACE, "get", "pods", "-l",
-                                                    "job-name=" + name, "-o", "json", announce=False))
-                if not remaining.get("items"):
-                    break
-                if time.monotonic() >= cleanup_deadline:
-                    raise LabError("cleanup_incomplete", "Job Pods did not disappear within the cleanup budget")
-                time.sleep(1)
-            result["cleanup_complete"] = True
-            atomic_json(self.runner.output / "smoke.json", result)
-            return result
-
-    def delete(self):
-        with self.operation_lock():
-            state, nodes = self.owned()
-            state["phase"] = "deleting"
-            atomic_json(self.state_path, state)
-            try:
-                if nodes:
-                    # kind may remove kubeconfig entries even if node deletion
-                    # fails. Keep the real credential file stable for retries.
-                    with tempfile.TemporaryDirectory(prefix="delete-", dir=self.state_dir) as temporary:
-                        scratch = Path(temporary) / "kubeconfig"
-                        atomic_json(scratch, {"apiVersion": "v1", "kind": "Config",
-                                             "clusters": [], "contexts": [], "users": [],
-                                             "current-context": ""})
-                        self.runner.run([self.tools["kind"], "delete", "cluster", "--name", CLUSTER,
-                                         "--kubeconfig", scratch], timeout=180)
-                if self.node_ids():
-                    raise LabError("cleanup_incomplete", "kind node containers remain")
-                if self.kubeconfig.exists() and file_hash(self.kubeconfig) != state.get("kubeconfig_sha256"):
-                    raise LabError("kubeconfig_changed", "credential file changed during deletion; preserved for inspection")
-                self.kubeconfig.unlink(missing_ok=True)
-            except BaseException:
-                state["phase"] = "delete_failed"
-                atomic_json(self.state_path, state)
-                raise
-            state["phase"], state["deleted_at"] = "deleted", utc()
-            atomic_json(self.state_path, state)
-            return {"cluster": CLUSTER, "session": state["session"], "cleanup_complete": True}
-
-    def diagnostics(self):
-        """Best effort, only after checking Docker ownership. Never dumps kubeconfig."""
-        try:
-            state, nodes = self.owned()
-            if nodes:
-                for node in nodes:
-                    try:
-                        output = self.runner.run([self.tools["docker"], "exec", node, "ps", "-eLo",
-                                                  "pid,tid,stat,wchan:32,comm"], timeout=10)
-                        (self.runner.output / ("processes-" + node[:12] + ".txt")).write_text(output)
-                    except LabError:
-                        pass
-                self.runner.run([self.tools["kind"], "export", "logs", "--name", CLUSTER,
-                                 self.runner.output / "kind-logs"], timeout=60)
-        except (LabError, ValueError, OSError):
-            return
+def source_inventory(root):
+    files = [p for directory in ('scripts','deploy','workloads','experiments/configs','tests/fixtures')
+             for p in (root/directory).rglob('*') if p.is_file() and
+             (p.suffix in ('.py','.yaml','.sh','.Dockerfile','.toml') or p.name=='Dockerfile')]
+    files += [p for directory in ('cmd','internal') for p in (root/directory).rglob('*.go')]
+    files += [root/'go.mod', root/'go.sum', root/'scripts/requirements-platform.txt']
+    return {str(p.relative_to(root)):file_hash(p) for p in sorted(set(files))}
 
 
 def arguments(argv=None):
@@ -683,7 +98,7 @@ def main(argv=None):
     args = arguments(argv)
     if args.dry_run:
         if args.action == "static-baseline":
-            from lib.baseline_results import plan, digest
+            from lib.experiments.results import plan, digest
             config = read_yaml(args.baseline_config)
             reference = json.loads(args.reference_report.read_text()) if args.reference_report else None
             cells = plan(config, args.baseline_stage, reference)
@@ -695,8 +110,8 @@ def main(argv=None):
         runtime = load_lock(ROOT / "deploy", "gvisor") if args.action.startswith("gvisor-") else None
         sessions = load_lock(ROOT / "deploy", "session") if args.action.startswith("session-") else None
         batch_lock = load_lock(ROOT / "deploy", "kueue") if args.action.startswith("batch-") else None
-        session_sources = ({"controller": session_source(sessions["controller_image"], args.session_controller_source),
-                            "python": session_source(lock["smoke"]["image"], args.session_python_source or python_image_source(ROOT / "deploy"))} if sessions else None)
+        session_sources = ({"controller": load('platform.sandbox', 'checked_source')(sessions["controller_image"], args.session_controller_source),
+                            "python": load('platform.sandbox', 'checked_source')(lock["smoke"]["image"], args.session_python_source or python_image_source(ROOT / "deploy"))} if sessions else None)
         print(json.dumps({"action": args.action, "network_profile": "calico" if args.action == "up" else args.network_profile if args.action == "create" else "recorded lab profile", "gvisor": runtime, "gvisor_case": args.gvisor_case, "cluster": CLUSTER, "context": CONTEXT,
                           "kubeconfig": str(ROOT / ".local/platform/kubeconfig"),
                           "node_image": pinned_source(lock["kubernetes"]["node_image"], args.node_image_source),
@@ -704,7 +119,7 @@ def main(argv=None):
                           "sessions": sessions, "session_sources": session_sources, "session_profile": args.session_profile,
                           "bootstrap_stages": ["control-plane", "calico", "nodes", "gvisor", "control-plane-after-runtime", "sessions"] if args.action == "up" else None,
                           "calico_image_prefix": args.calico_image_prefix,
-                          "kueue": batch_lock, "kueue_image": kueue_image_source(ROOT / "deploy", args.kueue_image_source) if batch_lock else None,
+                          "kueue": batch_lock, "kueue_image": load('platform.kueue', 'controller_source')(ROOT / "deploy", args.kueue_image_source) if batch_lock else None,
                           "batch_report": str(args.batch_report) if args.batch_report else None,
                           "mutates_cluster": args.action not in ("preflight", "session-build", "ready"), "dry_run": True}, indent=2))
         return 0
@@ -716,26 +131,7 @@ def main(argv=None):
               "implementation_sha256": file_hash(__file__), "python_version": platform.python_version(),
               "kernel": platform.release(),
               "scope": "trusted platform functional probes; not full isolation or performance acceptance",
-              "source_sha256": {str(p.relative_to(source_root)): file_hash(p) for p in
-                sorted(set([Path(__file__).resolve(), source_root/'scripts/render_manifests.py',
-                    source_root/'scripts/requirements-platform.txt', source_root/'scripts/retire_legacy.py',
-                    source_root/'scripts/prepare_batch_images.py', source_root/'scripts/lib/image_worker.py',
-                    source_root/'scripts/observability.py', source_root/'scripts/lib/observability_acceptance.py', source_root/'scripts/lib/maintenance_acceptance.py', source_root/'scripts/lib/session_boundaries.py', source_root/'scripts/lib/boundary_workloads.py', source_root/'scripts/lib/static_baseline.py', source_root/'scripts/lib/baseline_results.py', source_root/'scripts/lib/experiment_diagnostics.py', source_root/'scripts/lib/diagnostics_acceptance.py',
-                    source_root/'docs/data/legacy-source-retirement.json',
-                    *list((source_root/'scripts/lib').glob('platform*.py')),
-                    *list((source_root/'scripts/lib').glob('network_*.py')),
-                    source_root/'scripts/lib/session_faults.py', source_root/'scripts/lib/gvisor_guest_probe.py',
-                    source_root/'scripts/lib/batch_guest_probe.py',
-                    source_root/'scripts/lib/gvisor_node_processes.sh',
-                    *list((source_root/'deploy').rglob('*.yaml')),
-                    *list((source_root/'tests/fixtures/platform').rglob('*.yaml')),
-                    *list((source_root/'experiments/configs').rglob('*.yaml')),
-                    source_root/'tests/fixtures/platform/sessions/client.Dockerfile', source_root/'scripts/lib/api_network.py',
-                    source_root/'scripts/lib/api_image.py', source_root/'scripts/lib/product_images.py', source_root/'scripts/lib/product_deployment.py', source_root/'scripts/lib/product_entry_acceptance.py', source_root/'scripts/render_product.py',
-                    *[p for p in (source_root/'deploy').rglob('*') if p.is_file() and (p.name=='Dockerfile' or p.suffix in ('.Dockerfile','.toml'))],
-                    *[p for folder in ('session/sandboxd','session','session/httpapi','session/client','mcpserver','mcpclient','agent','deepseek','batch','batchapi','httpauth','observer','telemetry','session/protocol','batchprotocol','toolcontract','readiness','requestid','experiment/session') for p in (source_root/'internal'/folder).glob('*.go')],
-                    *[p for folder in ('agentbox-api','agentbox-cleanup','agentbox-agent','agentbox-mcp','agentbox-session-smoke','agentbox-observer','agentbox-session-experiment') for p in (source_root/'cmd'/folder).glob('*.go')],
-                    source_root/'go.mod', source_root/'go.sum'] ))}}
+              "source_sha256": source_inventory(source_root)}
 
     lab = None
     try:
@@ -758,102 +154,102 @@ def main(argv=None):
             report["result"] = lab.create(args.node_image_source, args.network_profile)
             report["ok"] = True
         elif args.action == "smoke":
-            report["result"] = lab.smoke(args.smoke_image_source, args.timeout)
+            report["result"] = load("acceptance.smoke", "SmokeAcceptance")(lab).test(args.smoke_image_source, args.timeout)
             report["ok"] = True
         elif args.action == "gvisor-install":
-            runtime = GVisor(lab)
+            runtime = load('platform.gvisor', 'GVisor')(lab)
             archive = args.gvisor_archive or ROOT / ".local/platform-tools" / runtime.lock["archive"]
             report["result"] = runtime.install(archive)
             report["ok"] = True
         elif args.action == "gvisor-test":
             image = lab.python_image(args.smoke_image_source)
-            report["result"] = GVisor(lab).test(image, args.timeout, [args.gvisor_case] if args.gvisor_case else None)
+            report["result"] = load('acceptance.gvisor', 'GVisorAcceptance')(lab).test(image, args.timeout, [args.gvisor_case] if args.gvisor_case else None)
             report["ok"] = True
         elif args.action == "network-install":
-            network = Network(lab)
+            network = load('platform.calico', 'Network')(lab)
             manifest = args.calico_manifest or ROOT / ".local/platform-tools" / network.lock["manifest"]
             report["result"] = network.install(manifest, args.calico_image_prefix)
             report["ok"] = True
         elif args.action == "network-test":
             image = lab.python_image(args.smoke_image_source)
-            report["result"] = Network(lab).test(image)
+            report["result"] = load('acceptance.network', 'NetworkAcceptance')(lab).test(image)
             report["ok"] = True
         elif args.action == "session-build":
-            report["result"] = Sessions(lab).build(args.session_controller_source, args.session_python_source)
+            report["result"] = load('platform.sandbox', 'Sessions')(lab).build(args.session_controller_source, args.session_python_source)
             report["ok"] = True
         elif args.action == "session-install":
-            sessions = Sessions(lab)
+            sessions = load('platform.sandbox', 'Sessions')(lab)
             source = args.session_manifest or ROOT / ".local/platform-tools" / sessions.lock["manifest"]
             report["result"] = sessions.install(source)
             report["ok"] = True
         elif args.action == "session-test":
-            report["result"] = Sessions(lab).test(args.session_profile)
+            report["result"] = load('acceptance.session', 'SessionAcceptance')(lab).test(args.session_profile)
             report["ok"] = True
         elif args.action == "agent-test":
-            report["result"] = AgentAcceptance(lab).test()
+            report["result"] = load('acceptance.agent', 'AgentAcceptance')(lab).test()
             report["ok"] = True
         elif args.action == "batch-install":
-            batch = Kueue(lab)
+            batch = load('platform.kueue', 'Kueue')(lab)
             source = args.kueue_manifest or ROOT / ".local/platform-tools" / batch.lock["manifest"]
             report["result"] = batch.install(source, args.kueue_image_source)
             report["ok"] = True
         elif args.action == "batch-test":
-            report["result"] = BatchAcceptance(lab).test(lab.python_image(args.smoke_image_source))
+            report["result"] = load('acceptance.batch', 'BatchAcceptance')(lab).test(lab.python_image(args.smoke_image_source))
             report["ok"] = True
         elif args.action == "batch-image-build":
-            report["result"] = build_worker(lab)
+            report["result"] = load('product.worker_image', 'build_worker')(lab)
             report["ok"] = True
         elif args.action == "batch-product-test":
-            report["result"] = ProductAcceptance(lab).test()
+            report["result"] = load('acceptance.batch_product', 'ProductAcceptance')(lab).test()
             report["ok"] = True
         elif args.action == "session-matrix-test":
-            matrix = SessionMatrix(lab)
+            matrix = load('experiments.session_boundaries', 'SessionMatrix')(lab)
             matrix.selected_scenarios = args.matrix_scenarios.split(",") if args.matrix_scenarios else None
             report["result"] = matrix.test()
             report["ok"] = True
         elif args.action == "static-baseline":
-            report["result"] = StaticBaseline(lab).test(args.baseline_config, args.baseline_stage, args.reference_report)
+            report["result"] = load('experiments.static_baseline', 'StaticBaseline')(lab).test(args.baseline_config, args.baseline_stage, args.reference_report)
             report["ok"] = True
         elif args.action == "static-baseline-cleanup":
-            report["result"] = StaticBaseline(lab).cleanup(args.baseline_report)
+            report["result"] = load('experiments.static_baseline', 'StaticBaseline')(lab).cleanup(args.baseline_report)
             report["ok"] = True
         elif args.action == "diagnostics-test":
-            report["result"] = DiagnosticsAcceptance(lab).test()
+            report["result"] = load('acceptance.diagnostics', 'DiagnosticsAcceptance')(lab).test()
             report["ok"] = True
         elif args.action == "product-images":
-            report["result"] = prepare_product_images(lab, args.with_batch)
+            report["result"] = load('product.images', 'prepare_product_images')(lab, args.with_batch)
             report["ok"] = True
         elif args.action == "product-entry-test":
-            report["result"] = ProductEntryAcceptance(lab).test()
+            report["result"] = load('acceptance.product_entry', 'ProductEntryAcceptance')(lab).test()
             report["ok"] = True
         elif args.action == "session-boundary-test":
-            report["result"] = SessionBoundaries(lab).test()
+            report["result"] = load('experiments.session_boundaries', 'SessionBoundaries')(lab).test()
             report["ok"] = True
         elif args.action == "maintenance-test":
-            report["result"] = MaintenanceAcceptance(lab).test()
+            report["result"] = load('acceptance.maintenance', 'MaintenanceAcceptance')(lab).test()
             report["ok"] = True
         elif args.action == "observability-test":
-            report["result"] = ObservationAcceptance(lab).test()
+            report["result"] = load('acceptance.observability', 'ObservationAcceptance')(lab).test()
             report["ok"] = True
         elif args.action == "batch-product-cleanup":
-            report["result"] = cleanup_product(lab, args.batch_report)
+            report["result"] = load('acceptance.batch_product', 'cleanup_product')(lab, args.batch_report)
             report["ok"] = True
         elif args.action == "batch-cleanup":
-            report["result"] = BatchAcceptance(lab).cleanup(args.batch_report)
+            report["result"] = load('acceptance.batch', 'BatchAcceptance')(lab).cleanup(args.batch_report)
             report["ok"] = True
         elif args.action == "api-retention-test":
-            report["result"] = APIRetentionAcceptance(lab).test()
+            report["result"] = load('acceptance.retention', 'APIRetentionAcceptance')(lab).test()
             report["ok"] = True
         elif args.action == "api-exec-test":
-            report["result"] = APIExecutionAcceptance(lab).test()
+            report["result"] = load('acceptance.api_execution', 'APIExecutionAcceptance')(lab).test()
             report["ok"] = True
         elif args.action == "api-test":
-            report["result"] = APIAcceptance(lab).test()
+            report["result"] = load('acceptance.api', 'APIAcceptance')(lab).test()
             report["ok"] = True
         else:
             report["result"] = lab.delete()
             report["ok"] = True
-    except (LabError, GVisorError, NetworkError, SessionError, BatchError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
+    except (ToolError, OSError, ValueError, KeyError, KeyboardInterrupt) as error:
         reason = "interrupted" if isinstance(error, KeyboardInterrupt) else getattr(error, "reason", "invalid_state")
         report.update(reason=reason, detail=str(error))
         if lab and args.action in ("create", "smoke", "gvisor-install", "gvisor-test", "network-install", "network-test", "session-install", "session-test", "api-test", "api-exec-test", "api-retention-test", "agent-test", "up", "ready", "batch-install", "batch-test", "batch-cleanup", "batch-product-test", "batch-product-cleanup") and reason not in {
@@ -876,6 +272,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (LabError, GVisorError, NetworkError, SessionError, BatchError, OSError, ValueError) as error:
+    except (ToolError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

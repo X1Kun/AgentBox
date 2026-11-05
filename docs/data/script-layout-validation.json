@@ -1,0 +1,299 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-04T16:35:39.823707+00:00",
+  "scope": "Script execution locations and responsibilities; no new capacity or strategy qualification",
+  "checks": {
+    "make_check": {
+      "passed": true,
+      "log": {
+        "path": "artifacts/script-layout-validation-20261105/final-check.log",
+        "sha256": "3f0817de9f82526fd40891a557a5566676fcafd70f746a8ddbdc8acb5e531b9b"
+      }
+    },
+    "python": {
+      "passed": true,
+      "tests": 209,
+      "log": {
+        "path": "artifacts/script-layout-validation-20261105/final-python.log",
+        "sha256": "090fdc4a1630eaa30f5926c139cd911f69c33837c33221a9f38f4537fdcd534e"
+      }
+    }
+  },
+  "runs": {
+    "worker": {
+      "path": "artifacts/platform-batch-image-build-ca12444f8050/report.json",
+      "sha256": "4e362ad5ae896712cb52cddf46d222f4d48baeef89cb776dca9a11104080fc83"
+    },
+    "product": {
+      "path": "artifacts/platform-product-entry-test-517171b4d8da/report.json",
+      "sha256": "9cecbb4f6d07ed9d1d6a53cce4991a3359e7ef69926abd486312ec695f7f7d46"
+    },
+    "session": {
+      "path": "artifacts/platform-session-test-5d4ef0a6c3f5/report.json",
+      "sha256": "d566e5848f46f2b4ede54185ad6fc643359186388745b765ba69a27606d27e86"
+    },
+    "diagnostics": {
+      "path": "artifacts/platform-diagnostics-test-541cb3798c59/report.json",
+      "sha256": "50310994ef5908a2fd7df0cbef88c87b5d966670b603a209c42f71943f93bb85"
+    }
+  },
+  "live_results": {
+    "product": {
+      "passed": true,
+      "cleanup_complete": true,
+      "session_objects": 12,
+      "batch_objects": 15,
+      "png_artifacts": 8
+    },
+    "session": {
+      "passed": true,
+      "cleanup_complete": true,
+      "checks": 13
+    },
+    "diagnostics": {
+      "cleanup_complete": true,
+      "cleanup_snapshots": 11,
+      "controlplane_components": [
+        "apiserver",
+        "etcd"
+      ],
+      "diagnostic_acceptance_passed": true,
+      "expected_baseline_failure": "baseline_observation_invalid",
+      "observer_forbidden_reads": 5,
+      "qualified_baseline": false,
+      "runtime_requests": [
+        {
+          "request_id": "466f06f4ccb4640d78b1800e99961aef",
+          "stages": [
+            "runtime_connect",
+            "runtime_first_output",
+            "runtime_process",
+            "runtime_rpc_start",
+            "runtime_stream_finish",
+            "runtime_validate_after",
+            "runtime_validate_before",
+            "runtime_wait_init"
+          ]
+        },
+        {
+          "request_id": "a23d5644d33e1797b9d4065f4bea0b6b",
+          "stages": [
+            "runtime_connect",
+            "runtime_first_output",
+            "runtime_process",
+            "runtime_rpc_start",
+            "runtime_stream_finish",
+            "runtime_validate_after",
+            "runtime_validate_before",
+            "runtime_wait_init"
+          ]
+        },
+        {
+          "request_id": "0eaaa1a6d330ff1a8be213d10a4c1928",
+          "stages": [
+            "runtime_connect",
+            "runtime_first_output",
+            "runtime_process",
+            "runtime_rpc_start",
+            "runtime_stream_finish",
+            "runtime_validate_after",
+            "runtime_validate_before",
+            "runtime_wait_init"
+          ]
+        },
+        {
+          "request_id": "3037bede33e1ca9467e21e4bfcc987a1",
+          "stages": [
+            "runtime_connect",
+            "runtime_first_output",
+            "runtime_process",
+            "runtime_rpc_start",
+            "runtime_stream_finish",
+            "runtime_validate_after",
+            "runtime_validate_before",
+            "runtime_wait_init"
+          ]
+        }
+      ],
+      "scope": "bounded diagnostic acceptance with intentional observer permission failure; no capacity claim"
+    }
+  },
+  "reclamation": {
+    "at": "2026-11-04T16:33:34.904086+00:00",
+    "remaining": {
+      "namespaces": [],
+      "clusterqueues": [],
+      "resourceflavors": [],
+      "pv": [],
+      "cri": [],
+      "gvisor_processes": []
+    },
+    "all_reclaimed": true
+  },
+  "state": {
+    ".local/platform/cluster.json": {
+      "before_sha256": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      "after_sha256": "33fbf316d6b7974f964be0fa65c7ba3fa3f8c6113d2edfcba60cc7f515b63e9b",
+      "unchanged": true
+    },
+    ".local/platform/session-bundle.json": {
+      "before_sha256": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e",
+      "after_sha256": "2894caba53ea4a494b17ba8aaa059bb7f85da091970f10342df0a09890feeb3e",
+      "unchanged": true
+    },
+    ".local/platform/batch-image-bundle.json": {
+      "before_sha256": "56acd30f3fcf649bb3de09de3ca4e29b8c9b3c99ec587c71ce3a3b64c1ea0f47",
+      "after_sha256": "9cf6b69b10df1f50d6b1f1ab6f3983c369e43d04dd3b7a77aeb8f9dff5e1463b",
+      "unchanged": false
+    }
+  },
+  "locks": {
+    "deploy/components/observability/versions.lock.yaml": {
+      "sha256": "ee193a81cf7ad9b00555ca69f151359d84fb66a14672d3ebf2ef1e8d1377be16",
+      "unchanged": true
+    },
+    "deploy/components/calico/versions.lock.yaml": {
+      "sha256": "a467394c777484348a7d78f3cf25b83e0ea53fd0315be0cb2322842e78415507",
+      "unchanged": true
+    },
+    "deploy/components/agent-sandbox/versions.lock.yaml": {
+      "sha256": "7430ef24e369e4266246afbd63ffe99ed945ed20182d70b89c1e971b3771fc57",
+      "unchanged": true
+    },
+    "deploy/components/gvisor/versions.lock.yaml": {
+      "sha256": "5c992d8962a7eff72ceef4cde80a74f25669f0fad879ff6af0d8e50ddaa0a43a",
+      "unchanged": true
+    },
+    "deploy/components/kueue/versions.lock.yaml": {
+      "sha256": "049b1e726b102f37d34479e50a903597e5ad26edf1b709e262ec6dda3966abf1",
+      "unchanged": true
+    },
+    "deploy/agentbox/batch-images/versions.lock.yaml": {
+      "sha256": "fd30ebdcfdb0c573365ffd4e1c1122173b2cb9059d89baa8988eb9394d386d2a",
+      "unchanged": true
+    },
+    "deploy/lab/versions.lock.yaml": {
+      "sha256": "1dc37d6c851ba0d6793beb19954cea56b36fe31130568ddf9d6a9b2739ede617",
+      "unchanged": true
+    }
+  },
+  "probe_bytes": {
+    "batch_guest_probe.py": {
+      "path": "tests/fixtures/probes/batch_guest_probe.py",
+      "sha256": "5d691f20ad49f988508f77ce771ad2c74fb1fb7a858a0908875bb6bfae77714b",
+      "bytes_unchanged": true
+    },
+    "gvisor_guest_probe.py": {
+      "path": "tests/fixtures/probes/gvisor_guest_probe.py",
+      "sha256": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+      "bytes_unchanged": true
+    },
+    "network_client.py": {
+      "path": "tests/fixtures/probes/network_client.py",
+      "sha256": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+      "bytes_unchanged": true
+    },
+    "network_server.py": {
+      "path": "tests/fixtures/probes/network_server.py",
+      "sha256": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+      "bytes_unchanged": true
+    },
+    "node_shell": {
+      "path": "scripts/lib/platform/resources/gvisor_node_processes.sh",
+      "bytes_unchanged": true
+    }
+  },
+  "image_transform_AST_unchanged": {
+    "sha": true,
+    "transform": true,
+    "outputs": true
+  },
+  "worker_image_rebuilt": true,
+  "worker_rebuild_reason": "Worker entry and build context now include the separately installed shared pipeline; fingerprints reflect changed bytes. Existing image tags and runtime installation were not replaced.",
+  "failed_attempt": {
+    "report": {
+      "path": "artifacts/platform-diagnostics-test-16f84dbe44bd/report.json",
+      "sha256": "95be74273b1305495e248eb8dec1b70ed19600f75a391f6bc7020a166100928e"
+    },
+    "reason": "Extracted shared environment query lacked urllib.parse import; fixed and covered by static symbol and direct query regressions. Original failure retained."
+  },
+  "source_sha256": {
+    "scripts/retire_legacy.py": "9dd13592dc1d23c2484e1606569e8fb274293c5d6d90fba53863dc56cdb6d8b0",
+    "scripts/render_product.py": "badb0fcf3a76fd529f5a7e0a75d3a8e522653bc38d5626633ebed4940c513990",
+    "scripts/render_manifests.py": "1a8a9b6b8b5233aab345d4e0857779e0a73f16ffcb74c9acc046f73cce7ac45b",
+    "scripts/prepare_batch_images.py": "114ae0907eef23e5c813b5729e1fcb354de93cd35917373572d2ca0d2e5874d7",
+    "scripts/platform_lab.py": "7ac7f5d3ac235b079e9aa4f0eff011a0fcbb12fbd8b403cf06765d385941d8b4",
+    "scripts/observability.py": "ac84fb896952e2339759eb654ec2d643bc92a7fc00da6abb586598ff753d8451",
+    "scripts/lib/product/deployment.py": "4d82203f170817d57c04b8458f4b063b352497f9945bb69a00b5c1600d6ee1c1",
+    "scripts/lib/product/image_pipeline.py": "c39b517622f58bd889b7264d7e4a6100ff24b3c52ade7a8947f3b8fe9372484b",
+    "scripts/lib/product/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/product/worker_image.py": "edf36ff51884d949928dfdb63d237e08dcccfcb7d8202fc3606f0d683e28abff",
+    "scripts/lib/product/images.py": "e41ba3d82277a659d7fd66dc867a3f9b4ec207d345d365e70613e41bc5cf7127",
+    "scripts/lib/product/dataset.py": "01c0abdaaaa4f4a392825cdb885972463db2c03ea1e666471187c7838b77f643",
+    "scripts/lib/product/api_image.py": "186a0296911422483dd67b191985d6636f12ff8c53de0b2d529f5ba3270a2b8a",
+    "scripts/lib/acceptance/product_entry.py": "50a0a922529712da1b90898d84e6f286b68b8bad25d7eca931e8b77e5095be77",
+    "scripts/lib/acceptance/api_execution.py": "0baf23c5adbc127ad13e9ba0fc429fbed3478e8a769d482c7d40265dcfd97c57",
+    "scripts/lib/acceptance/session_faults.py": "914efa3e2c6d1830691abb8c90bb37b622370324b1acac4b80de067982fe4be4",
+    "scripts/lib/acceptance/gvisor.py": "58e5bf89fe65bf624efe1383f9d5734334aa1fabe118872db3c664fa242171a0",
+    "scripts/lib/acceptance/network.py": "4d0daa93a80965b452b606e1e78024307c3f1ee9c3e2d1989de2aeb96cf5c43a",
+    "scripts/lib/acceptance/retention.py": "c557b552e3de7c954b1115c319105d5cb4b62bc6633cd6a89a5b291a38ead9ac",
+    "scripts/lib/acceptance/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/acceptance/smoke.py": "f0754dc2ac3147b323f27d9ce3cbb87967730c43fc3fb3077c89686b9e1ae28d",
+    "scripts/lib/acceptance/api.py": "68b008d88840ff599cec7ae64944c54d41672ed2d806f36d41595d6a7f55ae02",
+    "scripts/lib/acceptance/batch_product.py": "b3bb931876c7667ca99045322c7d0aedb44584ccbdd1005c4c2ac0d0a265f2f8",
+    "scripts/lib/acceptance/maintenance.py": "3ffc598b7457d1414c9976dbd8e9ac1ac7989ff1b85d2e9d0b29248681e61941",
+    "scripts/lib/acceptance/session.py": "6c37341dd165007ee24f1835d80551affc160757ee56ac4c9fce0be165a66368",
+    "scripts/lib/acceptance/batch.py": "4923a7105724ea89340e9e67994101f9690bfd9871e4a69297c068a7f40ff415",
+    "scripts/lib/acceptance/diagnostics.py": "d213c3feba7159089f337384b9536101ece5baddb5eb072db91f0128eccf8aa9",
+    "scripts/lib/acceptance/observability.py": "c9a3dc06b3cc1cc2386c7983e54935ec6ddfb9dfcf050d59eb6acf0d3e9ea951",
+    "scripts/lib/acceptance/agent.py": "9924e5245e0b58285d734ed5fc5b5b54d5c54b3095f726e4eb6daf92bbb8304e",
+    "scripts/lib/acceptance/clients/lifecycle.py": "6bf4e31e9817bacdf5e0b1d464f7ca5a313582913f9912254ec8f545d0c74394",
+    "scripts/lib/acceptance/clients/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/acceptance/clients/batch_environment.py": "37d15d03ccb9ed3138a4cee7f8b02862cac41b683d4ee33e9b0fffce2bbeebae",
+    "scripts/lib/acceptance/clients/session.py": "ccb45a4e6d5234c54a55a417aedb77fc38a25853c121a9d9f233c6689dc42df1",
+    "scripts/lib/acceptance/clients/batch.py": "8bf3ca8baf591946638d382fd662a85f3ce73e26799d3d5239cec28c3433ea0a",
+    "scripts/lib/experiments/static_baseline.py": "1357c68af6076cdbf84271eb3dbb951184e7173fd3b5f742144493f8b27be55e",
+    "scripts/lib/experiments/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/experiments/session_boundaries.py": "b2aa1c86e24633978162d0ac04f361cbdfaecc29629d38884b1377b140f4bee3",
+    "scripts/lib/experiments/results.py": "e24bb788790c0c81204fca5260e752a08dbaa955220cbd8f0b20a8532b80f8f2",
+    "scripts/lib/experiments/workloads.py": "ef2f35ae35d69a78f10ad2c630fd95d724169939b28311d0f3805ab144f99e3d",
+    "scripts/lib/observability/environment.py": "e887cd580fa4218baaf4acc586f251a97f9d35f86155f8fdf8f1e8f7ee847720",
+    "scripts/lib/observability/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/observability/stack.py": "169970e565968af1de1bbc17eb8a6bda9614b03600b950ee9b633afa83cb038b",
+    "scripts/lib/observability/session.py": "4ab4a84b3194516336e100f432c1d08026973580c6aa8fda83be58ee842715cd",
+    "scripts/lib/observability/diagnostics.py": "ea2fe3a02811d03cd8e5bc4b9b7eb24f52679839665be2052f555edf75789608",
+    "scripts/lib/manifests/network.py": "cba7fee5d2e3fa3b1acc57c72c94c9b3e4ef267b282e139b86fab3859eb15bfc",
+    "scripts/lib/manifests/__init__.py": "a94841339c9cc57ffb6855e549bbf1fa674bd9950d190c2f76f883ab3b8276d2",
+    "scripts/lib/manifests/identity.py": "e5b081a739f81de3c47676944deacb655b1b9030edd0d837130307c5e93e0506",
+    "scripts/lib/manifests/config.py": "5b99a44287eb5631ebb5b71f697317a0f2713fac8e06b45d99ab829255c451e8",
+    "scripts/lib/manifests/render.py": "e5faa82945cb589c011f43cd50031c7f0cf11e1dfb3cdb123aeccca320753356",
+    "scripts/lib/core/locking.py": "2186f6712eb78c938a47cf411a9fa0f727465dc7ac10eb3e29c1efb4d414a0e3",
+    "scripts/lib/core/paths.py": "1b7cb50893ccda4de8bf3fd1bbb17ac0127ec97b46d61ca240f5f676947fde42",
+    "scripts/lib/core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/core/state.py": "90d575fbfeeb2cb5564c4040d18e68b9f9eb8e817e0e9a5900ba6109577aa6ea",
+    "scripts/lib/core/runner.py": "97e9e0380bc1ccd019a1aa0fd31334c3208e2be37161a7342de89a11ac213d2b",
+    "scripts/lib/core/errors.py": "758acd984d6d50e7aabf9331da219a6f29633875ceff998901f8124bceaafdd1",
+    "scripts/lib/core/labels.py": "05584ac2650b0200e6c000936a163a2619262efff565b8fb8fcdc2e63928785c",
+    "scripts/lib/core/validation.py": "8db9230b3973a944c9950f410bb4718c8a64ef6e49e940bd126ca51e5c1681b4",
+    "scripts/lib/core/kubernetes.py": "970b89dfa87dc6c77a06b0f86c4e02faa1745c26ddc55bed1c46955d9f7b2a1f",
+    "scripts/lib/platform/gvisor.py": "93eac5de15a52d1f73b6a1ba9e1671b54141ba2ff982a9291d1d334560fec85b",
+    "scripts/lib/platform/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/lib/platform/sandbox.py": "514596340e5310dbd89631dede67d0de44b24055bd515d6c5436bc9532ff36bb",
+    "scripts/lib/platform/lab.py": "36aff775188fde608f7d6061a4d3970edef64c9cb4824bc67947869d977aebcf",
+    "scripts/lib/platform/calico.py": "74bee08b051df2b86f9239b6e83352d3386058a1ec2c44337a06fdfb245a6684",
+    "scripts/lib/platform/kueue.py": "022766ddc359120e00c8dd62f5c165e3f45fdf4fc25306a2e9bd966f996366ad",
+    "workloads/images/worker.py": "a38ee195a0a00d2b8c711cfb5fa5b21712281c6a5b8e842ae8c5dca497869c30",
+    "tests/fixtures/probes/network_client.py": "2d14bf4fdb90fe835161ddcc17370ba0249565bdabd24c09e2acb34cb1260288",
+    "tests/fixtures/probes/gvisor_guest_probe.py": "042ba6449d4ee6bb00c448b83f4686b4079266ad269973abda0e8f1923dec0c1",
+    "tests/fixtures/probes/batch_guest_probe.py": "5d691f20ad49f988508f77ce771ad2c74fb1fb7a858a0908875bb6bfae77714b",
+    "tests/fixtures/probes/network_server.py": "e32f0027b97ad1b6a0488c3931e969ac56e8ffef2daaceb04a1091ef7c07a813",
+    "scripts/lib/platform/resources/gvisor_node_processes.sh": "f2d204336c2ef545a33050a93d98ad1b953a6f00c83b63831f3222a33c105510",
+    "deploy/agentbox/batch-images/worker.Dockerfile": "54b5c5b8a6f2ab7cfb5a423d2dbb446fd9a7c4a45125f32cba9872c249ae204d"
+  },
+  "source_snapshot": "artifacts/script-layout-validation-20261105/final-source",
+  "limitations": [
+    "Full controller-restart, OOM and performance matrices were not rerun in this structure-only phase.",
+    "P3 R/B performance qualification and P4 status are unchanged.",
+    "Original runtime bundle is reused; new SDK client images remain acceptance-only and do not rewrite it."
+  ]
+}
